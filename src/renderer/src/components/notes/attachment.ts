@@ -3,10 +3,11 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Attachment as FileInfo } from '@shared/types'
 import { cancelTranscription, transcribeInto, watchTranscription } from '../../data/voice'
+import { onAndroid } from '../../lib/phone'
 
 const files = window.veyra.files
 
-export const fileUrl = (id: string) => `veyra-file://f/${encodeURIComponent(id)}`
+export const fileUrl = (id: string) => files.url?.(id) || `veyra-file://f/${encodeURIComponent(id)}`
 export const isImage = (mime: string) => /^image\/(png|jpe?g|gif|webp|svg\+xml|bmp|avif)$/.test(mime)
 export function fileSize(n: number): string {
   if (n < 1024) return `${n} B`
@@ -155,7 +156,8 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
         audio.addEventListener('durationchange', showLength)
         const btn = dom.querySelector('.att-transcribe') as HTMLButtonElement
         const cancel = dom.querySelector('.att-cancel') as HTMLButtonElement
-        btn.hidden = !canAttach(editor)
+        // Transcription runs on a computer (whisper.cpp); the phone records and plays.
+        btn.hidden = !canAttach(editor) || onAndroid()
         btn.addEventListener('click', (e) => {
           e.preventDefault()
           e.stopPropagation()

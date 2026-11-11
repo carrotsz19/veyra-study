@@ -365,6 +365,8 @@ export interface FilesApi {
   reveal(id: string): Promise<void>
   read(id: string): Promise<Uint8Array>
   pathFor(file: File): string
+  /** Android: the file's URL for images and players (the desktop uses veyra-file://). */
+  url?(id: string): string
 }
 
 /* ---------- Google Drive ---------- */

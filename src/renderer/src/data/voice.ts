@@ -241,7 +241,7 @@ async function finish(r: NonNullable<typeof rec>) {
     const at = Math.min(r.pos, r.editor.state.doc.content.size)
     r.editor.chain().insertContentAt(at, { type: 'attachment', attrs: { ...file } }).run()
     const s = await voiceSettings()
-    if (s.voiceAutoTranscribe) {
+    if (s.voiceAutoTranscribe && !document.documentElement.classList.contains('phone')) {
       // Find the node we just put in (its id is unique).
       const pos = () => {
         let found: number | undefined

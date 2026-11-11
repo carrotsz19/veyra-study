@@ -433,6 +433,7 @@ function Notes() {
           <Toggle label="Word count" on={s.showWordCount} onChange={(showWordCount) => set({ showWordCount })} />
         </Row>
       </Group>
+      {!onAndroid() && (
       <Group title="Voice recordings">
         <Row label="Transcribe recordings" hint="Turns a recording into text as soon as you stop, on this computer (nothing is uploaded). Or use Transcribe on any recording." keywords="voice audio whisper speech text dictation">
           <Toggle label="Transcribe recordings" on={s.voiceAutoTranscribe} onChange={(voiceAutoTranscribe) => set({ voiceAutoTranscribe })} />
@@ -450,6 +451,7 @@ function Notes() {
           </select>
         </Row>
       </Group>
+      )}
     </>
   )
 }

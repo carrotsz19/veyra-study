@@ -9,6 +9,7 @@ import * as idb from './idb'
 import * as acct from './account'
 import * as online from './online'
 import * as reminders from './reminders'
+import * as phoneFiles from './files'
 
 type Veyra = Window['veyra']
 const unsub = () => () => {}
@@ -92,13 +93,14 @@ const group: Veyra['group'] = {
   onChanged: online.onGroupChanged
 }
 const files: Veyra['files'] = {
-  pick: onComputer('Attaching files'),
-  fromPaths: onComputer('Attaching files'),
-  fromBytes: onComputer('Attaching files'),
-  open: onComputer('Opening files'),
+  pick: () => phoneFiles.pick(),
+  fromPaths: async () => [],
+  fromBytes: (name, mime, bytes) => phoneFiles.save(name, mime, bytes),
+  open: (id) => phoneFiles.open(id),
   reveal: async () => {},
-  read: onComputer('Files'),
-  pathFor: () => ''
+  read: (id) => phoneFiles.read(id),
+  pathFor: () => '',
+  url: (id) => phoneFiles.url(id)
 }
 const drive: Veyra['drive'] = {
   state: async () => ({ builtIn: false, connected: false, email: '', backup: false, backupThrough: 0, backedUp: 0, canPick: false }),
@@ -124,7 +126,7 @@ const voice: Veyra['voice'] = {
   transcribe: onComputer('Transcription'),
   cancel: async () => {},
   onTranscribing: unsub,
-  saveRecording: onComputer('Recording')
+  saveRecording: (name, mime, bytes) => phoneFiles.save(name, mime, bytes)
 }
 const mcp: Veyra['mcp'] = {
   state: async () => ({ running: false, port: 0, command: '', args: [], claude: { path: '', added: false }, gemini: { path: '', added: false } }),
@@ -147,6 +149,7 @@ const appApi: Veyra['app'] = {
 
 export async function installBridge(): Promise<void> {
   await acct.start()
+  await phoneFiles.startFiles()
   online.create()
   const veyra: Veyra = {
     db,
