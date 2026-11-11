@@ -16,10 +16,24 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // One signing key for every build, kept outside the repo (C:\dev	oolseyra-signing.keystore,
+    // or VEYRA_KEYSTORE). Android only installs an update signed with the same key, so back it up.
+    signingConfigs {
+        veyra {
+            storeFile file(System.getenv('VEYRA_KEYSTORE') ?: 'C:/dev/tools/veyra-signing.keystore')
+            storePassword System.getenv('VEYRA_KEYSTORE_PASSWORD') ?: 'android'
+            keyAlias System.getenv('VEYRA_KEY_ALIAS') ?: 'androiddebugkey'
+            keyPassword System.getenv('VEYRA_KEY_PASSWORD') ?: 'android'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.veyra
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.veyra
         }
     }
 }
