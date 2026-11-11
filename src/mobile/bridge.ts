@@ -7,6 +7,7 @@
 import type { Kind } from '@shared/types'
 import * as idb from './idb'
 import * as acct from './account'
+import * as online from './online'
 
 type Veyra = Window['veyra']
 const unsub = () => () => {}
@@ -19,8 +20,15 @@ export const emitExternal = (kinds: Kind[], ids: string[]) => externals.forEach(
 
 const db: Veyra['db'] = {
   list: (kind) => idb.list(kind),
-  put: (kind, data, id) => idb.put(kind, data, id),
-  remove: (id) => idb.remove(id),
+  put: async (kind, data, id) => {
+    const rec = await idb.put(kind, data, id)
+    online.sync.schedule()
+    return rec
+  },
+  remove: async (id) => {
+    await idb.remove(id)
+    online.sync.schedule()
+  },
   changesSince: (since) => idb.changesSince(since),
   info: async () => ({ deviceId: await idb.deviceId(), dbPath: 'This phone' }),
   onExternal: (cb) => {
@@ -51,7 +59,7 @@ const google: Veyra['google'] = {
   removeFeed: onComputer('Calendar links'),
   disconnect: onComputer('Google Calendar'),
   setOptions: onComputer('Google Calendar'),
-  events: async () => ({ events: [] }),
+  events: async (from, to) => ({ events: await online.group.deadlines(from, to) }),
   syncNow: async () => ({ pushed: 0 })
 }
 const ai: Veyra['ai'] = {
@@ -70,12 +78,15 @@ const ai: Veyra['ai'] = {
   onLocalProgress: unsub
 }
 const group: Veyra['group'] = {
-  status: async () => ({ state: 'signed-out', me: null, error: '' }),
-  connect: async () => ({ state: 'signed-out', me: null, error: '' }),
-  disconnect: async () => ({ state: 'signed-out', me: null, error: '' }),
-  callRaw: async () => ({ ok: false, error: 'Sign in to use group work.', status: 401 }),
-  onStatus: unsub,
-  onChanged: unsub
+  status: async () => online.group.getStatus(),
+  connect: () => online.group.connect(),
+  disconnect: async () => {
+    online.group.disconnect()
+    return online.group.getStatus()
+  },
+  callRaw: (method, path, body) => online.groupCallRaw(method, path, body),
+  onStatus: online.onGroupStatus,
+  onChanged: online.onGroupChanged
 }
 const files: Veyra['files'] = {
   pick: onComputer('Attaching files'),
@@ -97,10 +108,10 @@ const drive: Veyra['drive'] = {
   pick: onComputer('Google Drive')
 }
 const sync: Veyra['sync'] = {
-  status: async () => ({ enabled: false, state: 'idle', error: '' }),
-  now: async () => ({ enabled: false, state: 'idle', error: '' }),
-  setEnabled: async () => ({ enabled: false, state: 'idle', error: '' }),
-  onStatus: unsub
+  status: () => online.sync.state(),
+  now: () => online.sync.run(),
+  setEnabled: (on) => online.sync.setEnabled(on),
+  onStatus: online.onSyncStatus
 }
 const voice: Veyra['voice'] = {
   status: async () => ({ engine: false, models: [], choices: [] }),
@@ -133,6 +144,7 @@ const appApi: Veyra['app'] = {
 
 export async function installBridge(): Promise<void> {
   await acct.start()
+  online.create()
   const veyra: Veyra = {
     db,
     account,
@@ -150,4 +162,7 @@ export async function installBridge(): Promise<void> {
     open: async (url) => void window.open(url, '_blank')
   }
   window.veyra = veyra
+  // What other devices change shows up on the screens straight away.
+  online.setOnApplied((kinds, ids) => emitExternal(kinds, ids))
+  online.startOnline()
 }
