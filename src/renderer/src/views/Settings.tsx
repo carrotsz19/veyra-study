@@ -10,6 +10,7 @@ import { playSound } from '../components/timer'
 import { useToast } from '../components/ui'
 import { NOTE_COVERS } from '../components/notes/NoteEditor'
 import { AccountSection, GoogleSection } from './Connections'
+import { LocalAiSetup } from '../components/LocalAiSetup'
 import { db, useRecords } from '../data/store'
 import { sortSubjects } from '../lib/subjects'
 import { SubjectDialog } from '../components/editors'
@@ -642,8 +643,20 @@ function AiSettings() {
     }
   }
 
+  const localReady = provider === 'ollama' && !modelErr && (models?.length ?? 0) > 0
   return (
     <>
+      {(!provider || (provider === 'ollama' && !localReady)) && (
+        <div className="ls-group">
+          <LocalAiSetup
+            onReady={async () => {
+              setSt(await window.veyra.ai.state())
+              loadModels('ollama')
+            }}
+          />
+          <p className="set-footer">Or use your own Claude, Gemini or OpenAI key below.</p>
+        </div>
+      )}
       <Group title="Provider" footer="AI tools appear in notes (the AI menu, and Explain on selected text) and in Tasks → Plan from syllabus.">
         <Row label="Use AI from" stack keywords="ai provider ollama local claude gemini openai chatgpt model">
           <div className="ai-providers" role="radiogroup" aria-label="AI provider">
@@ -661,7 +674,7 @@ function AiSettings() {
         </Row>
       </Group>
 
-      {provider === 'ollama' && (
+      {provider === 'ollama' && localReady && (
         <Group title="Local AI" footer="Ollama runs models on your computer. Bigger models give better answers but need more memory and are slower.">
           <Row label="Ollama" hint={modelErr ? modelErr : models ? `Running · ${models.length} model${models.length === 1 ? '' : 's'} downloaded` : 'Checking…'} keywords="ollama install local">
             <div className="row" style={{ gap: 6 }}>

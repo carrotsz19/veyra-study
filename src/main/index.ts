@@ -7,6 +7,7 @@ import { Accounts, ApiError, accountDir } from './account'
 import { GoogleCalendar, GoogleError } from './gcal'
 import { IcalError, IcalFeeds } from './ical'
 import { AiError, AiService } from './ai'
+import { LocalAi, LocalAiError } from './localai'
 
 // Dev checks: run on a separate profile (sign-in, settings and data).
 if (process.env['VEYRA_USERDATA']) app.setPath('userData', process.env['VEYRA_USERDATA'])
@@ -16,13 +17,15 @@ let accounts: Accounts
 let google: GoogleCalendar | null = null
 let feeds: IcalFeeds | null = null
 let ai: AiService | null = null
+const localAi = new LocalAi()
+app.on('will-quit', () => localAi.stop())
 
 /** One Google connection per account (or for the no-account data). */
 function openGoogle(): void {
   const folder = accounts.folder()
   const file = folder ? join(accountDir(folder), 'google.bin') : join(app.getPath('userData'), 'google-local.bin')
   feeds = new IcalFeeds(folder ? join(accountDir(folder), 'ical.bin') : join(app.getPath('userData'), 'ical-local.bin'))
-  ai = new AiService(folder ? join(accountDir(folder), 'ai.bin') : join(app.getPath('userData'), 'ai-local.bin'))
+  ai = new AiService(folder ? join(accountDir(folder), 'ai.bin') : join(app.getPath('userData'), 'ai-local.bin'), () => localAi.ensureRunning())
   google = new GoogleCalendar(
     file,
     (since) => db().changesSince(since).filter((r) => r.kind === 'task') as Rec<'task'>[],
@@ -52,7 +55,7 @@ const friendly = async <T>(fn: () => Promise<T>): Promise<T> => {
   try {
     return await fn()
   } catch (e) {
-    throw new Error(e instanceof ApiError || e instanceof GoogleError || e instanceof IcalError || e instanceof AiError ? e.message : 'Something went wrong. Try again.')
+    throw new Error(e instanceof ApiError || e instanceof GoogleError || e instanceof IcalError || e instanceof AiError || e instanceof LocalAiError ? e.message : 'Something went wrong. Try again.')
   }
 }
 
@@ -166,6 +169,14 @@ app.whenReady().then(() => {
         }))
   )
   ipcMain.handle('google:sync', () => friendly(() => gcal().push()))
+  ipcMain.handle('localai:status', () => localAi.status())
+  ipcMain.handle('localai:setup', (e, model: string) =>
+    friendly(async () => {
+      await localAi.setup(model, e.sender)
+      return ai!.set({ provider: 'ollama', ollamaUrl: 'http://127.0.0.1:11434', model: { provider: 'ollama', model } })
+    })
+  )
+  ipcMain.handle('localai:cancel', () => localAi.cancel())
   ipcMain.handle('ai:state', () => ai!.state())
   ipcMain.handle('ai:set', (_e, o) => friendly(async () => ai!.set(o)))
   ipcMain.handle('ai:forget', () => ai!.forget())

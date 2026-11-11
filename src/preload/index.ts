@@ -53,6 +53,14 @@ const aiApi = {
     ipcRenderer.on('ai:event', h)
     return () => ipcRenderer.removeListener('ai:event', h)
   },
+  localStatus: () => ipcRenderer.invoke('localai:status'),
+  localSetup: (model: string) => ipcRenderer.invoke('localai:setup', model),
+  localCancel: () => ipcRenderer.invoke('localai:cancel'),
+  onLocalProgress: (cb: (e: unknown) => void) => {
+    const h = (_: unknown, e: unknown) => cb(e)
+    ipcRenderer.on('localai:progress', h)
+    return () => ipcRenderer.removeListener('localai:progress', h)
+  },
   onPull: (cb: (e: unknown) => void) => {
     const h = (_: unknown, e: unknown) => cb(e)
     ipcRenderer.on('ai:pull', h)

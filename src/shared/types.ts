@@ -193,4 +193,33 @@ export interface AiApi {
   cancel(id: string): Promise<void>
   onEvent(cb: (e: AiEvent) => void): () => void
   onPull(cb: (e: { model: string; status: string; progress: number | null }) => void): () => void
+  localStatus(): Promise<LocalAiStatus>
+  localSetup(model: string): Promise<AiState>
+  localCancel(): Promise<void>
+  onLocalProgress(cb: (e: LocalAiProgress) => void): () => void
+}
+
+export interface LocalModelChoice {
+  model: string
+  label: string
+  sizeGB: number
+  why: string
+}
+
+export interface LocalAiStatus {
+  /** managed: downloaded by Veyra; external: Ollama installed separately; null: none yet. */
+  engine: 'managed' | 'external' | null
+  running: boolean
+  models: string[]
+  hardware: { ramGB: number; vramGB: number; gpu: string }
+  recommended: string
+  choices: LocalModelChoice[]
+  freeGB: number
+  engineSizeGB: number
+}
+
+export interface LocalAiProgress {
+  step: 'engine' | 'unpack' | 'start' | 'model' | 'done'
+  progress: number | null
+  detail: string
 }

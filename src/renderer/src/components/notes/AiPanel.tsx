@@ -24,6 +24,13 @@ export function AiPanel({
   const { text, status, error, run, stop } = useAiRun()
   const [cfg, setCfg] = useState<AiState | null>(null)
   const { go } = useNav()
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    setSlow(false)
+    if (status !== 'running' || text) return
+    const t = setTimeout(() => setSlow(true), 3500)
+    return () => clearTimeout(t)
+  }, [status, text])
   const toast = useToast()
 
   const start = () => run(buildPrompt(task, source, { title }))
@@ -51,7 +58,7 @@ export function AiPanel({
 
       {cfg && !cfg.provider ? (
         <div className="ai-body">
-          <p>AI tools need a provider. Use free local AI on this computer, or your own Claude, Gemini or OpenAI key.</p>
+          <p>Turn on AI to summarize notes, make flashcards and explain things. The easiest option is free AI that runs on this computer; setting it up takes one click.</p>
           <button
             className="btn"
             onClick={() => {
@@ -59,7 +66,7 @@ export function AiPanel({
               go({ name: 'settings' })
             }}
           >
-            Set up AI
+            <Sparkles size={15} /> Set up free local AI
           </button>
         </div>
       ) : !source.trim() ? (
@@ -82,7 +89,7 @@ export function AiPanel({
                 ))}
               </ol>
             ) : (
-              <div className="ai-text">{text || (status === 'running' ? <span className="ai-dots">Thinking</span> : '')}</div>
+              <div className="ai-text">{text || (status === 'running' ? <span className="ai-dots">{slow && cfg?.provider === 'ollama' ? 'Loading the AI model (up to a minute the first time)' : 'Thinking'}</span> : '')}</div>
             )}
             {status === 'running' && cards.length > 0 && <span className="ai-dots xs">Writing more</span>}
             {status === 'done' && (task === 'flashcards' || task === 'quiz') && !cards.length && !error && (

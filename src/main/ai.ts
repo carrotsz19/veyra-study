@@ -51,7 +51,11 @@ export class AiService {
   private running = new Map<string, AbortController>()
   private disposed = false
 
-  constructor(private file: string) {
+  constructor(
+    private file: string,
+    /** Starts the local engine if it isn't running (one-click local AI). */
+    private ensureLocal?: () => Promise<void>
+  ) {
     try {
       if (existsSync(file) && safeStorage.isEncryptionAvailable()) this.cfg = { ...this.cfg, ...JSON.parse(safeStorage.decryptString(readFileSync(file))) }
     } catch {
@@ -104,10 +108,15 @@ export class AiService {
     return k
   }
 
+  private async local(): Promise<void> {
+    if (this.ensureLocal && this.cfg.ollamaUrl === 'http://127.0.0.1:11434') await this.ensureLocal().catch(() => {})
+  }
+
   /** Models the provider offers to this person (live from the provider). */
   async models(p: AiProvider): Promise<string[]> {
     try {
       if (p === 'ollama') {
+        await this.local()
         const r = await fetch(`${this.cfg.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(4000) })
         const j = await r.json()
         return (j.models ?? []).map((m: any) => m.name as string)
@@ -140,6 +149,7 @@ export class AiService {
 
   /** Downloads a local model, reporting progress (0–1). */
   async pull(model: string, wc: WebContents): Promise<void> {
+    await this.local()
     const res = await fetch(`${this.cfg.ollamaUrl}/api/pull`, { method: 'POST', body: JSON.stringify({ model, stream: true }) }).catch(() => null)
     if (!res || !res.ok) throw new AiError(res?.status === 404 ? `Ollama has no model called “${model}”.` : 'Ollama isn’t running on this computer.')
     for await (const line of lines(res)) {
@@ -190,10 +200,12 @@ export class AiService {
         if (final.stop_reason === 'refusal') throw new AiError('Claude declined this request.')
         if (final.stop_reason === 'max_tokens') send({ delta: '\n\n(Stopped: the answer was too long.)' })
       } else if (p === 'ollama') {
+        await this.local()
         const res = await fetch(`${this.cfg.ollamaUrl}/api/chat`, {
           method: 'POST',
           signal: ctrl.signal,
-          body: JSON.stringify({ model, stream: true, messages: [{ role: 'system', content: req.system }, { role: 'user', content: req.prompt }] })
+          // keep_alive: stay loaded for a study session, so later answers start at once.
+          body: JSON.stringify({ model, stream: true, keep_alive: '30m', messages: [{ role: 'system', content: req.system }, { role: 'user', content: req.prompt }] })
         }).catch((e) => {
           if (ctrl.signal.aborted) throw e
           throw new AiError('Ollama isn’t running on this computer. Open Ollama and try again.')

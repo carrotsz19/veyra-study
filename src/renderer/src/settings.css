@@ -227,3 +227,26 @@ main.main.main-settings { padding: 0; overflow: hidden; }
 .set-jump:hover { box-shadow: var(--elev-2); }
 .set-jump b { display: block; font-size: 14.5px; }
 .set-main:has(.set-jump) .set-none { display: none; }
+
+/* ---------- one-click local AI ---------- */
+.local-setup h3 { font-size: 16px; font-weight: 750; margin: 0; }
+.ls-icon { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent) 30%, var(--panel))); color: var(--accent); }
+.ls-hw { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); margin: 14px 0 10px; }
+.ls-models { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ls-model { border: 1px solid var(--line); background: transparent; color: var(--ink); text-align: left; border-radius: 12px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 4px; transition: border-color 0.15s, transform var(--spring-snappy-ms) var(--spring-snappy); }
+.ls-model:active { transform: scale(0.98); }
+.ls-model b { font-size: 14px; }
+.ls-why { font-size: 12px; color: var(--dim); line-height: 1.35; flex: 1; }
+.ls-model[aria-checked='true'] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.ls-steps { margin-top: 16px; }
+.ls-step { display: flex; gap: 12px; align-items: flex-start; padding: 7px 0; color: var(--label-tertiary); font-size: 14px; }
+.ls-step.current, .ls-step.done { color: var(--ink); }
+.ls-dot { width: 22px; height: 22px; border-radius: 99px; border: 1.5px solid var(--line); display: grid; place-items: center; flex-shrink: 0; }
+.ls-step.done .ls-dot { background: var(--ok); border-color: var(--ok); color: var(--on-tint); }
+.ls-step.current .ls-dot { border-color: var(--accent); color: var(--accent); }
+.ls-test { margin-top: 12px; padding: 12px 14px; border-radius: var(--r-control); background: var(--ok-soft); display: flex; flex-direction: column; gap: 4px; }
+.ls-group { margin-bottom: calc(26px * var(--dens)); }
+.ls-group .set-footer { padding-top: 8px; }
+.set-result .ls-group { display: none; }
