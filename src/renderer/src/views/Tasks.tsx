@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ListTodo, Plus, Search, X } from 'lucide-react'
+import { ListTodo, Plus, Search, Sparkles, X } from 'lucide-react'
+import { PlanDialog } from '../components/PlanDialog'
 import type { Rec } from '@shared/types'
 import { db, useRecords } from '../data/store'
 import { dueLabel, isOverdue, todayKey } from '../lib/dates'
@@ -33,6 +34,7 @@ export function Tasks() {
   const [q, setQ] = useState('')
   const [quick, setQuick] = useState('')
   const [adding, setAdding] = useState(false)
+  const [planning, setPlanning] = useState(false)
   const { s } = useSettings()
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -89,9 +91,14 @@ export function Tasks() {
           <h1>Tasks</h1>
           <p className="dim">{tasks.filter((t) => !t.data.done).length} open</p>
         </div>
-        <button className="btn" onClick={() => setAdding(true)} title="New task (Ctrl+N)">
-          <Plus size={16} /> New task
-        </button>
+        <div className="row">
+          <button className="btn ghost" onClick={() => setPlanning(true)} title="Turn a syllabus into tasks with AI">
+            <Sparkles size={15} /> Plan from syllabus
+          </button>
+          <button className="btn" onClick={() => setAdding(true)} title="New task (Ctrl+N)">
+            <Plus size={16} /> New task
+          </button>
+        </div>
       </div>
 
       <div className="between tasks-filters">
@@ -162,6 +169,7 @@ export function Tasks() {
         )
       )}
       {adding && <TaskDialog defaults={{ subjectId }} onClose={() => setAdding(false)} />}
+      {planning && <PlanDialog subjectId={subjectId} onClose={() => setPlanning(false)} />}
     </div>
   )
 }

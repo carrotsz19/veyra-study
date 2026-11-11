@@ -6,6 +6,7 @@ import { Store } from './db'
 import { Accounts, ApiError, accountDir } from './account'
 import { GoogleCalendar, GoogleError } from './gcal'
 import { IcalError, IcalFeeds } from './ical'
+import { AiError, AiService } from './ai'
 
 // Dev checks: run on a separate profile (sign-in, settings and data).
 if (process.env['VEYRA_USERDATA']) app.setPath('userData', process.env['VEYRA_USERDATA'])
@@ -14,12 +15,14 @@ let store: Store | null = null
 let accounts: Accounts
 let google: GoogleCalendar | null = null
 let feeds: IcalFeeds | null = null
+let ai: AiService | null = null
 
 /** One Google connection per account (or for the no-account data). */
 function openGoogle(): void {
   const folder = accounts.folder()
   const file = folder ? join(accountDir(folder), 'google.bin') : join(app.getPath('userData'), 'google-local.bin')
   feeds = new IcalFeeds(folder ? join(accountDir(folder), 'ical.bin') : join(app.getPath('userData'), 'ical-local.bin'))
+  ai = new AiService(folder ? join(accountDir(folder), 'ai.bin') : join(app.getPath('userData'), 'ai-local.bin'))
   google = new GoogleCalendar(
     file,
     (since) => db().changesSince(since).filter((r) => r.kind === 'task') as Rec<'task'>[],
@@ -34,6 +37,8 @@ function openStore(path: string): void {
   google = null
   feeds?.dispose()
   feeds = null
+  ai?.dispose()
+  ai = null
   store?.close()
   store = path ? new Store(path) : null
   if (store && accounts) openGoogle()
@@ -47,7 +52,7 @@ const friendly = async <T>(fn: () => Promise<T>): Promise<T> => {
   try {
     return await fn()
   } catch (e) {
-    throw new Error(e instanceof ApiError || e instanceof GoogleError || e instanceof IcalError ? e.message : 'Something went wrong. Try again.')
+    throw new Error(e instanceof ApiError || e instanceof GoogleError || e instanceof IcalError || e instanceof AiError ? e.message : 'Something went wrong. Try again.')
   }
 }
 
@@ -161,6 +166,15 @@ app.whenReady().then(() => {
         }))
   )
   ipcMain.handle('google:sync', () => friendly(() => gcal().push()))
+  ipcMain.handle('ai:state', () => ai!.state())
+  ipcMain.handle('ai:set', (_e, o) => friendly(async () => ai!.set(o)))
+  ipcMain.handle('ai:forget', () => ai!.forget())
+  ipcMain.handle('ai:models', (_e, p) => friendly(() => ai!.models(p)))
+  ipcMain.handle('ai:pull', (e, model: string) => friendly(() => ai!.pull(model, e.sender)))
+  ipcMain.handle('ai:run', (e, id: string, req) => {
+    void ai!.run(id, req, e.sender)
+  })
+  ipcMain.handle('ai:cancel', (_e, id: string) => ai?.cancel(id))
   ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('data:openFolder', () => shell.openPath(dirname(db().path)))
   ipcMain.handle('data:export', async () => {

@@ -25,6 +25,7 @@
     }
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@floating-ui/dom": "^1.8.0",
     "@fontsource/inter": "^5.3.0",
     "@tiptap/extension-details": "^3.33.1",

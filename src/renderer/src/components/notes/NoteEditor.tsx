@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import { formatDistanceToNowStrict } from 'date-fns'
 import {
   Archive, ArchiveRestore, Bold, Code, Copy, Download, Hash, Italic, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, Pin, PinOff,
-  Strikethrough, Trash2, Underline
+  Sparkles, Strikethrough, Trash2, Underline
 } from 'lucide-react'
 import type { Note, NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, useRecords } from '../../data/store'
@@ -13,6 +13,9 @@ import { docText, noteExtensions, wordCount } from './extensions'
 import { SlashMenu } from './SlashMenu'
 import { NoteToolbar } from './Toolbar'
 import { LinkInput } from './LinkInput'
+import { NoteAiCtx } from './aiContext'
+import { AiPanel } from './AiPanel'
+import { parseBullets, parseCards, type AiTask } from '../../data/ai'
 import { noteToMarkdown } from './markdown'
 import { useSettings } from '../../data/settings'
 
@@ -47,6 +50,7 @@ const TEMPLATES: [NoteTemplate, string, string][] = [
 function FormatBar({ editor }: { editor: Editor }) {
   const [colors, setColors] = useState(false)
   const [linking, setLinking] = useState(false)
+  const ask = useContext(NoteAiCtx)
   const s = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -99,6 +103,7 @@ function FormatBar({ editor }: { editor: Editor }) {
       {btn('Strikethrough', s.strike, () => c().toggleStrike().run(), <Strikethrough size={15} />)}
       {btn('Code', s.code, () => c().toggleCode().run(), <Code size={15} />)}
       {btn('Link', s.link, () => setLinking(true), <Link2 size={15} />)}
+      {ask && btn('Explain with AI', false, () => ask('explain', editor), <Sparkles size={15} />)}
       <span className="fb-sep" />
       <span className="fb-colors-wrap">
         {btn('Highlight', s.highlight, () => setColors((v) => !v), <Palette size={15} />)}
@@ -384,6 +389,8 @@ export function NoteEditor({
   const [menu, setMenu] = useState<'page' | 'icon' | null>(null)
   const [savedAt, setSavedAt] = useState(note.updatedAt)
   const [active, setActive] = useState<Editor | null>(null)
+  const mainEditor = useRef<Editor | null>(null)
+  const [aiJob, setAiJob] = useState<{ task: AiTask; source: string; editor?: Editor; from?: number; to?: number } | null>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const { s: settings } = useSettings()
 
@@ -419,7 +426,59 @@ export function NoteEditor({
     update({ [field]: json, excerpt: all.replace(/\s+/g, ' ').slice(0, 240) })
   }
   // The main area is the toolbar's target until you click into another one.
-  const mainActive = (e: Editor) => setActive((cur) => cur ?? e)
+  const mainActive = (e: Editor) => {
+    mainEditor.current = e
+    setActive((cur) => cur ?? e)
+  }
+
+  /* ---------- AI study tools ---------- */
+  const askAi = (task: AiTask, ed?: Editor) => {
+    if (ed && (task === 'explain' || task === 'simplify')) {
+      const { from, to } = ed.state.selection
+      setAiJob({ task, source: ed.state.doc.textBetween(from, to, '\n'), editor: ed, from, to })
+    } else {
+      flush()
+      setAiJob({ task, source: noteToMarkdown(latest.current).split('\n').slice(1).join('\n') })
+    }
+  }
+  const P = (t: string) => ({ type: 'paragraph', content: t ? [{ type: 'text', text: t }] : [] })
+  const insertAi = (task: AiTask, text: string) => {
+    const job = aiJob
+    const ed = job?.editor ?? mainEditor.current
+    if (!ed || ed.isDestroyed) return
+    const paras = text.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean).map(P)
+    if (task === 'summary') {
+      ed.chain().focus().insertContentAt(0, {
+        type: 'callout',
+        attrs: { tone: 'idea' },
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Summary', marks: [{ type: 'bold' }] }] },
+          { type: 'bulletList', content: parseBullets(text).map((b) => ({ type: 'listItem', content: [P(b)] })) }
+        ]
+      }).run()
+    } else if (task === 'flashcards' || task === 'quiz') {
+      const cards = parseCards(text)
+      ed.chain().focus('end').insertContent([
+        { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: task === 'quiz' ? 'Quiz yourself' : 'Flashcards' }] },
+        ...cards.map((c) => ({
+          type: 'details',
+          attrs: { open: false },
+          content: [
+            { type: 'detailsSummary', content: [{ type: 'text', text: c.q }] },
+            { type: 'detailsContent', content: [P(c.a)] }
+          ]
+        }))
+      ]).run()
+    } else if (task === 'simplify' && job?.from !== undefined && job.to !== undefined) {
+      ed.chain().focus().insertContentAt({ from: job.from, to: job.to }, paras).run()
+    } else {
+      // An explanation goes in a callout just below the block you selected.
+      const at = job?.to !== undefined ? ed.state.doc.resolve(Math.min(job.to, ed.state.doc.content.size)).after(1) : ed.state.doc.content.size
+      ed.chain().focus().insertContentAt(at, { type: 'callout', attrs: { tone: 'definition' }, content: paras.length ? paras : [P(text)] }).run()
+    }
+    setAiJob(null)
+    toast('Added to your note')
+  }
 
   // Grow the title box with its text.
   useEffect(() => {
@@ -454,8 +513,9 @@ export function NoteEditor({
   const showBar = settings.noteToolbar !== 'slash'
 
   return (
+    <NoteAiCtx.Provider value={askAi}>
     <div
-      className={`note-page font-${data.font ?? 'sans'} layout-${template} width-${settings.noteWidth}`}
+      className={`note-page font-${data.font ?? 'sans'} layout-${template} width-${settings.noteWidth} ${aiJob ? 'with-ai' : ''}`}
       style={{ ['--note-base' as string]: `${settings.noteSize}px` }}
     >
       {showBar && <NoteToolbar editor={active} />}
@@ -590,6 +650,8 @@ export function NoteEditor({
         </div>
       </div>
       <SlashMenu />
+      {aiJob && <AiPanel key={aiJob.task + aiJob.source.length} task={aiJob.task} source={aiJob.source} title={data.title} onInsert={insertAi} onClose={() => setAiJob(null)} />}
     </div>
+    </NoteAiCtx.Provider>
   )
 }

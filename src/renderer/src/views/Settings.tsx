@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
   ArrowDown, ArrowUp, CalendarDays, Check, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, NotebookPen,
-  LayoutGrid, Palette, Play, Plus, RotateCcw, Shapes, Trash2, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
+  LayoutGrid, Palette, Play, Plus, RotateCcw, Shapes, Sparkles, Trash2, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
 } from 'lucide-react'
 import { ACCENTS, DEFAULT_SETTINGS, NAV_LABELS, defaultLayout, type AppSettings, type NavId } from '@shared/settings'
 import { useNav } from '../nav'
@@ -13,14 +13,14 @@ import { AccountSection, GoogleSection } from './Connections'
 import { db, useRecords } from '../data/store'
 import { sortSubjects } from '../lib/subjects'
 import { SubjectDialog } from '../components/editors'
-import type { Rec } from '@shared/types'
+import type { AiProvider, AiState, Rec } from '@shared/types'
 
 /* =====================================================================
    Settings: categories on the left, one category at a time on the
    right, and a search that finds any option across all of them.
 ===================================================================== */
 
-type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data'
+type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data'
 
 const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; keys?: (keyof AppSettings)[] }[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal, hint: 'Your name, start screen, week and time', keys: ['name', 'greeting', 'startScreen', 'weekStart', 'timeFormat'] },
@@ -32,6 +32,7 @@ const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; 
   { id: 'notes', label: 'Notes', icon: NotebookPen, hint: 'How new notes start and how pages look', keys: ['noteTemplate', 'noteFont', 'noteCover', 'noteWidth', 'noteSize', 'spellcheck', 'showWordCount', 'noteToolbar', 'noteBubble', 'noteSort'] },
   { id: 'timer', label: 'Focus timer', icon: Timer, hint: 'Lengths, long breaks, sounds and your daily goal', keys: ['focusMin', 'breakMin', 'longBreakMin', 'longBreakEvery', 'autoStartBreaks', 'autoStartFocus', 'sound', 'volume', 'notify', 'dailyGoalMin'] },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays, hint: 'What appears on the calendar', keys: ['calendarShowTasks', 'calendarShowDone', 'calendarShowEvents'] },
+  { id: 'ai', label: 'AI', icon: Sparkles, hint: 'Local AI or your own Claude, Gemini or OpenAI key' },
   { id: 'account', label: 'Account', icon: UserRound, hint: 'Your Veyra account' },
   { id: 'connections', label: 'Connected calendars', icon: Link2, hint: 'Google Calendar and calendar links' },
   { id: 'data', label: 'Data & privacy', icon: Database, hint: 'Export, where data lives, and resets' }
@@ -577,6 +578,200 @@ function Subjects() {
   )
 }
 
+const AI_PROVIDERS: { id: AiProvider; name: string; hint: string; keyUrl?: string; keyHint?: string }[] = [
+  { id: 'ollama', name: 'Local AI', hint: 'Free and private. Runs on this computer with Ollama, even offline.' },
+  { id: 'anthropic', name: 'Claude', hint: 'Your own Anthropic API key. Billed per use by Anthropic.', keyUrl: 'https://console.anthropic.com/settings/keys', keyHint: 'sk-ant-…' },
+  { id: 'gemini', name: 'Gemini', hint: 'Your own Google AI Studio key. Has a free tier.', keyUrl: 'https://aistudio.google.com/apikey', keyHint: 'AIza…' },
+  { id: 'openai', name: 'OpenAI', hint: 'Your own OpenAI API key. Billed per use by OpenAI.', keyUrl: 'https://platform.openai.com/api-keys', keyHint: 'sk-…' }
+]
+/** Local models known to work well for study tasks, smallest first. */
+const LOCAL_SUGGESTIONS: [string, string][] = [
+  ['llama3.2:3b', 'Small and quick (about 2 GB). Good for flashcards and short summaries.'],
+  ['gemma3:4b', 'Small, a little smarter (about 3 GB).'],
+  ['qwen2.5:7b', 'Medium (about 5 GB). Better answers; slower without a big graphics card.']
+]
+
+function AiSettings() {
+  const toast = useToast()
+  const [st, setSt] = useState<AiState | null>(null)
+  const [models, setModels] = useState<string[] | null>(null)
+  const [modelErr, setModelErr] = useState('')
+  const [key, setKey] = useState('')
+  const [pullName, setPullName] = useState('')
+  const [pulling, setPulling] = useState<{ model: string; status: string; progress: number | null } | null>(null)
+  const clean = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+
+  useEffect(() => {
+    window.veyra.ai.state().then(setSt)
+    return window.veyra.ai.onPull((e) => setPulling(e))
+  }, [])
+
+  const provider = st?.provider ?? null
+  const loadModels = async (p: AiProvider | null) => {
+    setModels(null)
+    setModelErr('')
+    if (!p) return
+    try {
+      setModels(await window.veyra.ai.models(p))
+    } catch (e) {
+      setModelErr(clean(e))
+      setModels([])
+    }
+  }
+  useEffect(() => {
+    if (st && provider && (provider === 'ollama' || st.hasKey[provider])) loadModels(provider)
+  }, [provider, st?.hasKey.anthropic, st?.hasKey.gemini, st?.hasKey.openai]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!st) return null
+  const def = AI_PROVIDERS.find((p) => p.id === provider)
+  const chosenModel = provider ? st.models[provider] ?? (provider === 'anthropic' ? 'claude-opus-5-5' : '') : ''
+
+  const pull = async (name: string) => {
+    if (!name.trim()) return
+    setPulling({ model: name, status: 'starting', progress: 0 })
+    try {
+      await window.veyra.ai.pull(name.trim())
+      setSt(await window.veyra.ai.set({ model: { provider: 'ollama', model: name.trim() } }))
+      toast(`${name} is ready`)
+      await loadModels('ollama')
+    } catch (e) {
+      toast(clean(e))
+    } finally {
+      setPulling(null)
+      setPullName('')
+    }
+  }
+
+  return (
+    <>
+      <Group title="Provider" footer="AI tools appear in notes (the AI menu, and Explain on selected text) and in Tasks → Plan from syllabus.">
+        <Row label="Use AI from" stack keywords="ai provider ollama local claude gemini openai chatgpt model">
+          <div className="ai-providers" role="radiogroup" aria-label="AI provider">
+            {AI_PROVIDERS.map((p) => (
+              <button key={p.id} className="ai-provider" role="radio" aria-checked={provider === p.id} onClick={async () => setSt(await window.veyra.ai.set({ provider: p.id }))}>
+                <b>{p.name}</b>
+                <span>{p.hint}</span>
+              </button>
+            ))}
+            <button className="ai-provider off" role="radio" aria-checked={!provider} onClick={async () => setSt(await window.veyra.ai.set({ provider: null }))}>
+              <b>Off</b>
+              <span>No AI. Nothing is ever sent anywhere.</span>
+            </button>
+          </div>
+        </Row>
+      </Group>
+
+      {provider === 'ollama' && (
+        <Group title="Local AI" footer="Ollama runs models on your computer. Bigger models give better answers but need more memory and are slower.">
+          <Row label="Ollama" hint={modelErr ? modelErr : models ? `Running · ${models.length} model${models.length === 1 ? '' : 's'} downloaded` : 'Checking…'} keywords="ollama install local">
+            <div className="row" style={{ gap: 6 }}>
+              {modelErr && (
+                <button className="btn sm" onClick={() => window.veyra.open('https://ollama.com/download')}>
+                  Get Ollama
+                </button>
+              )}
+              <button className="btn ghost sm" onClick={() => loadModels('ollama')}>
+                Check again
+              </button>
+            </div>
+          </Row>
+          {models && models.length > 0 && (
+            <Row label="Model" keywords="model local">
+              <select className="set-select" aria-label="Local model" value={chosenModel} onChange={async (e) => setSt(await window.veyra.ai.set({ model: { provider: 'ollama', model: e.target.value } }))}>
+                {!chosenModel && <option value="">Choose a model</option>}
+                {models.map((m) => (
+                  <option key={m}>{m}</option>
+                ))}
+              </select>
+            </Row>
+          )}
+          {!modelErr && models && (
+            <Row label="Download a model" stack keywords="pull download model">
+              {pulling ? (
+                <div>
+                  <div className="sm" style={{ marginBottom: 6 }}>
+                    {pulling.model}: {pulling.status}
+                  </div>
+                  <div className="bar">
+                    <span style={{ width: `${Math.round((pulling.progress ?? 0) * 100)}%`, background: 'var(--accent)' }} />
+                  </div>
+                </div>
+              ) : (
+                <div className="stack">
+                  {LOCAL_SUGGESTIONS.filter(([m]) => !models.includes(m)).map(([m, why]) => (
+                    <div key={m} className="between">
+                      <span>
+                        <b className="sm">{m}</b>
+                        <span className="set-hint" style={{ display: 'block' }}>{why}</span>
+                      </span>
+                      <button className="btn sec sm" onClick={() => pull(m)}>
+                        Download
+                      </button>
+                    </div>
+                  ))}
+                  <form className="row" style={{ gap: 6 }} onSubmit={(e) => { e.preventDefault(); pull(pullName) }}>
+                    <input className="set-input" style={{ width: '100%' }} placeholder="Or type any model from ollama.com/library" value={pullName} onChange={(e) => setPullName(e.target.value)} />
+                    <button className="btn sec sm" type="submit" disabled={!pullName.trim()}>
+                      Download
+                    </button>
+                  </form>
+                </div>
+              )}
+            </Row>
+          )}
+        </Group>
+      )}
+
+      {def && def.id !== 'ollama' && (
+        <Group title={def.name} footer={`Your key is stored encrypted on this computer and is only sent to ${def.name === 'Claude' ? 'Anthropic' : def.name === 'Gemini' ? 'Google' : 'OpenAI'}.`}>
+          <Row label="API key" hint={st.hasKey[def.id as Exclude<AiProvider, 'ollama'>] ? 'Saved. Paste a new one to replace it.' : 'Create one in your account, then paste it here.'} stack keywords="api key">
+            <form
+              className="row"
+              style={{ gap: 6 }}
+              onSubmit={async (e) => {
+                e.preventDefault()
+                setSt(await window.veyra.ai.set({ key: { provider: def.id as Exclude<AiProvider, 'ollama'>, key } }))
+                setKey('')
+                toast('Key saved')
+              }}
+            >
+              <input className="set-input" style={{ width: '100%' }} type="password" placeholder={st.hasKey[def.id as Exclude<AiProvider, 'ollama'>] ? 'Saved' : def.keyHint} value={key} onChange={(e) => setKey(e.target.value)} aria-label={`${def.name} API key`} />
+              <button className="btn sm" type="submit" disabled={!key.trim()}>
+                Save
+              </button>
+              <button type="button" className="btn ghost sm" onClick={() => window.veyra.open(def.keyUrl!)}>
+                Get a key
+              </button>
+            </form>
+          </Row>
+          {st.hasKey[def.id as Exclude<AiProvider, 'ollama'>] && (
+            <Row label="Model" hint={modelErr || (def.id === 'anthropic' ? 'Claude Opus 5.5 is the default.' : undefined)} keywords="model">
+              <select className="set-select" aria-label={`${def.name} model`} value={chosenModel} onChange={async (e) => setSt(await window.veyra.ai.set({ model: { provider: def.id, model: e.target.value } }))}>
+                {!chosenModel && <option value="">Choose a model</option>}
+                {chosenModel && !(models ?? []).includes(chosenModel) && <option>{chosenModel}</option>}
+                {(models ?? []).map((m) => (
+                  <option key={m}>{m}</option>
+                ))}
+              </select>
+            </Row>
+          )}
+        </Group>
+      )}
+
+      <Group title="Privacy">
+        <Row label="What gets sent" hint="Only the note or text you run an AI tool on, and only when you run it. Local AI never leaves this computer." keywords="privacy data">
+          <span />
+        </Row>
+        <Row label="Forget AI settings" hint="Removes saved keys and your provider choice." keywords="remove keys reset">
+          <button className="btn ghost sm" onClick={async () => { setSt(await window.veyra.ai.forget()); setModels(null) }}>
+            Forget
+          </button>
+        </Row>
+      </Group>
+    </>
+  )
+}
+
 function DataPrivacy() {
   const { reset } = useSettings()
   const toast = useToast()
@@ -671,6 +866,8 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
       return <FocusTimer />
     case 'subjects':
       return <Subjects />
+    case 'ai':
+      return <AiSettings />
     case 'calendar':
       return <Calendar go={go} />
     case 'account':
@@ -689,7 +886,7 @@ const JUMPS: { id: SectionId; words: string }[] = [
   { id: 'connections', words: 'connected calendars google calendar ical ics link sync outlook icloud events connect' }
 ]
 
-const SEARCHABLE: SectionId[] = ['general', 'appearance', 'sidebar', 'subjects', 'today', 'tasks', 'notes', 'timer', 'calendar', 'data']
+const SEARCHABLE: SectionId[] = ['general', 'appearance', 'sidebar', 'subjects', 'ai', 'today', 'tasks', 'notes', 'timer', 'calendar', 'data']
 
 export function Settings({ initial }: { initial?: string }) {
   const { reset, s } = useSettings()

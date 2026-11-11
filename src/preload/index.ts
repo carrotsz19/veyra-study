@@ -40,7 +40,27 @@ const appApi = {
   version: () => ipcRenderer.invoke('app:version')
 }
 
+const aiApi = {
+  state: () => ipcRenderer.invoke('ai:state'),
+  set: (o: unknown) => ipcRenderer.invoke('ai:set', o),
+  forget: () => ipcRenderer.invoke('ai:forget'),
+  models: (p: string) => ipcRenderer.invoke('ai:models', p),
+  pull: (model: string) => ipcRenderer.invoke('ai:pull', model),
+  run: (id: string, req: unknown) => ipcRenderer.invoke('ai:run', id, req),
+  cancel: (id: string) => ipcRenderer.invoke('ai:cancel', id),
+  onEvent: (cb: (e: unknown) => void) => {
+    const h = (_: unknown, e: unknown) => cb(e)
+    ipcRenderer.on('ai:event', h)
+    return () => ipcRenderer.removeListener('ai:event', h)
+  },
+  onPull: (cb: (e: unknown) => void) => {
+    const h = (_: unknown, e: unknown) => cb(e)
+    ipcRenderer.on('ai:pull', h)
+    return () => ipcRenderer.removeListener('ai:pull', h)
+  }
+}
+
 /** Saves right away, blocking: only for the moment the window closes. */
 const saveNow = (kind: string, data: unknown, id: string) => ipcRenderer.sendSync('db:putSync', kind, data, id)
 
-contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, open: (url: string) => ipcRenderer.invoke('app:open', url) })
+contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, ai: aiApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })

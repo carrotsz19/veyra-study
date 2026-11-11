@@ -165,3 +165,32 @@ export interface GoogleApi {
   events(fromIso: string, toIso: string): Promise<{ events: GoogleEvent[]; error?: string }>
   syncNow(): Promise<{ pushed: number }>
 }
+
+export type AiProvider = 'ollama' | 'anthropic' | 'gemini' | 'openai'
+
+export interface AiState {
+  provider: AiProvider | null
+  ollamaUrl: string
+  models: Partial<Record<AiProvider, string>>
+  hasKey: Record<Exclude<AiProvider, 'ollama'>, boolean>
+}
+
+export interface AiEvent {
+  id: string
+  delta?: string
+  done?: boolean
+  cancelled?: boolean
+  error?: string
+}
+
+export interface AiApi {
+  state(): Promise<AiState>
+  set(o: { provider?: AiProvider | null; model?: { provider: AiProvider; model: string }; key?: { provider: Exclude<AiProvider, 'ollama'>; key: string }; ollamaUrl?: string }): Promise<AiState>
+  forget(): Promise<AiState>
+  models(provider: AiProvider): Promise<string[]>
+  pull(model: string): Promise<void>
+  run(id: string, req: { system: string; prompt: string }): Promise<void>
+  cancel(id: string): Promise<void>
+  onEvent(cb: (e: AiEvent) => void): () => void
+  onPull(cb: (e: { model: string; status: string; progress: number | null }) => void): () => void
+}

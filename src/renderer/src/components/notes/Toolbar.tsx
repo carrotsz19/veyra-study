@@ -2,10 +2,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useEditorState, type Editor } from '@tiptap/react'
 import {
   Bold, ChevronDown, Code, CodeSquare, Columns2, Highlighter, Italic, Link2, List, ListChecks, ListOrdered, ListCollapse, Minus,
-  Quote, Redo2, Rows2, Strikethrough, Table, Trash2, Underline, Undo2
+  Quote, Redo2, Rows2, Sparkles, Strikethrough, Table, Trash2, Underline, Undo2
 } from 'lucide-react'
 import { CALLOUTS, type CalloutTone } from './extensions'
 import { LinkInput } from './LinkInput'
+import { useContext } from 'react'
+import { NoteAiCtx } from './aiContext'
+import { AI_LABELS, type AiTask } from '../../data/ai'
 
 const HL = [
   ['Yellow', 'var(--hl-yellow)'],
@@ -71,6 +74,7 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
           }
         : null
   })
+  const ask = useContext(NoteAiCtx)
   if (!editor || !s) return <div className="note-toolbar" aria-hidden="true" />
   const c = () => editor.chain().focus()
 
@@ -222,6 +226,28 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
         <Btn label="Table" onClick={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
           <Table size={15} />
         </Btn>
+      )}
+      {ask && (
+        <>
+          <span className="tb-sep" />
+          <Menu label="AI study tools" button={<><Sparkles size={15} /> <span className="tb-label">AI</span></>}>
+            {(close) => (
+              <>
+                {(['summary', 'flashcards', 'quiz'] as AiTask[]).map((t) => (
+                  <button key={t} className="tb-item" onMouseDown={(e) => e.preventDefault()} onClick={() => { ask(t); close() }}>
+                    <span><Sparkles size={13} /></span> {AI_LABELS[t]}
+                  </button>
+                ))}
+                <div className="tb-divider" />
+                {(['explain', 'simplify'] as AiTask[]).map((t) => (
+                  <button key={t} className="tb-item" onMouseDown={(e) => e.preventDefault()} onClick={() => { ask(t, editor); close() }}>
+                    <span><Sparkles size={13} /></span> {AI_LABELS[t]} selection
+                  </button>
+                ))}
+              </>
+            )}
+          </Menu>
+        </>
       )}
     </div>
   )
