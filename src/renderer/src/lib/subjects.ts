@@ -18,11 +18,19 @@ export function progress(tasks: Rec<'task'>[], subjectId: string | null): { done
   return { done, total: mine.length, pct: mine.length ? Math.round((done / mine.length) * 100) : 0 }
 }
 
-export const blankTask = (subjectId: string | null = null, due: string | null = null): Task => ({
+export const blankTask = (subjectId: string | null = null, due: string | null = null, priority: Task['priority'] = 'normal'): Task => ({
   title: '',
   subjectId,
   done: false,
   completedAt: null,
   due,
-  priority: 'normal'
+  priority
 })
+
+/** The due date a new task starts with (Settings → Tasks). */
+export function defaultDueDate(kind: 'none' | 'today' | 'tomorrow' | 'week'): string | null {
+  if (kind === 'none') return null
+  const d = new Date()
+  d.setDate(d.getDate() + (kind === 'tomorrow' ? 1 : kind === 'week' ? 7 : 0))
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}

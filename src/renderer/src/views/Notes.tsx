@@ -3,12 +3,17 @@ import { formatDistanceToNowStrict } from 'date-fns'
 import { FileText, NotebookPen, Pin, Plus, Search } from 'lucide-react'
 import { db, useRecords } from '../data/store'
 import { Empty } from '../components/ui'
-import { NoteEditor } from '../components/notes/NoteEditor'
+import { NOTE_COVERS, NoteEditor } from '../components/notes/NoteEditor'
+import { useSettings } from '../data/settings'
+import type { NoteFont, NoteTemplate } from '@shared/types'
 import { SubjectSelect } from '../components/editors'
 import { useNav } from '../nav'
 
-export async function newNote(subjectId: string | null): Promise<string> {
-  const rec = await db.put('note', { title: '', subjectId, content: null, excerpt: '' })
+/** A new note, starting from the defaults in Settings → Notes. */
+export async function newNote(subjectId: string | null, d?: { noteTemplate: NoteTemplate; noteFont: NoteFont; noteCover: string }): Promise<string> {
+  const covers = Object.keys(NOTE_COVERS)
+  const cover = !d || d.noteCover === 'none' ? null : d.noteCover === 'random' ? covers[Math.floor(Math.random() * covers.length)] : d.noteCover
+  const rec = await db.put('note', { title: '', subjectId, content: null, excerpt: '', template: d?.noteTemplate, font: d?.noteFont, cover })
   return rec.id
 }
 
@@ -16,6 +21,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   const { items: notes, loaded } = useRecords('note')
   const { items: subjects } = useRecords('subject')
   const { go } = useNav()
+  const { s: settings } = useSettings()
   const [q, setQ] = useState('')
   const [subjectId, setSubjectId] = useState<string | null>(subjectFilter ?? null)
   const [selected, setSelected] = useState<string | undefined>(noteId)
@@ -35,7 +41,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   }, [loaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = async () => {
-    const id = await newNote(subjectId)
+    const id = await newNote(subjectId, settings)
     setSelected(id)
     if (!subjectFilter) go({ name: 'notes', noteId: id })
   }

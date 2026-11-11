@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Check, Trash2 } from 'lucide-react'
 import type { Priority, Rec, Subject, Task } from '@shared/types'
 import { db, useRecords } from '../data/store'
-import { SUBJECT_COLORS, blankTask } from '../lib/subjects'
+import { SUBJECT_COLORS, blankTask, defaultDueDate } from '../lib/subjects'
+import { useSettings } from '../data/settings'
 import { Dialog, Seg, useToast } from './ui'
 
 export function SubjectSelect({ value, onChange, noneLabel = 'No subject' }: { value: string | null; onChange: (id: string | null) => void; noneLabel?: string }) {
@@ -32,7 +33,8 @@ export function TaskDialog({
   onClose: () => void
 }) {
   const toast = useToast()
-  const [t, setT] = useState<Task>(task ? task.data : { ...blankTask(), ...defaults })
+  const { s } = useSettings()
+  const [t, setT] = useState<Task>(task ? task.data : { ...blankTask(null, defaultDueDate(s.defaultDue), s.defaultPriority), ...defaults })
   const set = (patch: Partial<Task>) => setT((cur) => ({ ...cur, ...patch }))
 
   const save = async () => {

@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
-import { join } from 'node:path'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { dirname, join } from 'node:path'
+import { writeFileSync } from 'node:fs'
 import type { Rec } from '../shared/types'
 import { Store } from './db'
 import { Accounts, ApiError, accountDir } from './account'
@@ -151,6 +152,19 @@ app.whenReady().then(() => {
         }))
   )
   ipcMain.handle('google:sync', () => friendly(() => gcal().push()))
+  ipcMain.handle('app:version', () => app.getVersion())
+  ipcMain.handle('data:openFolder', () => shell.openPath(dirname(db().path)))
+  ipcMain.handle('data:export', async () => {
+    const records = db().changesSince(0).filter((r) => !r.deletedAt)
+    const res = await dialog.showSaveDialog({
+      title: 'Export your Veyra Study data',
+      defaultPath: `veyra-study-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (res.canceled || !res.filePath) return { saved: false }
+    writeFileSync(res.filePath, JSON.stringify({ app: 'veyra-study', version: app.getVersion(), exportedAt: new Date().toISOString(), records }, null, 2))
+    return { saved: true, path: res.filePath, count: records.length }
+  })
   ipcMain.handle('app:open', (_e, url: string) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url)
   })

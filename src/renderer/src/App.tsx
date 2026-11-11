@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Moon, NotebookPen, Plus, Settings as SettingsIcon, Sun, Timer } from 'lucide-react'
+import type { NavId, ThemeMode } from '@shared/settings'
+import { SettingsProvider, useSettings } from './data/settings'
+import { phaseLabel } from './components/timer'
+import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Monitor, Moon, NotebookPen, Plus, Settings as SettingsIcon, Sun, Timer } from 'lucide-react'
 import { useRecords } from './data/store'
 import { clock, isOverdue } from './lib/dates'
 import { NavCtx, type Route } from './nav'
@@ -16,42 +19,28 @@ import { TimerView } from './views/TimerView'
 import { Stats } from './views/Stats'
 import { SubjectView } from './views/SubjectView'
 
-type Theme = 'system' | 'light' | 'dark'
-
-function useTheme(): [Theme, (t: Theme) => void] {
-  const [theme, setTheme] = useState<Theme>(
-    () => (new URLSearchParams(location.search).get('theme') as Theme) || (localStorage.getItem('veyra.theme') as Theme) || 'system'
-  )
-  useEffect(() => {
-    const mq = matchMedia('(prefers-color-scheme: dark)')
-    const apply = () => document.documentElement.classList.toggle('dark', theme === 'dark' || (theme === 'system' && mq.matches))
-    apply()
-    localStorage.setItem('veyra.theme', theme)
-    mq.addEventListener('change', apply)
-    return () => mq.removeEventListener('change', apply)
-  }, [theme])
-  return [theme, setTheme]
-}
-
 function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const { items: subjects } = useRecords('subject')
   const { items: tasks } = useRecords('task')
   const timer = useTimer()
-  const [theme, setTheme] = useTheme()
+  const { s, set } = useSettings()
+  const theme = s.theme
+  const setTheme = (t: ThemeMode) => set({ theme: t })
   const [adding, setAdding] = useState(false)
   const user = useAccount().state.user
 
   const open = tasks.filter((t) => !t.data.done).length
   const overdue = tasks.filter((t) => isOverdue(t.data.due, t.data.done)).length
-  const nav: [Route['name'], string, typeof Home, string?][] = [
-    ['today', 'Today', Home, overdue ? `${overdue} late` : undefined],
-    ['tasks', 'Tasks', ListTodo, open ? String(open) : undefined],
-    ['notes', 'Notes', NotebookPen],
-    ['calendar', 'Calendar', CalendarDays],
-    ['timer', 'Focus timer', Timer],
-    ['stats', 'Stats', BarChart3]
-  ]
-  const nextTheme: Record<Theme, Theme> = { system: 'dark', dark: 'light', light: 'system' }
+  const items: Record<NavId, [string, typeof Home, string?]> = {
+    today: ['Today', Home, overdue ? `${overdue} late` : undefined],
+    tasks: ['Tasks', ListTodo, open ? String(open) : undefined],
+    notes: ['Notes', NotebookPen],
+    calendar: ['Calendar', CalendarDays],
+    timer: ['Focus timer', Timer],
+    stats: ['Stats', BarChart3]
+  }
+  const nav = s.nav.filter((n) => n.visible).map((n) => [n.id, ...items[n.id]] as [NavId, string, typeof Home, string?])
+  const nextTheme: Record<ThemeMode, ThemeMode> = { system: 'dark', dark: 'light', light: 'system' }
 
   return (
     <aside className="side">
@@ -65,11 +54,13 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
         {nav.map(([name, label, Icon, count]) => (
           <button key={name} className="navbtn" aria-current={route.name === name} onClick={() => go({ name } as Route)}>
             <Icon size={17} /> {label}
-            {count && <span className="count">{count}</span>}
+            {count && s.showCounts && <span className="count">{count}</span>}
           </button>
         ))}
       </nav>
 
+      {s.showSubjectsInSidebar && (
+        <>
       <div className="between group-label">
         <h2 style={{ margin: 0 }}>Subjects</h2>
         <button className="iconbtn plain" style={{ width: 26, height: 26 }} aria-label="Add subject" onClick={() => setAdding(true)}>
@@ -91,12 +82,14 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
           </button>
         )}
       </nav>
+        </>
+      )}
 
       <div className="spacer" />
-      {(timer.running || timer.remaining < timer.total) && route.name !== 'timer' && (
+      {s.showTimerCard && (timer.running || timer.remaining < timer.total) && route.name !== 'timer' && (
         <button className={`sidecard ${timer.running ? 'live' : ''}`} onClick={() => go({ name: 'timer' })}>
           <div className="xs" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-            {timer.phase === 'focus' ? 'Focus' : 'Break'} {timer.running ? '' : '· paused'}
+            {phaseLabel(timer.phase)} {timer.running ? '' : '· paused'}
           </div>
           <div className="num" style={{ fontSize: 20, fontWeight: 800 }}>
             {clock(timer.remaining)}
@@ -123,7 +116,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
           title={theme === 'system' ? 'Theme: System' : theme === 'dark' ? 'Theme: Dark' : 'Theme: Light'}
           aria-label="Change theme"
         >
-          {theme === 'dark' ? <Moon size={16} /> : theme === 'light' ? <Sun size={16} /> : <span style={{ fontSize: 11, fontWeight: 800 }}>A</span>}
+          {theme === 'dark' ? <Moon size={16} /> : theme === 'light' ? <Sun size={16} /> : <Monitor size={16} />}
         </button>
       </div>
       {adding && <SubjectDialog onClose={() => setAdding(false)} onSaved={(id) => go({ name: 'subject', id })} />}
@@ -164,26 +157,60 @@ function MovedNotice() {
   return null
 }
 
+const ROUTES = ['today', 'tasks', 'notes', 'calendar', 'timer', 'stats', 'settings']
+
+/** The app once settings are known: picks the start screen, remembers the last one. */
+function Shell() {
+  const { ready, s } = useSettings()
+  const [route, go] = useState<Route | null>(null)
+
+  useEffect(() => {
+    if (!ready || route) return
+    // The URL hash (#tasks, #stats...) wins, for dev checks.
+    const hash = location.hash.slice(1)
+    let name: string = ROUTES.includes(hash) ? hash : s.startScreen
+    if (name === 'last') {
+      try {
+        name = localStorage.getItem('veyra.lastRoute') ?? 'today'
+      } catch {
+        name = 'today'
+      }
+    }
+    go({ name: ROUTES.includes(name) ? name : 'today' } as Route)
+  }, [ready]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (route && route.name !== 'subject')
+      try {
+        localStorage.setItem('veyra.lastRoute', route.name)
+      } catch {
+        /* storage unavailable */
+      }
+  }, [route])
+
+  if (!route) return null
+  return (
+    <TimerProvider>
+      <NavCtx.Provider value={{ route, go }}>
+        <div className="shell">
+          <Sidebar route={route} go={go} />
+          <main className={`main ${route.name === 'settings' ? 'main-settings' : ''}`}>
+            <Screen key={route.name + ('id' in route ? route.id : '')} route={route} />
+          </main>
+        </div>
+      </NavCtx.Provider>
+    </TimerProvider>
+  )
+}
+
 export function App() {
-  const [route, go] = useState<Route>(() => {
-    // Start screen from the URL hash (#tasks, #stats...), used by dev checks.
-    const name = location.hash.slice(1)
-    return ['today', 'tasks', 'notes', 'calendar', 'timer', 'stats', 'settings'].includes(name) ? ({ name } as Route) : { name: 'today' }
-  })
   return (
     <ToastProvider>
       <AccountGate>
-      <MovedNotice />
-      <TimerProvider>
-        <NavCtx.Provider value={{ route, go }}>
-          <div className="shell">
-            <Sidebar route={route} go={go} />
-            <main className="main">
-              <Screen key={route.name + ('id' in route ? route.id : '')} route={route} />
-            </main>
-          </div>
-        </NavCtx.Provider>
-      </TimerProvider>
+        <MovedNotice />
+        <SettingsProvider>
+          <Shell />
+        </SettingsProvider>
       </AccountGate>
     </ToastProvider>
   )

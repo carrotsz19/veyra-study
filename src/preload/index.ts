@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webFrame } from 'electron'
 import type { VeyraDb } from '../shared/types'
 
 const db: VeyraDb = {
@@ -30,4 +30,12 @@ const google = {
   syncNow: () => ipcRenderer.invoke('google:sync')
 }
 
-contextBridge.exposeInMainWorld('veyra', { db, account, google, open: (url: string) => ipcRenderer.invoke('app:open', url) })
+const appApi = {
+  /** Interface size, as the browser zoom (keeps popups and menus where they belong). */
+  setZoom: (f: number) => webFrame.setZoomFactor(Math.min(1.4, Math.max(0.8, f))),
+  exportData: () => ipcRenderer.invoke('data:export'),
+  openDataFolder: () => ipcRenderer.invoke('data:openFolder'),
+  version: () => ipcRenderer.invoke('app:version')
+}
+
+contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })

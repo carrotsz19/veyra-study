@@ -21,13 +21,16 @@
 /* ---------- the page ---------- */
 .note-page {
   --note-font: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', Roboto, sans-serif;
-  --note-size: 16px;
+  --note-size: var(--note-base, 16px);
   --note-lh: 1.65;
   position: relative; background: var(--panel); border-radius: var(--r-card); box-shadow: var(--elev-1);
   overflow: hidden; display: flex; flex-direction: column; min-height: 0;
 }
-.note-page.font-serif { --note-font: 'Iowan Old Style', 'Charter', 'Sitka Text', Cambria, Georgia, serif; --note-size: 17px; }
-.note-page.font-mono { --note-font: 'Cascadia Code', 'JetBrains Mono', ui-monospace, Consolas, monospace; --note-size: 14.5px; }
+.note-page.font-serif { --note-font: 'Iowan Old Style', 'Charter', 'Sitka Text', Cambria, Georgia, serif; --note-size: calc(var(--note-base, 16px) + 1px); }
+.note-page.font-mono { --note-font: 'Cascadia Code', 'JetBrains Mono', ui-monospace, Consolas, monospace; --note-size: calc(var(--note-base, 16px) - 1.5px); }
+.note-page.width-narrow .note-sheet { max-width: 620px; }
+.note-page.width-wide .note-sheet { max-width: 1040px; }
+.note-page.width-wide.layout-cornell .note-sheet { max-width: 1200px; }
 .note-scroll { flex: 1; overflow-y: auto; }
 .note-cover { height: 132px; position: relative; }
 .note-cover::after { content: ''; position: absolute; inset: auto 0 0 0; height: 40px; background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.06)); }

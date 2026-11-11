@@ -2,7 +2,9 @@ import { startOfDay } from 'date-fns'
 import { Pause, Play, SkipForward, Square } from 'lucide-react'
 import { useRecords } from '../data/store'
 import { clock, duration } from '../lib/dates'
-import { useTimer } from '../components/timer'
+import { phaseLabel, useTimer } from '../components/timer'
+import { useSettings, useTimeFormat } from '../data/settings'
+import { useNav } from '../nav'
 import { SubjectSelect } from '../components/editors'
 
 const R = 128
@@ -10,10 +12,13 @@ const C = 2 * Math.PI * R
 
 export function TimerView() {
   const t = useTimer()
+  const { s: st } = useSettings()
+  const { go } = useNav()
+  const fmtTime = useTimeFormat()
   const { items: sessions } = useRecords('session')
   const { items: subjects } = useRecords('subject')
   const subject = subjects.find((s) => s.id === t.subjectId)
-  const color = t.phase === 'break' ? 'var(--ok)' : (subject?.data.color ?? 'var(--accent)')
+  const color = t.phase !== 'focus' ? 'var(--ok)' : (subject?.data.color ?? 'var(--accent)')
   const frac = t.total ? 1 - t.remaining / t.total : 0
   const dirty = t.running || t.remaining < t.total
 
@@ -45,7 +50,7 @@ export function TimerView() {
             </svg>
             <div className="time">
               <span className="pill" style={{ marginBottom: 6 }}>
-                {t.phase === 'focus' ? 'Focus' : 'Break'}
+                {phaseLabel(t.phase)}
               </span>
               <b role="timer" aria-live="off">
                 {clock(t.remaining)}
@@ -73,36 +78,25 @@ export function TimerView() {
               <label className="field-label">Studying</label>
               <SubjectSelect value={t.subjectId} onChange={t.setSubject} />
             </div>
-            <div className="grid g2 field">
-              <div>
-                <label className="field-label" htmlFor="focus-min">Focus (min)</label>
-                <input
-                  id="focus-min"
-                  type="number"
-                  min={1}
-                  max={180}
-                  disabled={dirty}
-                  value={t.settings.focusMin}
-                  onChange={(e) => t.setSettings({ ...t.settings, focusMin: Math.max(1, Math.min(180, +e.target.value || 1)) })}
-                />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="break-min">Break (min)</label>
-                <input
-                  id="break-min"
-                  type="number"
-                  min={1}
-                  max={60}
-                  disabled={dirty}
-                  value={t.settings.breakMin}
-                  onChange={(e) => t.setSettings({ ...t.settings, breakMin: Math.max(1, Math.min(60, +e.target.value || 1)) })}
-                />
-              </div>
+            <div className="timer-plan">
+              <span><b className="num">{st.focusMin}</b> min focus</span>
+              <span><b className="num">{st.breakMin}</b> min break</span>
+              {st.longBreakEvery > 0 && (
+                <span>
+                  <b className="num">{st.longBreakMin}</b> min long break · every {st.longBreakEvery}
+                </span>
+              )}
+              <button className="linkbtn xs" onClick={() => { sessionStorage.setItem('veyra.settingsSection', 'timer'); go({ name: 'settings' }) }}>
+                Change…
+              </button>
             </div>
+            {st.longBreakEvery > 0 && (
+              <div className="streak-dots" aria-label={`${t.streak} of ${st.longBreakEvery} focus blocks before a long break`}>
+                {Array.from({ length: st.longBreakEvery }, (_, i) => <i key={i} className={i < t.streak ? 'on' : ''} />)}
+              </div>
+            )}
             <p className="xs dim" style={{ margin: '10px 0 0' }}>
-              {dirty
-                ? 'Stop the current block to change its length.'
-                : 'Focus time is saved when a block finishes, or when you stop or skip after at least a minute.'}
+              Focus time is saved when a block finishes, or when you stop or skip after at least a minute. New lengths apply from the next block.
             </p>
           </div>
           <div>
@@ -114,7 +108,7 @@ export function TimerView() {
                     <span style={{ width: 9, height: 9, borderRadius: 9, marginLeft: 6, background: subjects.find((x) => x.id === s.data.subjectId)?.data.color ?? 'var(--label-tertiary)' }} />
                     <span className="grow trunc">{name(s.data.subjectId)}</span>
                     <span className="sm dim num">
-                      {new Date(s.data.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {duration(s.data.durationSec)}
+                      {fmtTime(s.data.startedAt)} · {duration(s.data.durationSec)}
                     </span>
                   </div>
                 ))}

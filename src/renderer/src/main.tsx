@@ -4,6 +4,7 @@ import { App } from './App'
 import './styles.css'
 import './notes.css'
 import './account.css'
+import './settings.css'
 
 // Apply the saved theme before anything renders (the sign-in screen has no sidebar).
 {

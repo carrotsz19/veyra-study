@@ -10,6 +10,7 @@ import { db, useRecords } from '../../data/store'
 import { useToast } from '../ui'
 import { docText, noteExtensions, wordCount } from './extensions'
 import { SlashMenu } from './SlashMenu'
+import { useSettings } from '../../data/settings'
 
 export const NOTE_COVERS: Record<string, string> = {
   clay: 'linear-gradient(120deg,#e9b9a4,#d9825f 55%,#b3492b)',
@@ -136,10 +137,11 @@ function Area({
   className?: string
   onChange: (json: unknown, text: string) => void
 }) {
+  const { s } = useSettings()
   const editor = useEditor({
     extensions: noteExtensions(placeholder, slash),
     content: (content as object) ?? '',
-    editorProps: { attributes: { class: `tiptap ${className ?? ''}`, spellcheck: 'true' } },
+    editorProps: { attributes: { class: `tiptap ${className ?? ''}`, spellcheck: s.spellcheck ? 'true' : 'false' } },
     onUpdate: ({ editor: e }) => onChange(e.getJSON(), e.getText())
   })
   if (!editor) return null
@@ -245,6 +247,7 @@ export function NoteEditor({ note, onDeleted }: { note: Rec<'note'>; onDeleted: 
   const [menu, setMenu] = useState<'page' | 'icon' | null>(null)
   const [savedAt, setSavedAt] = useState(note.updatedAt)
   const titleRef = useRef<HTMLTextAreaElement>(null)
+  const { s: settings } = useSettings()
 
   const flush = () => {
     if (timer.current) clearTimeout(timer.current)
@@ -288,7 +291,10 @@ export function NoteEditor({ note, onDeleted }: { note: Rec<'note'>; onDeleted: 
   const subject = subjects.find((s) => s.id === data.subjectId)
 
   return (
-    <div className={`note-page font-${data.font ?? 'sans'} layout-${template}`}>
+    <div
+      className={`note-page font-${data.font ?? 'sans'} layout-${template} width-${settings.noteWidth}`}
+      style={{ ['--note-base' as string]: `${settings.noteSize}px` }}
+    >
       <div className="note-scroll">
         {data.cover && NOTE_COVERS[data.cover] && <div className="note-cover" style={{ background: NOTE_COVERS[data.cover] }} />}
         <div className={`note-sheet ${data.cover ? 'has-cover' : ''}`}>
@@ -365,6 +371,8 @@ export function NoteEditor({ note, onDeleted }: { note: Rec<'note'>; onDeleted: 
                   ))}
               </select>
             </label>
+            {settings.showWordCount && (
+              <>
             <span className="tert">·</span>
             <span className="tert num">
               {words} {words === 1 ? 'word' : 'words'}
@@ -373,6 +381,8 @@ export function NoteEditor({ note, onDeleted }: { note: Rec<'note'>; onDeleted: 
               <>
                 <span className="tert">·</span>
                 <span className="tert">{Math.max(1, Math.round(words / 200))} min read</span>
+              </>
+            )}
               </>
             )}
           </div>

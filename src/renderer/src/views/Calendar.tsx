@@ -5,8 +5,9 @@ import type { Rec } from '@shared/types'
 import { useRecords } from '../data/store'
 import { dayKey, todayKey } from '../lib/dates'
 import { TaskDialog } from '../components/editors'
-import { eventDays, eventTime, useGoogleEvents } from '../data/google'
+import { eventDays, useGoogleEvents } from '../data/google'
 import type { GoogleEvent } from '@shared/types'
+import { useSettings, useTimeFormat } from '../data/settings'
 
 export function Calendar() {
   const { items: tasks } = useRecords('task')
@@ -14,19 +15,21 @@ export function Calendar() {
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
   const [newOn, setNewOn] = useState<string | null>(null)
   const [editing, setEditing] = useState<Rec<'task'> | null>(null)
+  const { s } = useSettings()
+  const fmtTime = useTimeFormat()
 
-  const start = startOfWeek(month, { weekStartsOn: 1 })
-  const end = endOfWeek(endOfMonth(month), { weekStartsOn: 1 })
+  const start = startOfWeek(month, { weekStartsOn: s.weekStart })
+  const end = endOfWeek(endOfMonth(month), { weekStartsOn: s.weekStart })
   const days: Date[] = []
   for (let d = start; d <= end; d = addDays(d, 1)) days.push(d)
 
   const { events, error } = useGoogleEvents(start, addDays(end, 1))
   const eventsByDay = new Map<string, GoogleEvent[]>()
-  events.forEach((e) => eventDays(e).forEach((k) => eventsByDay.set(k, [...(eventsByDay.get(k) ?? []), e])))
+  if (s.calendarShowEvents) events.forEach((e) => eventDays(e).forEach((k) => eventsByDay.set(k, [...(eventsByDay.get(k) ?? []), e])))
   const [openEvent, setOpenEvent] = useState<GoogleEvent | null>(null)
 
   const byDay = new Map<string, Rec<'task'>[]>()
-  tasks.forEach((t) => t.data.due && byDay.set(t.data.due, [...(byDay.get(t.data.due) ?? []), t]))
+  tasks.forEach((t) => s.calendarShowTasks && (s.calendarShowDone || !t.data.done) && t.data.due && byDay.set(t.data.due, [...(byDay.get(t.data.due) ?? []), t]))
   const color = (t: Rec<'task'>) => subjects.find((s) => s.id === t.data.subjectId)?.data.color ?? 'var(--label-tertiary)'
   const today = todayKey()
 
@@ -47,7 +50,7 @@ export function Calendar() {
         </div>
       </div>
       <div className="cal">
-        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+        {days.slice(0, 7).map((d) => format(d, 'EEE')).map((d) => (
           <div key={d} className="dow">
             {d}
           </div>
@@ -76,7 +79,7 @@ export function Calendar() {
                     setOpenEvent(e)
                   }}
                 >
-                  {!e.allDay && <b>{eventTime(e)}</b>} {e.title}
+                  {!e.allDay && <b>{fmtTime(new Date(e.start))}</b>} {e.title}
                 </span>
               ))}
               {list.slice(0, 4).map((t) => (
@@ -99,7 +102,7 @@ export function Calendar() {
       </div>
       <p className="sm dim">
         Click a day to add a task due then.{' '}
-        {events.length > 0 && 'Google Calendar events show in their calendar’s colour.'}
+        {s.calendarShowEvents && events.length > 0 && 'Google Calendar events show in their calendar’s colour.'}
         {error && <span style={{ color: 'var(--bad)' }}> {error}</span>}
       </p>
       {openEvent && (
@@ -113,7 +116,7 @@ export function Calendar() {
             <p className="dim" style={{ margin: '6px 0 0' }}>
               {openEvent.allDay
                 ? format(new Date(openEvent.start + 'T00:00:00'), 'EEEE d MMMM')
-                : `${format(new Date(openEvent.start), 'EEEE d MMMM, p')} – ${format(new Date(openEvent.end), 'p')}`}
+                : `${format(new Date(openEvent.start), 'EEEE d MMMM')}, ${fmtTime(new Date(openEvent.start))} – ${fmtTime(new Date(openEvent.end))}`}
             </p>
             {openEvent.location && <p className="sm" style={{ margin: '8px 0 0' }}>{openEvent.location}</p>}
             <div className="actions">

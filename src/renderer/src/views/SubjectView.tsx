@@ -10,6 +10,7 @@ import { SubjectDialog, TaskDialog } from '../components/editors'
 import { useTimer } from '../components/timer'
 import { useNav } from '../nav'
 import { Notes } from './Notes'
+import { useSettings } from '../data/settings'
 
 export function SubjectView({ id }: { id: string }) {
   const { items: subjects } = useRecords('subject')
@@ -18,7 +19,8 @@ export function SubjectView({ id }: { id: string }) {
   const timer = useTimer()
   const { go } = useNav()
   const [tab, setTab] = useState<'tasks' | 'notes'>('tasks')
-  const [showDone, setShowDone] = useState(false)
+  const { s: settings } = useSettings()
+  const [showDone, setShowDone] = useState(settings.showDoneInLists)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState(false)
 
@@ -28,7 +30,7 @@ export function SubjectView({ id }: { id: string }) {
   const mine = tasks.filter((t) => t.data.subjectId === id)
   const p = progress(tasks, id)
   const mySessions = sessions.filter((s) => s.data.subjectId === id)
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }).getTime()
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: settings.weekStart }).getTime()
   const week = mySessions.filter((s) => s.data.startedAt >= weekStart).reduce((n, s) => n + s.data.durationSec, 0)
   const allTime = mySessions.reduce((n, s) => n + s.data.durationSec, 0)
   const overdue = mine.filter((t) => isOverdue(t.data.due, t.data.done)).length

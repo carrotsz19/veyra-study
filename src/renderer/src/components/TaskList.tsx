@@ -4,6 +4,8 @@ import type { Rec } from '@shared/types'
 import { db, useRecords } from '../data/store'
 import { dueLabel, isOverdue } from '../lib/dates'
 import { TaskDialog } from './editors'
+import { useSettings } from '../data/settings'
+import type { TaskSort } from '@shared/settings'
 
 export async function toggleTask(t: Rec<'task'>): Promise<void> {
   const done = !t.data.done
@@ -11,13 +13,16 @@ export async function toggleTask(t: Rec<'task'>): Promise<void> {
 }
 
 /** Open tasks first (overdue, then by due date), finished ones at the end. */
-export function sortTasks(tasks: Rec<'task'>[]): Rec<'task'>[] {
+export function sortTasks(tasks: Rec<'task'>[], by: TaskSort = 'due'): Rec<'task'>[] {
   const rank = { high: 0, normal: 1, low: 2 }
+  const due = (t: Rec<'task'>) => t.data.due ?? '9999'
   return [...tasks].sort((a, b) => {
     if (a.data.done !== b.data.done) return a.data.done ? 1 : -1
     if (a.data.done) return (b.data.completedAt ?? 0) - (a.data.completedAt ?? 0)
-    const ad = a.data.due ?? '9999', bd = b.data.due ?? '9999'
-    if (ad !== bd) return ad < bd ? -1 : 1
+    if (by === 'priority' && a.data.priority !== b.data.priority) return rank[a.data.priority] - rank[b.data.priority]
+    if (by === 'created') return b.createdAt - a.createdAt
+    if (by === 'title') return a.data.title.localeCompare(b.data.title)
+    if (due(a) !== due(b)) return due(a) < due(b) ? -1 : 1
     return rank[a.data.priority] - rank[b.data.priority]
   })
 }
@@ -25,7 +30,8 @@ export function sortTasks(tasks: Rec<'task'>[]): Rec<'task'>[] {
 export function TaskRow({ task, showSubject = true, onOpen }: { task: Rec<'task'>; showSubject?: boolean; onOpen: () => void }) {
   const { items: subjects } = useRecords('subject')
   const subject = subjects.find((s) => s.id === task.data.subjectId)
-  const late = isOverdue(task.data.due, task.data.done)
+  const { s: settings } = useSettings()
+  const late = settings.highlightOverdue && isOverdue(task.data.due, task.data.done)
   return (
     <div className={`ig-row tap ${task.data.done ? 'task-done' : ''}`} onClick={onOpen} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpen()}>
       <button
@@ -63,10 +69,11 @@ export function TaskRow({ task, showSubject = true, onOpen }: { task: Rec<'task'
 
 export function TaskList({ tasks, showSubject = true }: { tasks: Rec<'task'>[]; showSubject?: boolean }) {
   const [editing, setEditing] = useState<Rec<'task'> | null>(null)
+  const { s } = useSettings()
   return (
     <>
       <div className="ig">
-        {sortTasks(tasks).map((t) => (
+        {sortTasks(tasks, s.taskSort).map((t) => (
           <TaskRow key={t.id} task={t} showSubject={showSubject} onOpen={() => setEditing(t)} />
         ))}
       </div>

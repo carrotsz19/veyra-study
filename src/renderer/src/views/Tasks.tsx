@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { ListTodo, Plus } from 'lucide-react'
 import { db, useRecords } from '../data/store'
-import { isOverdue, todayKey } from '../lib/dates'
+import { isOverdue } from '../lib/dates'
 import { Empty, Seg } from '../components/ui'
 import { TaskList } from '../components/TaskList'
 import { SubjectSelect, TaskDialog } from '../components/editors'
+import { useSettings } from '../data/settings'
+import { defaultDueDate } from '../lib/subjects'
 
 type Filter = 'open' | 'overdue' | 'done' | 'all'
 
@@ -14,11 +16,13 @@ export function Tasks() {
   const [subjectId, setSubjectId] = useState<string | null>(null)
   const [quick, setQuick] = useState('')
   const [adding, setAdding] = useState(false)
+  const { s } = useSettings()
 
   const shown = tasks.filter((t) => {
     if (subjectId && t.data.subjectId !== subjectId) return false
     if (filter === 'open') return !t.data.done
     if (filter === 'done') return t.data.done
+    if (filter === 'all' && !s.showDoneInLists) return !t.data.done
     if (filter === 'overdue') return isOverdue(t.data.due, t.data.done)
     return true
   })
@@ -26,7 +30,7 @@ export function Tasks() {
   const quickAdd = async () => {
     const title = quick.trim()
     if (!title) return
-    await db.put('task', { title, subjectId, done: false, completedAt: null, due: null, priority: 'normal' })
+    await db.put('task', { title, subjectId, done: false, completedAt: null, due: defaultDueDate(s.defaultDue), priority: s.defaultPriority })
     setQuick('')
   }
 
@@ -79,7 +83,7 @@ export function Tasks() {
           </div>
         )
       )}
-      {adding && <TaskDialog defaults={{ subjectId, due: todayKey() }} onClose={() => setAdding(false)} />}
+      {adding && <TaskDialog defaults={{ subjectId }} onClose={() => setAdding(false)} />}
     </div>
   )
 }

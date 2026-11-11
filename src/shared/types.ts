@@ -4,7 +4,7 @@
  * merges them last-writer-wins on (updatedAt, deviceId). Deletes are
  * tombstones (deletedAt set) so they sync too.
  */
-export type Kind = 'subject' | 'task' | 'note' | 'session'
+export type Kind = 'subject' | 'task' | 'note' | 'session' | 'settings'
 
 export interface RecordMeta {
   id: string
@@ -69,6 +69,7 @@ export interface DataByKind {
   task: Task
   note: Note
   session: StudySession
+  settings: Partial<import('./settings').AppSettings>
 }
 
 export type Rec<K extends Kind = Kind> = RecordMeta & { kind: K; data: DataByKind[K] }
