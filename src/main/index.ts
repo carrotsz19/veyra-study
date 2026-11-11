@@ -226,7 +226,7 @@ app.whenReady().then(() => {
   ipcMain.handle('voice:cancel', (_e, id: string) => whisper.cancel(String(id)))
   ipcMain.handle('voice:save', (_e, name: string, mime: string, bytes: Uint8Array) => friendly(async () => files.fromDownload(String(name), String(mime), bytes)))
   const noSync = { enabled: false, state: 'idle', error: '' }
-  ipcMain.handle('sync:status', () => sync?.getStatus() ?? noSync)
+  ipcMain.handle('sync:status', () => sync?.state() ?? noSync)
   ipcMain.handle('sync:now', () => sync?.run() ?? noSync)
   ipcMain.handle('sync:set', (_e, on: boolean) => sync?.setEnabled(!!on) ?? noSync)
   const gdrive = (): GoogleDrive => {
