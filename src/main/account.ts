@@ -242,6 +242,8 @@ export class Accounts {
       }
       const g = join(dir(), 'google-local.bin')
       if (existsSync(g)) renameSync(g, join(accountDir(folder), 'google.bin'))
+      const files = join(dir(), 'attachments')
+      if (existsSync(files) && !existsSync(join(accountDir(folder), 'attachments'))) renameSync(files, join(accountDir(folder), 'attachments'))
       moved = true
     }
     this.session = { handle: home.token, cookies, user, folder }

@@ -7,6 +7,7 @@ import Highlight from '@tiptap/extension-highlight'
 import Typography from '@tiptap/extension-typography'
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
+import { AttachmentDrop, AttachmentNode, attachFiles, canAttach } from './attachment'
 
 /* ---------- Callout: a tinted box with an emoji, for key ideas and definitions ---------- */
 export type CalloutTone = 'idea' | 'definition' | 'warning' | 'example'
@@ -69,6 +70,8 @@ export interface SlashItem {
   icon: string
   keywords: string
   run: (editor: Editor, range: Range) => void
+  /** Only where files can be attached. */
+  attach?: boolean
 }
 
 const chain = (e: Editor, r: Range) => e.chain().focus().deleteRange(r)
@@ -92,7 +95,18 @@ export const SLASH_ITEMS: SlashItem[] = [
   { title: 'Table', hint: '3 × 3 grid', icon: '▦', keywords: 'grid columns', run: (e, r) => chain(e, r).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
   { title: 'Quote', hint: 'Quoted passage', icon: '❝', keywords: 'blockquote citation', run: (e, r) => chain(e, r).toggleBlockquote().run() },
   { title: 'Code', hint: 'Code block', icon: '</>', keywords: 'pre snippet', run: (e, r) => chain(e, r).toggleCodeBlock().run() },
-  { title: 'Divider', hint: 'Horizontal line', icon: '—', keywords: 'hr rule separator', run: (e, r) => chain(e, r).setHorizontalRule().run() }
+  { title: 'Divider', hint: 'Horizontal line', icon: '—', keywords: 'hr rule separator', run: (e, r) => chain(e, r).setHorizontalRule().run() },
+  {
+    title: 'File or image',
+    hint: 'Attach a PDF, picture, slides…',
+    icon: '📎',
+    keywords: 'attach attachment upload pdf image picture photo file document slides',
+    attach: true,
+    run: (e, r) => {
+      chain(e, r).run()
+      void attachFiles(e)
+    }
+  }
 ]
 
 /** The slash menu's on-screen state, shared with the React popup (SlashMenu.tsx). */
@@ -122,9 +136,10 @@ export const SlashCommand = Extension.create({
         editor: this.editor,
         char: '/',
         allow: ({ state, range }) => !state.doc.resolve(range.from).parent.type.spec.code,
-        items: ({ query }) => {
+        items: ({ query, editor }) => {
           const q = query.toLowerCase()
-          return SLASH_ITEMS.filter((i) => !q || i.title.toLowerCase().includes(q) || i.keywords.includes(q)).slice(0, 12)
+          const files = canAttach(editor)
+          return SLASH_ITEMS.filter((i) => (files || !i.attach) && (!q || i.title.toLowerCase().includes(q) || i.keywords.includes(q))).slice(0, 12)
         },
         command: ({ editor, range, props }) => props.run(editor, range),
         render: () => {
@@ -168,9 +183,11 @@ export const SlashCommand = Extension.create({
   }
 })
 
-/** Every extension a note uses. `slash` is off for the small Cornell side editors. */
-export function noteExtensions(placeholder: string, slash = true) {
+/** Every extension a note uses. `slash` is off for the small Cornell side editors; `attach` is off in shared group notes. */
+export function noteExtensions(placeholder: string, slash = true, attach = true) {
   return [
+    AttachmentNode.configure({ enabled: attach }),
+    ...(attach ? [AttachmentDrop] : []),
     StarterKit.configure({ link: { openOnClick: false, autolink: true } }),
     Highlight.configure({ multicolor: true }),
     Typography,

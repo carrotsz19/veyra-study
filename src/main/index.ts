@@ -9,9 +9,13 @@ import { IcalError, IcalFeeds } from './ical'
 import { AiError, AiService } from './ai'
 import { LocalAi, LocalAiError } from './localai'
 import { GroupClient, GroupError } from './group'
+import { FileError, Files, registerFileScheme } from './files'
 
 // Dev checks: run on a separate profile (sign-in, settings and data).
 if (process.env['VEYRA_USERDATA']) app.setPath('userData', process.env['VEYRA_USERDATA'])
+
+// Attachments are shown through veyra-file:// (registered before the app is ready).
+registerFileScheme()
 
 let store: Store | null = null
 let accounts: Accounts
@@ -20,6 +24,7 @@ let feeds: IcalFeeds | null = null
 let ai: AiService | null = null
 let group: GroupClient | null = null
 const localAi = new LocalAi()
+const files = new Files(() => (accounts ? accounts.folder() : null))
 app.on('will-quit', () => localAi.stop())
 
 /** One Google connection per account (or for the no-account data). */
@@ -62,7 +67,7 @@ const friendly = async <T>(fn: () => Promise<T>): Promise<T> => {
   try {
     return await fn()
   } catch (e) {
-    throw new Error(e instanceof ApiError || e instanceof GoogleError || e instanceof IcalError || e instanceof AiError || e instanceof LocalAiError ? e.message : 'Something went wrong. Try again.')
+    throw new Error(e instanceof ApiError || e instanceof GoogleError || e instanceof IcalError || e instanceof AiError || e instanceof LocalAiError || e instanceof FileError ? e.message : 'Something went wrong. Try again.')
   }
 }
 
@@ -122,6 +127,12 @@ app.whenReady().then(() => {
   openStore(process.env['VEYRA_DB'] || accounts.currentDbPath())
   setInterval(() => google?.schedulePush(0), 15 * 60 * 1000)
 
+  files.handleProtocol()
+  ipcMain.handle('files:pick', () => friendly(() => files.pick()))
+  ipcMain.handle('files:fromPaths', (_e, paths: string[]) => friendly(async () => files.fromPaths(Array.isArray(paths) ? paths : [])))
+  ipcMain.handle('files:fromBytes', (_e, name: string, mime: string, bytes: Uint8Array) => friendly(async () => files.fromBytes(name, mime, bytes)))
+  ipcMain.handle('files:open', (_e, id: string) => friendly(() => files.open(id)))
+  ipcMain.handle('files:reveal', (_e, id: string) => files.reveal(id))
   ipcMain.handle('db:list', (_e, kind) => db().list(kind))
   ipcMain.handle('db:put', (_e, kind, data, id) => {
     const rec = db().put(kind, data, id)

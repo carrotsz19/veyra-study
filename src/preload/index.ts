@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webFrame } from 'electron'
+import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 import type { VeyraDb } from '../shared/types'
 
 const db: VeyraDb = {
@@ -86,7 +86,23 @@ const groupApi = {
   }
 }
 
+const filesApi = {
+  pick: () => ipcRenderer.invoke('files:pick'),
+  fromPaths: (paths: string[]) => ipcRenderer.invoke('files:fromPaths', paths),
+  fromBytes: (name: string, mime: string, bytes: Uint8Array) => ipcRenderer.invoke('files:fromBytes', name, mime, bytes),
+  open: (id: string) => ipcRenderer.invoke('files:open', id),
+  reveal: (id: string) => ipcRenderer.invoke('files:reveal', id),
+  /** The path of a dropped file ('' for pasted data, which has none). */
+  pathFor: (file: File) => {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch {
+      return ''
+    }
+  }
+}
+
 /** Saves right away, blocking: only for the moment the window closes. */
 const saveNow = (kind: string, data: unknown, id: string) => ipcRenderer.sendSync('db:putSync', kind, data, id)
 
-contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, ai: aiApi, group: groupApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })
+contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })

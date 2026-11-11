@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useEditorState, type Editor } from '@tiptap/react'
 import {
-  Bold, ChevronDown, Code, CodeSquare, Columns2, Highlighter, Italic, Link2, List, ListChecks, ListOrdered, ListCollapse, Minus,
+  Bold, ChevronDown, Code, CodeSquare, Columns2, Highlighter, Italic, Link2, List, ListChecks, ListOrdered, ListCollapse, Minus, Paperclip,
   Quote, Redo2, Rows2, Sparkles, Strikethrough, Table, Trash2, Underline, Undo2
 } from 'lucide-react'
 import { CALLOUTS, type CalloutTone } from './extensions'
+import { attachFiles, canAttach } from './attachment'
 import { LinkInput } from './LinkInput'
 import { useContext } from 'react'
 import { NoteAiCtx } from './aiContext'
@@ -225,6 +226,11 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
       ) : (
         <Btn label="Table" onClick={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
           <Table size={15} />
+        </Btn>
+      )}
+      {canAttach(editor) && (
+        <Btn label="Attach a file or image (or drop it in)" onClick={() => void attachFiles(editor!)}>
+          <Paperclip size={15} />
         </Btn>
       )}
       {ask && (

@@ -343,3 +343,21 @@ export interface GroupApi {
   onStatus(cb: (s: GroupStatus) => void): () => void
   onChanged(cb: (e: { seq: number }) => void): () => void
 }
+
+/* ---------- files attached to notes ---------- */
+export interface Attachment {
+  /** File name in this account's attachments folder (UUID + extension). */
+  id: string
+  name: string
+  mime: string
+  size: number
+}
+
+export interface FilesApi {
+  pick(): Promise<Attachment[]>
+  fromPaths(paths: string[]): Promise<Attachment[]>
+  fromBytes(name: string, mime: string, bytes: Uint8Array): Promise<Attachment>
+  open(id: string): Promise<void>
+  reveal(id: string): Promise<void>
+  pathFor(file: File): string
+}

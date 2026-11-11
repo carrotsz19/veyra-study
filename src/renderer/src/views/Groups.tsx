@@ -851,6 +851,7 @@ function SharedNote({ group, note, items, onDeleted }: { group: Group; note: Gro
           key={version}
           content={draft.current.content}
           placeholder="Write together."
+          attach={false}
           onChange={(json, text) => {
             draft.current = { ...draft.current, content: json, excerpt: text.slice(0, 300) }
             later()

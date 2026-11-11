@@ -10,6 +10,7 @@ import type { Note, NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, useRecords } from '../../data/store'
 import { useToast } from '../ui'
 import { docText, noteExtensions, wordCount } from './extensions'
+import { onAttachError } from './attachment'
 import { SlashMenu } from './SlashMenu'
 import { NoteToolbar } from './Toolbar'
 import { LinkInput } from './LinkInput'
@@ -141,6 +142,7 @@ export function Area({
   content,
   placeholder,
   slash = true,
+  attach = true,
   className,
   onChange,
   onActive,
@@ -149,6 +151,8 @@ export function Area({
   content: unknown
   placeholder: string
   slash?: boolean
+  /** Off in shared group notes: attached files would only be on your computer. */
+  attach?: boolean
   className?: string
   onChange: (json: unknown, text: string) => void
   /** Tells the page which area you're writing in, for the top toolbar. */
@@ -159,14 +163,14 @@ export function Area({
   const useSlash = slash && s.noteToolbar !== 'bar'
   const editor = useEditor(
     {
-      extensions: noteExtensions(useSlash ? `${placeholder} Type / for blocks.` : placeholder, useSlash),
+      extensions: noteExtensions(useSlash ? `${placeholder} Type / for blocks.` : placeholder, useSlash, attach),
       content: (content as object) ?? '',
       editorProps: { attributes: { class: `tiptap ${className ?? ''}`, spellcheck: s.spellcheck ? 'true' : 'false' } },
       onUpdate: ({ editor: e }) => onChange(e.getJSON(), e.getText()),
       onFocus: ({ editor: e }) => onActive?.(e),
       onCreate: ({ editor: e }) => onReady?.(e)
     },
-    [useSlash, s.spellcheck]
+    [useSlash, s.spellcheck, attach]
   )
   if (!editor) return null
   return (
@@ -379,6 +383,7 @@ export function NoteEditor({
   onToggleFocus?: () => void
 }) {
   const toast = useToast()
+  useEffect(() => onAttachError(toast), [toast])
   const { items: subjects } = useRecords('subject')
   // One copy of the note that every field writes into, saved as a whole.
   const latest = useRef<Note>(note.data)

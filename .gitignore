@@ -9,3 +9,4 @@ Thumbs.db
 google-client.json
 server/.env
 server/veyra-group-data/
+out-test/

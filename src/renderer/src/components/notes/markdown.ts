@@ -61,6 +61,8 @@ function block(n: Node, indent = ''): string {
     }
     case 'codeBlock':
       return '```' + NL + kids.map((k) => k.text ?? '').join('') + NL + '```'
+    case 'attachment':
+      return `📎 ${n.attrs?.name ?? 'Attachment'}`
     case 'horizontalRule':
       return '---'
     case 'table': {
