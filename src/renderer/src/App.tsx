@@ -4,7 +4,7 @@ import { useRecords } from './data/store'
 import { clock, isOverdue } from './lib/dates'
 import { NavCtx, type Route } from './nav'
 import { ToastProvider, useToast } from './components/ui'
-import { AccountGate, useAccount } from './components/account'
+import { AccountGate, Avatar, useAccount } from './components/account'
 import { Settings } from './views/Settings'
 import { TimerProvider, useTimer } from './components/timer'
 import { SubjectDialog } from './components/editors'
@@ -105,9 +105,13 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
       )}
       <div className="side-foot">
         <button className="account-chip" aria-current={route.name === 'settings'} onClick={() => go({ name: 'settings' })} title="Account and settings">
-          <span className="avatar">
-            {user ? user.photoUrl ? <img src={user.photoUrl} alt="" /> : (user.displayName || user.username).slice(0, 1).toUpperCase() : <SettingsIcon size={15} />}
-          </span>
+          {user ? (
+            <Avatar user={user} />
+          ) : (
+            <span className="avatar">
+              <SettingsIcon size={15} />
+            </span>
+          )}
           <span className="grow" style={{ minWidth: 0 }}>
             <span className="trunc" style={{ display: 'block', fontWeight: 650 }}>{user ? user.displayName : 'Settings'}</span>
             <span className="trunc xs dim" style={{ display: 'block' }}>{user ? `@${user.username}` : 'Not signed in'}</span>

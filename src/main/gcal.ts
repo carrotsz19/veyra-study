@@ -57,7 +57,7 @@ const nextDay = (d: string) => {
 
 export class GoogleCalendar {
   private cfg: Config | null = null
-  private calendars: { id: string; summary: string; color: string; selected: boolean; primary: boolean }[] = []
+  private calendars: { id: string; summary: string; color: string; selected: boolean; primary: boolean; owner: boolean; description: string }[] = []
   private cache = new Map<string, { at: number; events: GoogleEvent[] }>()
   private pushTimer: ReturnType<typeof setTimeout> | null = null
   private pushing = false
@@ -93,7 +93,7 @@ export class GoogleCalendar {
       email: c?.email ?? '',
       pushTasks: c?.pushTasks ?? true,
       shown: c?.shown ?? null,
-      calendars: this.calendars.filter((x) => x.id !== c?.calendarId),
+      calendars: this.calendars.filter((x) => x.id !== c?.calendarId).map(({ id, summary, color, selected, primary }) => ({ id, summary, color, selected, primary })),
       error: c?.error,
       lastSync: c?.lastSync
     }
@@ -159,7 +159,7 @@ export class GoogleCalendar {
       redirect_uri: redirect
     })
     if (!tok.refresh_token) throw new GoogleError('Google didn’t give Veyra lasting access. Remove Veyra in your Google account’s third-party access, then connect again.')
-    const keep = this.cfg?.clientId === clientId ? this.cfg : null
+    const keep = this.cfg
     this.cfg = {
       clientId,
       clientSecret: clientSecret || undefined,
@@ -182,7 +182,10 @@ export class GoogleCalendar {
     const token = this.cfg?.refreshToken
     if (token) fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(token), { method: 'POST' }).catch(() => {})
     // Keep the client ID so connecting again is one click.
-    this.cfg = this.cfg ? { clientId: this.cfg.clientId, clientSecret: this.cfg.clientSecret, pushTasks: this.cfg.pushTasks, pushedThrough: 0 } : null
+    // Keep the calendar id too, so reconnecting reuses the same Veyra Study calendar.
+    this.cfg = this.cfg
+      ? { clientId: this.cfg.clientId, clientSecret: this.cfg.clientSecret, calendarId: this.cfg.calendarId, pushTasks: this.cfg.pushTasks, shown: this.cfg.shown, pushedThrough: 0 }
+      : null
     this.calendars = []
     this.cache.clear()
     this.save()
@@ -271,7 +274,9 @@ export class GoogleCalendar {
       summary: c.summaryOverride || c.summary,
       color: c.backgroundColor || '#2f5f8a',
       selected: !!c.selected,
-      primary: !!c.primary
+      primary: !!c.primary,
+      owner: c.accessRole === 'owner',
+      description: c.description || ''
     }))
   }
 
@@ -336,6 +341,15 @@ export class GoogleCalendar {
     if (c.calendarId) {
       const { status } = await this.api('GET', `/calendars/${encodeURIComponent(c.calendarId)}`)
       if (status === 200) return c.calendarId
+    }
+    // Reuse a Veyra Study calendar made earlier (another device, or before a reset).
+    await this.loadCalendars()
+    const existing = this.calendars.find((x) => x.owner && x.summary === 'Veyra Study' && x.description.startsWith('Task deadlines from Veyra Study'))
+    if (existing) {
+      c.calendarId = existing.id
+      c.pushedThrough = 0
+      this.save()
+      return existing.id
     }
     const { status, json } = await this.api('POST', '/calendars', {
       summary: 'Veyra Study',

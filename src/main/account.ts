@@ -240,6 +240,8 @@ export class Accounts {
       for (const ext of ['', '-wal', '-shm']) {
         if (existsSync(guestDbPath() + ext)) renameSync(guestDbPath() + ext, target + ext)
       }
+      const g = join(dir(), 'google-local.bin')
+      if (existsSync(g)) renameSync(g, join(accountDir(folder), 'google.bin'))
       moved = true
     }
     this.session = { handle: home.token, cookies, user, folder }

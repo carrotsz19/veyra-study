@@ -151,3 +151,17 @@ export function Welcome({ notice, onDone, initial = 'start', onCancel }: { notic
     </div>
   )
 }
+
+/** Profile photo, or the first letter of the name if there is none or it fails to load. */
+export function Avatar({ user, large }: { user: { displayName: string; username: string; photoUrl?: string }; large?: boolean }) {
+  const [broken, setBroken] = useState(false)
+  return (
+    <span className={`avatar ${large ? 'lg' : ''}`}>
+      {user.photoUrl && !broken ? (
+        <img src={user.photoUrl} alt="" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
+      ) : (
+        (user.displayName || user.username).slice(0, 1).toUpperCase()
+      )}
+    </span>
+  )
+}

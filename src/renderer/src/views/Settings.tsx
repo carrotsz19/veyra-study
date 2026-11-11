@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { CalendarDays, Check, ExternalLink, LogOut, RefreshCw, UserRound } from 'lucide-react'
 import type { GoogleState } from '@shared/types'
-import { useAccount, Welcome } from '../components/account'
+import { Avatar, useAccount, Welcome } from '../components/account'
 import { useToast } from '../components/ui'
 
 const clean = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
@@ -25,7 +25,7 @@ function AccountSection() {
       {u ? (
         <div className="between">
           <div className="row" style={{ gap: 14 }}>
-            <div className="avatar lg">{u.photoUrl ? <img src={u.photoUrl} alt="" /> : (u.displayName || u.username).slice(0, 1).toUpperCase()}</div>
+            <Avatar user={u} large />
             <div>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{u.displayName}</div>
               <div className="sm dim">
