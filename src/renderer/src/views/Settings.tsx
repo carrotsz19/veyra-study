@@ -25,7 +25,7 @@ type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'ai' | 'tod
 
 const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; keys?: (keyof AppSettings)[] }[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal, hint: 'Your name, start screen, week and time', keys: ['name', 'greeting', 'startScreen', 'weekStart', 'timeFormat'] },
-  { id: 'appearance', label: 'Appearance', icon: Palette, hint: 'Theme, colour, font, size and spacing', keys: ['theme', 'accent', 'font', 'zoom', 'density', 'corners', 'reduceMotion'] },
+  { id: 'appearance', label: 'Appearance', icon: Palette, hint: 'Theme, colour, font, size and spacing', keys: ['theme', 'accent', 'font', 'zoom', 'density', 'corners', 'reduceMotion', 'material'] },
   { id: 'sidebar', label: 'Sidebar', icon: LayoutPanelLeft, hint: 'What the sidebar shows, and in what order', keys: ['nav', 'showCounts', 'showSubjectsInSidebar', 'showTimerCard'] },
   { id: 'subjects', label: 'Subjects', icon: Shapes, hint: 'Order, colours, archived and deleted subjects' },
   { id: 'today', label: 'Today', icon: Home, hint: 'Your Today page’s widgets', keys: ['todayLayout', 'upcomingCount'] },
@@ -186,6 +186,11 @@ function Appearance() {
           ))}
         </div>
         </Row>
+        {window.veyra.app.materialSupported && (
+          <Row label="Window background" hint="See-through glass behind the app, like Windows 11’s own apps. Acrylic blurs whatever is behind the window; Mica tints it with your wallpaper." keywords="acrylic mica transparent glass blur translucent see-through">
+            <Choice label="Window background" value={s.material} onChange={(material) => set({ material })} options={[['solid', 'Solid'], ['acrylic', 'Acrylic'], ['mica', 'Mica']]} />
+          </Row>
+        )}
       </Group>
       <Group footer="Used for buttons, highlights and the selected screen.">
         <Row label="Accent colour" stack keywords="color tint highlight custom">

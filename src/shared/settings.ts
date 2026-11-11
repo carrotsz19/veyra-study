@@ -26,6 +26,8 @@ export interface AppSettings {
   density: 'compact' | 'comfortable' | 'spacious'
   corners: 'square' | 'soft' | 'round'
   reduceMotion: boolean
+  /** Window background on Windows 11: solid, or see-through acrylic / mica. */
+  material: 'solid' | 'acrylic' | 'mica'
   /* sidebar */
   nav: { id: NavId; visible: boolean }[]
   showCounts: boolean
@@ -112,6 +114,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   density: 'comfortable',
   corners: 'soft',
   reduceMotion: false,
+  material: 'acrylic',
   nav: (['today', 'tasks', 'notes', 'calendar', 'groups', 'timer', 'stats'] as NavId[]).map((id) => ({ id, visible: true })),
   showCounts: true,
   showSubjectsInSidebar: true,

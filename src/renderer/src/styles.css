@@ -351,3 +351,24 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
 .task-group + .task-group { margin-top: calc(18px * var(--dens)); }
 .task-group h2 { padding-left: 4px; }
 .note-sheet:focus-within .save-state, .note-sheet:focus-within .ghost-chip { opacity: 1; }
+
+/* ---------- see-through window (Settings → Appearance → Window background, Windows 11) ---------- */
+html.material,
+html.material body { background: transparent; }
+html.material {
+  /* Cards stay mostly solid so text reads well over anything behind the window. */
+  --panel: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  --panel-2: color-mix(in srgb, var(--fill-secondary) 70%, transparent);
+}
+html.material aside.side { background: color-mix(in srgb, var(--bg-elevated) 18%, transparent); border-right-color: color-mix(in srgb, var(--line) 70%, transparent); }
+html.material main.main { background: color-mix(in srgb, var(--bg-grouped) 40%, transparent); }
+html.material[data-material='mica'] main.main { background: color-mix(in srgb, var(--bg-grouped) 38%, transparent); }
+html.material[data-material='mica'] aside.side { background: transparent; }
+html.material .set-nav { background: color-mix(in srgb, var(--bg-elevated) 14%, transparent); }
+html.material .appearance-preview { background: color-mix(in srgb, var(--bg-grouped) 60%, transparent); }
+/* Things that float over the page: frosted, so what's under them doesn't show through sharply. */
+html.material :is(.dialog, .popover, .tb-pop, .ctx-menu, .slash-menu, .fb-colors) {
+  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+  backdrop-filter: blur(30px) saturate(1.6);
+}
+html.material .card, html.material .ig { backdrop-filter: blur(18px) saturate(1.3); }

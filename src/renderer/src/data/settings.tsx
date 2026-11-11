@@ -109,6 +109,10 @@ function useApplyAppearance(s: AppSettings) {
     root.dataset.density = s.density
     root.dataset.corners = s.corners
     root.classList.toggle('reduce-motion', s.reduceMotion)
+    const seeThrough = window.veyra.app.materialSupported && s.material !== 'solid'
+    root.classList.toggle('material', seeThrough)
+    root.dataset.material = seeThrough ? s.material : 'solid'
+    void window.veyra.app.setMaterial(s.material, s.theme)
     window.veyra.app.setZoom(s.zoom)
     try {
       localStorage.setItem(BOOT_KEY, JSON.stringify({ theme: s.theme, accent: s.accent, font: s.font, zoom: s.zoom }))
@@ -116,7 +120,7 @@ function useApplyAppearance(s: AppSettings) {
     } catch {
       /* storage unavailable */
     }
-  }, [dark, s.accent, s.font, s.density, s.corners, s.reduceMotion, s.zoom, s.theme])
+  }, [dark, s.accent, s.font, s.density, s.corners, s.reduceMotion, s.zoom, s.theme, s.material])
 }
 
 /** Time of day in the person's chosen format. */

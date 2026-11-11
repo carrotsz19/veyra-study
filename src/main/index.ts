@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { release } from 'node:os'
 import { dirname, join } from 'node:path'
 import { readFileSync, writeFileSync } from 'node:fs'
 import type { Rec } from '../shared/types'
@@ -88,6 +89,24 @@ const friendly = async <T>(fn: () => Promise<T>): Promise<T> => {
   }
 }
 
+/* ---------- window material (Windows 11: acrylic or mica behind the app) ---------- */
+type Material = 'solid' | 'acrylic' | 'mica'
+const materialSupported = process.platform === 'win32' && Number(release().split('.')[2] ?? 0) >= 22621
+const prefsFile = () => join(app.getPath('userData'), 'window.json')
+function windowPrefs(): { material: Material; theme: 'system' | 'light' | 'dark' } {
+  try {
+    const j = JSON.parse(readFileSync(prefsFile(), 'utf8'))
+    return { material: ['solid', 'acrylic', 'mica'].includes(j.material) ? j.material : 'acrylic', theme: ['light', 'dark'].includes(j.theme) ? j.theme : 'system' }
+  } catch {
+    return { material: 'acrylic', theme: 'system' }
+  }
+}
+function applyMaterial(win: BrowserWindow, material: Material): void {
+  if (!materialSupported) return
+  win.setBackgroundMaterial(material === 'solid' ? 'none' : material)
+  win.setBackgroundColor(material === 'solid' ? (nativeTheme.shouldUseDarkColors ? '#15140f' : '#f7f7f5') : '#00000000')
+}
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280,
@@ -96,7 +115,12 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     title: 'Veyra',
-    backgroundColor: '#f7f7f5',
+    // See-through (acrylic / mica) when chosen in Appearance; the page paints the tint.
+    ...(() => {
+      const p = windowPrefs()
+      nativeTheme.themeSource = p.theme
+      return materialSupported && p.material !== 'solid' ? { backgroundColor: '#00000000', backgroundMaterial: p.material } : { backgroundColor: nativeTheme.shouldUseDarkColors ? '#15140f' : '#f7f7f5' }
+    })(),
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -269,6 +293,17 @@ app.whenReady().then(() => {
       if (e instanceof GroupError) return { ok: false, error: e.message, status: e.status, extra: e.extra }
       return { ok: false, error: 'Something went wrong. Try again.', status: 0 }
     }
+  })
+  ipcMain.on('app:materialSupported', (e) => (e.returnValue = materialSupported))
+  ipcMain.handle('app:setMaterial', (_e, material: Material, theme: 'system' | 'light' | 'dark') => {
+    const m: Material = ['solid', 'acrylic', 'mica'].includes(material) ? material : 'acrylic'
+    nativeTheme.themeSource = ['light', 'dark'].includes(theme) ? theme : 'system'
+    try {
+      writeFileSync(prefsFile(), JSON.stringify({ material: m, theme: nativeTheme.themeSource }))
+    } catch {
+      /* not fatal */
+    }
+    for (const w of BrowserWindow.getAllWindows()) applyMaterial(w, m)
   })
   ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('data:openFolder', () => shell.openPath(dirname(db().path)))
