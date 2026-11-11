@@ -79,7 +79,7 @@ function FormatBar({ editor }: { editor: Editor }) {
       editor={editor}
       className="format-bar"
       options={{ placement: 'top', offset: 8 }}
-      shouldShow={({ editor: e, state }) => linking || (!state.selection.empty && e.isEditable && !e.isActive('codeBlock'))}
+      shouldShow={({ editor: e, state }) => linking || (!state.selection.empty && e.isEditable && !e.isActive('codeBlock') && !e.isActive('drawing') && !e.isActive('attachment'))}
     >
       {linking ? (
         <LinkInput editor={editor} onDone={() => setLinking(false)} />

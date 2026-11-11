@@ -413,3 +413,21 @@ body.focus-mode .shell { grid-template-columns: 1fr; }
 .voice-choices { display: grid; gap: 8px; }
 .voice-choice { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px; border-radius: var(--r-control); border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
 .voice-choice[aria-checked='true'] { border-color: var(--accent); background: var(--accent-soft); }
+
+/* drawings / handwriting */
+.tiptap .drw { margin: 12px 0; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden; user-select: none; }
+.tiptap .drw.ProseMirror-selectednode { outline: 2px solid var(--accent); outline-offset: 2px; }
+.drw-bar { display: flex; align-items: center; gap: 2px; padding: 5px 6px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.drw-bar[hidden] { display: none; }
+.drw-btn { width: 30px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); display: inline-grid; place-items: center; font-size: 14px; padding: 0; }
+.drw-btn:hover { background: var(--fill-tertiary); }
+.drw-btn[aria-pressed='true'] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.drw-btn i { width: 14px; height: 14px; border-radius: 99px; display: block; }
+.drw-btn b { display: block; border-radius: 99px; background: var(--ink); }
+.drw-sep { width: 1px; height: 18px; background: var(--line); margin: 0 5px; }
+.drw-grow { flex: 1; }
+.drw-wrap { position: relative; touch-action: none; background-image: radial-gradient(circle, color-mix(in srgb, var(--ink) 9%, transparent) 1px, transparent 1.2px); background-size: 22px 22px; }
+.drw-wrap canvas { display: block; touch-action: none; }
+.drw-grip { height: 10px; cursor: ns-resize; background: linear-gradient(var(--line), var(--line)) center / 36px 3px no-repeat; }
+.drw-grip:hover { background-color: var(--fill-tertiary); }
+.drw-grip[hidden] { display: none; }

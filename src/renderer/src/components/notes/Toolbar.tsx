@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useEditorState, type Editor } from '@tiptap/react'
 import {
-  Bold, ChevronDown, Code, CodeSquare, Columns2, Highlighter, Italic, Link2, List, ListChecks, ListOrdered, ListCollapse, Mic, Minus, Paperclip,
+  Bold, ChevronDown, Code, CodeSquare, Columns2, Highlighter, Italic, Link2, List, ListChecks, ListOrdered, ListCollapse, Mic, Minus, Paperclip, PenLine,
   Quote, Redo2, Rows2, Sparkles, Strikethrough, Table, Trash2, Underline, Undo2
 } from 'lucide-react'
 import { CALLOUTS, type CalloutTone } from './extensions'
@@ -229,6 +229,9 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
           <Table size={15} />
         </Btn>
       )}
+      <Btn label="Drawing (handwrite or sketch)" onClick={() => c().insertDrawing().run()}>
+        <PenLine size={15} />
+      </Btn>
       {canAttach(editor) && (
         <Btn label="Attach a file or image (or drop it in)" onClick={() => void attachFiles(editor!)}>
           <Paperclip size={15} />

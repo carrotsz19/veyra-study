@@ -9,6 +9,7 @@ import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import { AttachmentDrop, AttachmentNode, attachFiles, canAttach } from './attachment'
 import { startRecording } from '../../data/voice'
+import { Drawing } from './drawing'
 
 /* ---------- Callout: a tinted box with an emoji, for key ideas and definitions ---------- */
 export type CalloutTone = 'idea' | 'definition' | 'warning' | 'example'
@@ -97,6 +98,7 @@ export const SLASH_ITEMS: SlashItem[] = [
   { title: 'Quote', hint: 'Quoted passage', icon: '❝', keywords: 'blockquote citation', run: (e, r) => chain(e, r).toggleBlockquote().run() },
   { title: 'Code', hint: 'Code block', icon: '</>', keywords: 'pre snippet', run: (e, r) => chain(e, r).toggleCodeBlock().run() },
   { title: 'Divider', hint: 'Horizontal line', icon: '—', keywords: 'hr rule separator', run: (e, r) => chain(e, r).setHorizontalRule().run() },
+  { title: 'Drawing', hint: 'Handwrite or sketch (pen or mouse)', icon: '✏️', keywords: 'draw drawing sketch handwriting handwrite pen stylus ink diagram', run: (e, r) => chain(e, r).insertDrawing().run() },
   {
     title: 'File or image',
     hint: 'Attach a PDF, picture, slides…',
@@ -199,6 +201,7 @@ export const SlashCommand = Extension.create({
 export function noteExtensions(placeholder: string, slash = true, attach = true) {
   return [
     AttachmentNode.configure({ enabled: attach }),
+    Drawing,
     ...(attach ? [AttachmentDrop] : []),
     StarterKit.configure({ link: { openOnClick: false, autolink: true } }),
     Highlight.configure({ multicolor: true }),
