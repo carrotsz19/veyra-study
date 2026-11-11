@@ -14,7 +14,9 @@ npm start        # run the production build
 npm run dist     # Windows installer in release/
 ```
 
-Your data lives in a SQLite file at `%APPDATA%\veyra-study\veyra.db`. It uses Electron's built-in `node:sqlite`, so there is nothing native to compile.
+Data lives in SQLite files under `%APPDATA%\veyra-study\`. It uses Electron's built-in `node:sqlite`, so there is nothing native to compile:
+- `veyra.db` is used without an account.
+- `accounts\<folder>\veyra.db` is one file per Veyra account (see `accounts.json`).
 
 ## What's in it (phase 1)
 
