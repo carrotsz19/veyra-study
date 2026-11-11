@@ -255,8 +255,8 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
               <CheckSquare size={15} /> {selecting ? 'Cancel' : 'Select'}
             </button>
             {drive?.connected && drive.canPick && (
-              <button className="btn ghost" disabled={importing} onClick={fromDrive} title="Open Google Docs and files from your Drive">
-                <HardDrive size={15} /> {importing ? 'Waiting for Drive…' : 'From Drive'}
+              <button className="btn ghost" onClick={fromDrive} title={importing ? 'Closed the picker? Click to open it again.' : 'Open Google Docs and files from your Drive'}>
+                <HardDrive size={15} /> {importing ? 'Picking in browser…' : 'From Drive'}
               </button>
             )}
             <button className="btn" onClick={create} title="New note (Ctrl+N)">

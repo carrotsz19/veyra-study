@@ -137,8 +137,8 @@ export class GoogleCalendar {
   }
 
   async disconnect(): Promise<Omit<GoogleState, 'feeds'>> {
-    const token = this.cfg?.refreshToken
-    if (token) fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(token), { method: 'POST' }).catch(() => {})
+    // Only forgets the sign-in here. Revoking it at Google would also end Drive's
+    // access (both use one client); people can remove Veyra in their Google account.
     // Keep the client ID so connecting again is one click.
     // Keep the calendar id too, so reconnecting reuses the same Veyra Study calendar.
     this.cfg = this.cfg

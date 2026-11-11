@@ -52,6 +52,7 @@ export class GoogleDrive {
   private cfg: Config = blank()
   private disposed = false
   private busy: Promise<unknown> = Promise.resolve()
+  private cancelPick: (() => void) | null = null
 
   constructor(
     private file: string,
@@ -285,11 +286,14 @@ export class GoogleDrive {
     // Dev checks: VEYRA_FAKE_PICK='[{"id":…,"name":…,"mimeType":…}]' stands in for the picker page.
     const fake = process.env['VEYRA_FAKE_PICK']
     const picked = fake ? (JSON.parse(fake) as { id: string; name: string; mimeType: string }[]) : await new Promise<{ id: string; name: string; mimeType: string }[]>((resolve, reject) => {
+      // A new pick replaces one left open (say the tab was closed instead of cancelled).
+      this.cancelPick?.()
       const path = '/' + randomBytes(16).toString('hex')
       let done = false
       const finish = (v: { id: string; name: string; mimeType: string }[] | Error) => {
         if (done) return
         done = true
+        this.cancelPick = null
         clearTimeout(timer)
         setTimeout(() => server.close(), 1000)
         v instanceof Error ? reject(v) : resolve(v)
@@ -317,6 +321,7 @@ export class GoogleDrive {
         res.writeHead(404).end()
       })
       const timer = setTimeout(() => finish(new DriveError('The Drive file picker timed out. Try again.')), 10 * 60_000)
+      this.cancelPick = () => finish([])
       server.listen(0, '127.0.0.1', () => shell.openExternal(`http://127.0.0.1:${(server.address() as AddressInfo).port}${path}`))
     })
 
