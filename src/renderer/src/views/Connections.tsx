@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { CalendarDays, Check, ExternalLink, Link2, LogOut, Plus, RefreshCw, Trash2, UserRound } from 'lucide-react'
+import { CalendarDays, Check, ExternalLink, HardDrive, Link2, LogOut, Plus, RefreshCw, Trash2, UserRound } from 'lucide-react'
+import { backupNow, backupStatus, onBackupStatus, useDrive } from '../data/drive'
 import type { GoogleState } from '@shared/types'
 import { Avatar, useAccount, Welcome } from '../components/account'
 import { useToast } from '../components/ui'
@@ -312,5 +313,104 @@ export function GoogleSection() {
         </div>
       </div>
     </>
+  )
+}
+
+/* ---------- Google Drive ---------- */
+export function DriveSection() {
+  const toast = useToast()
+  const { state: d, run } = useDrive()
+  const [busy, setBusy] = useState<'' | 'connect' | 'backup'>('')
+  const [err, setErr] = useState('')
+  const [status, setStatus] = useState(backupStatus())
+  useEffect(() => onBackupStatus(() => setStatus(backupStatus())), [])
+  if (!d) return null
+
+  const connect = async () => {
+    setErr('')
+    setBusy('connect')
+    try {
+      await run(() => window.veyra.drive.connect())
+      toast('Google Drive connected')
+      void backupNow()
+    } catch (e) {
+      setErr(clean(e))
+    } finally {
+      setBusy('')
+    }
+  }
+  const backup = async () => {
+    setBusy('backup')
+    const r = await backupNow()
+    setBusy('')
+    if (r) toast(r.uploaded || r.removed ? `Backed up ${r.uploaded} note${r.uploaded === 1 ? '' : 's'}${r.removed ? `, removed ${r.removed}` : ''}` : 'Your Drive backup is up to date')
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <div className="row" style={{ gap: 14, alignItems: 'flex-start' }}>
+        <div className="avatar lg" style={{ background: 'var(--panel-2)', color: '#1f9d55' }}>
+          <HardDrive size={20} />
+        </div>
+        <div className="grow">
+          <div className="between">
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>Google Drive</div>
+              <div className="sm dim">
+                {d.connected
+                  ? `Connected${d.email ? ` as ${d.email}` : ''}`
+                  : 'Back up your notes to Drive, and save notes as Google Docs. Veyra only sees files it makes or ones you pick.'}
+              </div>
+            </div>
+            {d.connected ? (
+              <button className="btn ghost sm" onClick={() => run(() => window.veyra.drive.disconnect())}>
+                Disconnect
+              </button>
+            ) : (
+              d.builtIn && (
+                <button className="btn" disabled={!!busy} onClick={connect}>
+                  {busy === 'connect' ? 'Finish in your browser…' : 'Connect'}
+                </button>
+              )
+            )}
+          </div>
+          {d.error && <p className="welcome-err" style={{ textAlign: 'left' }}>{d.error}</p>}
+          {!d.connected && err && <p className="welcome-err" style={{ textAlign: 'left' }}>{err}</p>}
+          {!d.builtIn && <p className="sm dim" style={{ marginTop: 10 }}>This copy of Veyra has no built-in Google client, so Drive can’t connect.</p>}
+
+          {d.connected && (
+            <div style={{ marginTop: 16 }}>
+              <label className="toggle-row">
+                <span>
+                  <b>Back up my notes to Drive</b>
+                  <span className="sm dim">
+                    Every note as a Markdown file in “Veyra Study / Notes backup”, updated a little after you edit it. Attached files stay on this computer.
+                  </span>
+                </span>
+                <input type="checkbox" className="switch" checked={d.backup} onChange={(e) => { const on = e.target.checked; void run(() => window.veyra.drive.setBackup(on)).then(() => { if (on) void backupNow() }) }} />
+              </label>
+              {d.backup && (
+                <div className="between" style={{ marginTop: 10 }}>
+                  <span className="sm dim">
+                    {status.running || busy === 'backup'
+                      ? 'Backing up…'
+                      : d.lastBackup
+                        ? `${d.backedUp} note${d.backedUp === 1 ? '' : 's'} backed up · last ${formatDistanceToNowStrict(d.lastBackup, { addSuffix: true })}`
+                        : 'Not backed up yet'}
+                  </span>
+                  <button className="btn sec sm" disabled={!!busy || status.running} onClick={backup}>
+                    <RefreshCw size={14} className={busy === 'backup' ? 'spin' : ''} /> Back up now
+                  </button>
+                </div>
+              )}
+              {status.error && <p className="welcome-err" style={{ textAlign: 'left' }}>{status.error}</p>}
+              <p className="sm dim" style={{ marginTop: 12 }}>
+                To save one note as a Google Doc, open it and choose <b>Save to Google Docs</b> from its ••• menu.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }

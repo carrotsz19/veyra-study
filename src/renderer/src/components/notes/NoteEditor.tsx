@@ -3,7 +3,7 @@ import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/r
 import { BubbleMenu } from '@tiptap/react/menus'
 import { formatDistanceToNowStrict } from 'date-fns'
 import {
-  Archive, ArchiveRestore, Bold, Code, Copy, Download, Hash, Italic, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, Pin, PinOff,
+  Archive, ArchiveRestore, Bold, Code, Copy, Download, FileUp, Hash, Italic, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, Pin, PinOff,
   Sparkles, Strikethrough, Trash2, Underline
 } from 'lucide-react'
 import type { Note, NoteFont, NoteTemplate, Rec } from '@shared/types'
@@ -11,6 +11,7 @@ import { db, useRecords } from '../../data/store'
 import { useToast } from '../ui'
 import { docText, noteExtensions, wordCount } from './extensions'
 import { onAttachError } from './attachment'
+import { cleanError, saveNoteToDocs } from '../../data/drive'
 import { SlashMenu } from './SlashMenu'
 import { NoteToolbar } from './Toolbar'
 import { LinkInput } from './LinkInput'
@@ -198,6 +199,7 @@ function PageMenu({
   onDelete,
   onDuplicate,
   onExport,
+  onSaveDocs,
   onClose
 }: {
   data: Note
@@ -205,6 +207,7 @@ function PageMenu({
   onDelete: () => void
   onDuplicate: () => void
   onExport: () => void
+  onSaveDocs: () => void
   onClose: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -273,6 +276,9 @@ function PageMenu({
       </button>
       <button className="menu-row" onClick={onExport}>
         <Download size={15} /> Export as Markdown
+      </button>
+      <button className="menu-row" onClick={onSaveDocs}>
+        <FileUp size={15} /> Save to Google Docs
       </button>
       <button className="menu-row" onClick={() => set({ archived: !data.archived })}>
         {data.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />} {data.archived ? 'Unarchive' : 'Archive'}
@@ -512,6 +518,18 @@ export function NoteEditor({
     setMenu(null)
     if (await exportNotes([latest.current])) toast('Note exported')
   }
+  const saveDocs = async () => {
+    setMenu(null)
+    const drive = await window.veyra.drive.state()
+    if (!drive.connected) return toast('Connect Google Drive first, in Settings → Connections.')
+    toast('Saving to Google Docs…')
+    try {
+      const url = await saveNoteToDocs(note.id, latest.current)
+      toast('Saved to Google Docs', { label: 'Open', run: () => window.veyra.open(url) })
+    } catch (e) {
+      toast(cleanError(e, 'Couldn’t save it to Google Docs.'))
+    }
+  }
 
   const template = data.template ?? 'page'
   const subject = subjects.find((s) => s.id === data.subjectId)
@@ -560,7 +578,7 @@ export function NoteEditor({
                 <MoreHorizontal size={18} />
               </button>
               {menu === 'page' && (
-                <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportMd} onClose={() => setMenu(null)} />
+                <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportMd} onSaveDocs={saveDocs} onClose={() => setMenu(null)} />
               )}
             </span>
           </div>

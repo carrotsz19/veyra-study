@@ -83,10 +83,11 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
   addOptions: () => ({ enabled: true }),
   addAttributes() {
     return {
-      id: { default: '' },
-      name: { default: 'File' },
-      mime: { default: 'application/octet-stream' },
-      size: { default: 0 }
+      // Written out as data-* in renderHTML only, so exported HTML stays clean.
+      id: { default: '', rendered: false },
+      name: { default: 'File', rendered: false },
+      mime: { default: 'application/octet-stream', rendered: false },
+      size: { default: 0, rendered: false }
     }
   },
   parseHTML: () => [

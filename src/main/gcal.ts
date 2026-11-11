@@ -4,18 +4,15 @@
  *  - writes task deadlines as all-day events into a "Veyra Study" calendar
  *    that Veyra creates (and can only touch that one).
  *
- * Sign-in is OAuth for installed apps: the system browser, a loopback
- * redirect to 127.0.0.1 on a random port, and PKCE. The OAuth client is the
- * user's own (Google Cloud → Desktop app), entered in Settings.
+ * Sign-in: google-oauth.ts (loopback + PKCE), with the app's built-in client
+ * or one the user entered in Settings.
  *
  * Event ids are derived from task ids ("vs" + the UUID's hex), so pushing is
  * idempotent and two devices never make duplicates.
  */
-import { safeStorage, shell } from 'electron'
-import { createHash, randomBytes } from 'node:crypto'
-import { createServer } from 'node:http'
+import { safeStorage } from 'electron'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import type { AddressInfo } from 'node:net'
+import { emailFromIdToken, googleSignIn, tokenRequest } from './google-oauth'
 import type { GoogleEvent, GoogleState, Rec } from '../shared/types'
 
 const SCOPES = [
@@ -47,7 +44,6 @@ interface Config {
 
 export class GoogleError extends Error {}
 
-const b64url = (b: Buffer) => b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 export const eventIdFor = (taskId: string) => 'vs' + taskId.replace(/-/g, '').toLowerCase()
 const nextDay = (d: string) => {
   const t = new Date(d + 'T00:00:00Z')
@@ -114,60 +110,12 @@ export class GoogleCalendar {
       clientSecret = this.cfg.clientSecret ?? ''
     }
     if (!/\.apps\.googleusercontent\.com$/.test(clientId)) throw new GoogleError('That doesn’t look like a client ID. It ends in .apps.googleusercontent.com.')
-    const verifier = b64url(randomBytes(48))
-    const challenge = b64url(createHash('sha256').update(verifier).digest())
-    const state = b64url(randomBytes(16))
-
-    const { code, redirect } = await new Promise<{ code: string; redirect: string }>((resolve, reject) => {
-      const server = createServer((req, res) => {
-        const url = new URL(req.url ?? '/', 'http://127.0.0.1')
-        if (url.pathname !== '/') {
-          res.writeHead(404).end()
-          return
-        }
-        const ok = url.searchParams.get('state') === state && url.searchParams.get('code')
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-        res.end(
-          `<!doctype html><meta charset="utf-8"><title>Veyra Study</title><body style="font:16px system-ui;display:grid;place-items:center;height:90vh;background:#f3f1ec;color:#1b1a18"><div style="text-align:center"><h2>${
-            ok ? 'Google Calendar is connected' : 'That didn’t work'
-          }</h2><p>${ok ? 'You can close this tab and go back to Veyra Study.' : 'Go back to Veyra Study and try again.'}</p></div>`
-        )
-        clearTimeout(timeout)
-        server.close()
-        if (ok) resolve({ code: url.searchParams.get('code')!, redirect: `http://127.0.0.1:${(server.address() as AddressInfo | null)?.port ?? port}` })
-        else reject(new GoogleError(url.searchParams.get('error') === 'access_denied' ? 'You didn’t allow access in Google.' : 'Google sign-in didn’t finish.'))
-      })
-      let port = 0
-      const timeout = setTimeout(() => {
-        server.close()
-        reject(new GoogleError('Google sign-in timed out. Try again.'))
-      }, 5 * 60 * 1000)
-      server.listen(0, '127.0.0.1', () => {
-        port = (server.address() as AddressInfo).port
-        const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth')
-        auth.search = new URLSearchParams({
-          client_id: clientId,
-          redirect_uri: `http://127.0.0.1:${port}`,
-          response_type: 'code',
-          scope: SCOPES.join(' '),
-          code_challenge: challenge,
-          code_challenge_method: 'S256',
-          state,
-          access_type: 'offline',
-          prompt: 'consent'
-        }).toString()
-        shell.openExternal(auth.toString())
-      })
-    })
-
-    const tok = await this.tokenRequest({
-      client_id: clientId,
-      ...(clientSecret ? { client_secret: clientSecret } : {}),
-      code,
-      code_verifier: verifier,
-      grant_type: 'authorization_code',
-      redirect_uri: redirect
-    })
+    let tok
+    try {
+      tok = await googleSignIn({ clientId, clientSecret, scopes: SCOPES, what: 'Google Calendar' })
+    } catch (e) {
+      throw new GoogleError(e instanceof Error ? e.message : 'Google sign-in didn’t finish.')
+    }
     if (!tok.refresh_token) throw new GoogleError('Google didn’t give Veyra lasting access. Remove Veyra in your Google account’s third-party access, then connect again.')
     const keep = this.cfg
     this.cfg = {
@@ -176,7 +124,7 @@ export class GoogleCalendar {
       refreshToken: tok.refresh_token,
       accessToken: tok.access_token,
       accessExpires: Date.now() + (tok.expires_in - 60) * 1000,
-      email: tok.id_token ? JSON.parse(Buffer.from(tok.id_token.split('.')[1], 'base64').toString()).email : '',
+      email: emailFromIdToken(tok.id_token),
       calendarId: keep?.calendarId,
       shown: keep?.shown ?? null,
       pushTasks: keep?.pushTasks ?? true,
@@ -219,20 +167,10 @@ export class GoogleCalendar {
 
   /* ---------- HTTP ---------- */
   private async tokenRequest(body: Record<string, string>): Promise<any> {
-    let res: Response
     try {
-      res = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams(body).toString(),
-        signal: AbortSignal.timeout(20000)
-      })
-    } catch {
-      throw new GoogleError('Can’t reach Google. Check your connection.')
-    }
-    const json = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      if (json.error === 'invalid_grant' && body.grant_type === 'refresh_token') {
+      return await tokenRequest(body)
+    } catch (e) {
+      if ((e as any)?.code === 'invalid_grant' && body.grant_type === 'refresh_token') {
         // Usually: access was removed, or the OAuth app is in "Testing" (7-day tokens).
         if (this.cfg) {
           this.cfg.refreshToken = undefined
@@ -241,10 +179,8 @@ export class GoogleCalendar {
         }
         throw new GoogleError(this.cfg?.error ?? 'Google ended access.')
       }
-      if (json.error === 'invalid_client') throw new GoogleError('Google didn’t accept that client ID or secret. Check them and try again.')
-      throw new GoogleError(json.error_description || json.error || `Google refused the sign-in (${res.status}).`)
+      throw new GoogleError(e instanceof Error ? e.message : 'Google refused the sign-in.')
     }
-    return json
   }
 
   private async token(): Promise<string> {

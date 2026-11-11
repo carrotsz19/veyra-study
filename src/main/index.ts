@@ -10,6 +10,7 @@ import { AiError, AiService } from './ai'
 import { LocalAi, LocalAiError } from './localai'
 import { GroupClient, GroupError } from './group'
 import { FileError, Files, registerFileScheme } from './files'
+import { DriveError, GoogleDrive } from './drive'
 
 // Dev checks: run on a separate profile (sign-in, settings and data).
 if (process.env['VEYRA_USERDATA']) app.setPath('userData', process.env['VEYRA_USERDATA'])
@@ -23,6 +24,7 @@ let google: GoogleCalendar | null = null
 let feeds: IcalFeeds | null = null
 let ai: AiService | null = null
 let group: GroupClient | null = null
+let drive: GoogleDrive | null = null
 const localAi = new LocalAi()
 const files = new Files(() => (accounts ? accounts.folder() : null))
 app.on('will-quit', () => localAi.stop())
@@ -39,6 +41,7 @@ function openGoogle(): void {
     (id) => (id ? ((db().list('subject') as Rec<'subject'>[]).find((s) => s.id === id)?.data.name ?? null) : null)
   )
   google.schedulePush(5000)
+  drive = new GoogleDrive(folder ? join(accountDir(folder), 'drive.bin') : join(app.getPath('userData'), 'drive-local.bin'))
   group = new GroupClient(folder ? join(accountDir(folder), 'group.bin') : join(app.getPath('userData'), 'group-local.bin'), () => accounts.credentials())
   // Connect in the background so Group work is ready when it's opened.
   if (folder) void group.connect()
@@ -54,6 +57,8 @@ function openStore(path: string): void {
   ai = null
   group?.dispose()
   group = null
+  drive?.dispose()
+  drive = null
   store?.close()
   store = path ? new Store(path) : null
   if (store && accounts) openGoogle()
@@ -67,7 +72,7 @@ const friendly = async <T>(fn: () => Promise<T>): Promise<T> => {
   try {
     return await fn()
   } catch (e) {
-    throw new Error(e instanceof ApiError || e instanceof GoogleError || e instanceof IcalError || e instanceof AiError || e instanceof LocalAiError || e instanceof FileError ? e.message : 'Something went wrong. Try again.')
+    throw new Error(e instanceof ApiError || e instanceof GoogleError || e instanceof IcalError || e instanceof AiError || e instanceof LocalAiError || e instanceof FileError || e instanceof DriveError ? e.message : 'Something went wrong. Try again.')
   }
 }
 
@@ -128,6 +133,21 @@ app.whenReady().then(() => {
   setInterval(() => google?.schedulePush(0), 15 * 60 * 1000)
 
   files.handleProtocol()
+  const gdrive = (): GoogleDrive => {
+    if (!drive) throw new DriveError('Google Drive isn’t ready yet.')
+    return drive
+  }
+  ipcMain.handle('drive:state', () => friendly(async () => gdrive().state()))
+  ipcMain.handle('drive:connect', () => friendly(() => gdrive().connect()))
+  ipcMain.handle('drive:disconnect', () => friendly(async () => gdrive().disconnect()))
+  ipcMain.handle('drive:setBackup', (_e, on: boolean) => friendly(async () => gdrive().setBackup(!!on)))
+  ipcMain.handle('drive:resetBackup', () => friendly(async () => gdrive().resetBackup()))
+  ipcMain.handle('drive:saveDoc', (_e, noteId: string, title: string, html: string) =>
+    friendly(() => gdrive().saveDoc(String(noteId), String(title ?? ''), String(html ?? '').slice(0, 5_000_000)))
+  )
+  ipcMain.handle('drive:backup', (_e, list: unknown, through: number) =>
+    friendly(() => gdrive().backupNotes(Array.isArray(list) ? list.filter((f) => f && typeof f.id === 'string' && typeof f.markdown === 'string') : [], Number(through) || 0))
+  )
   ipcMain.handle('files:pick', () => friendly(() => files.pick()))
   ipcMain.handle('files:fromPaths', (_e, paths: string[]) => friendly(async () => files.fromPaths(Array.isArray(paths) ? paths : [])))
   ipcMain.handle('files:fromBytes', (_e, name: string, mime: string, bytes: Uint8Array) => friendly(async () => files.fromBytes(name, mime, bytes)))

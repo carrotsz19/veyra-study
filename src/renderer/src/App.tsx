@@ -21,6 +21,7 @@ import { Stats } from './views/Stats'
 import { SubjectView } from './views/SubjectView'
 import { Groups } from './views/Groups'
 import { prefetchGroups } from './data/groups'
+import { startDriveBackup } from './data/drive'
 
 function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const { items: subjects } = useRecords('subject')
@@ -174,6 +175,8 @@ function Shell() {
   const signedIn = useAccount().state.mode === 'account'
   // Group work loads in the background, so the tab opens ready.
   useEffect(() => (signedIn ? prefetchGroups() : undefined), [signedIn])
+  // Notes back up to Google Drive (when it's connected and backup is on).
+  useEffect(() => startDriveBackup(), [])
 
   useEffect(() => {
     if (!ready || route) return

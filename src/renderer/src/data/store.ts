@@ -10,6 +10,11 @@ const backend: VeyraDb = window.veyra.db
 type Listener = (kind: Kind) => void
 const listeners = new Set<Listener>()
 const emit = (kind: Kind): void => listeners.forEach((l) => l(kind))
+/** Runs whenever records of any kind are saved or removed here. */
+export const onRecordsChanged = (l: Listener): (() => void) => {
+  listeners.add(l)
+  return () => void listeners.delete(l)
+}
 
 export const db = {
   list: <K extends Kind>(kind: K) => backend.list(kind),

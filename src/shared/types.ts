@@ -361,3 +361,37 @@ export interface FilesApi {
   reveal(id: string): Promise<void>
   pathFor(file: File): string
 }
+
+/* ---------- Google Drive ---------- */
+export interface DriveState {
+  builtIn: boolean
+  connected: boolean
+  email: string
+  /** Back up notes to Drive automatically. */
+  backup: boolean
+  /** Note changes up to here (updatedAt) are backed up. */
+  backupThrough: number
+  backedUp: number
+  lastBackup?: number
+  error?: string
+  /** The file picker is set up (Open from Drive). */
+  canPick: boolean
+}
+
+export interface DriveBackupFile {
+  id: string
+  name: string
+  markdown: string
+  updatedAt: number
+  deleted: boolean
+}
+
+export interface DriveApi {
+  state(): Promise<DriveState>
+  connect(): Promise<DriveState>
+  disconnect(): Promise<DriveState>
+  setBackup(on: boolean): Promise<DriveState>
+  saveDoc(noteId: string, title: string, html: string): Promise<{ url: string }>
+  backup(files: DriveBackupFile[], through: number): Promise<DriveState & { uploaded: number; removed: number }>
+  resetBackup(): Promise<DriveState>
+}

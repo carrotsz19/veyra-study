@@ -242,6 +242,8 @@ export class Accounts {
       }
       const g = join(dir(), 'google-local.bin')
       if (existsSync(g)) renameSync(g, join(accountDir(folder), 'google.bin'))
+      const d = join(dir(), 'drive-local.bin')
+      if (existsSync(d)) renameSync(d, join(accountDir(folder), 'drive.bin'))
       const files = join(dir(), 'attachments')
       if (existsSync(files) && !existsSync(join(accountDir(folder), 'attachments'))) renameSync(files, join(accountDir(folder), 'attachments'))
       moved = true
