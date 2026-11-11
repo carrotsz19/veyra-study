@@ -204,24 +204,11 @@ export class GroupClient {
    */
   async deadlines(fromIso: string, toIso: string): Promise<GoogleEvent[]> {
     if (!this.credentials() || !this.saved.session) return []
+    // Never hold up Calendar or Today for long: wait up to 3 s, then show what's cached.
     if (Date.now() - this.datedAt > 15000) {
-      try {
-        const { groups } = (await this.call('GET', '/groups')) as { groups: Group[] }
-        for (const id of [...this.dated.keys()]) if (!groups.some((g) => g.id === id)) this.dated.delete(id)
-        for (const g of groups) {
-          const c = this.dated.get(g.id) ?? { seq: 0, group: g, items: new Map() }
-          c.group = g
-          const r = (await this.call('GET', `/groups/${encodeURIComponent(g.id)}/items?since=${c.seq}`)) as { items: GroupItem[]; seq: number }
-          for (const it of r.items) {
-            if (it.deleted || (it.kind !== 'task' && it.kind !== 'event')) c.items.delete(it.id)
-            else c.items.set(it.id, it)
-          }
-          c.seq = r.seq
-          this.dated.set(g.id, c)
-        }
-        this.datedAt = Date.now()
-      } catch {
-        /* offline: use what we have */
+      if (!this.refreshing) {
+        this.refreshing = this.refreshDated().finally(() => (this.refreshing = null))
+        await Promise.race([this.refreshing, new Promise((r) => setTimeout(r, 3000))])
       }
     }
     const from = fromIso.slice(0, 10)
@@ -250,6 +237,29 @@ export class GroupClient {
       }
     }
     return out
+  }
+
+  private refreshing: Promise<void> | null = null
+  private async refreshDated(): Promise<void> {
+    try {
+      const { groups } = (await this.call('GET', '/groups')) as { groups: Group[] }
+      for (const id of [...this.dated.keys()]) if (!groups.some((g) => g.id === id)) this.dated.delete(id)
+      for (const g of groups) {
+        const c = this.dated.get(g.id) ?? { seq: 0, group: g, items: new Map() }
+        c.group = g
+        const r = (await this.call('GET', `/groups/${encodeURIComponent(g.id)}/items?since=${c.seq}`)) as { items: GroupItem[]; seq: number }
+        for (const it of r.items) {
+          if (it.deleted || (it.kind !== 'task' && it.kind !== 'event')) c.items.delete(it.id)
+          else c.items.set(it.id, it)
+        }
+        c.seq = r.seq
+        this.dated.set(g.id, c)
+      }
+      this.datedAt = Date.now()
+    } catch {
+      // Offline: keep what we have and don't try again for a minute.
+      this.datedAt = Date.now() + 45000
+    }
   }
 
   /** Long-poll loop: tells the UI when anything in your groups changes. */

@@ -58,6 +58,11 @@ wrangler(['secret', 'put', 'SIGNING_KEY'], env.SIGNING_KEY)
 wrangler(['secret', 'put', 'RELAY_SECRET'], env.RELAY_SECRET)
 
 if (url) env.RELAY_URL = url
+else if (!env.RELAY_URL) {
+  writeFileSync(ENV, Object.entries(env).map(([k, v]) => `${k}=${v}`).join('\n') + '\n')
+  console.error('\nThe relay deployed, but its address wasn’t in wrangler’s output. Add it to server/.env as\nRELAY_URL=https://veyra-study-relay.<your-subdomain>.workers.dev  (shown above), or the phone can’t publish its address.')
+  process.exit(1)
+}
 writeFileSync(ENV, Object.entries(env).map(([k, v]) => `${k}=${v}`).join('\n') + '\n')
 
 console.log(`
