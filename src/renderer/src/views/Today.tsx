@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { addDays, format, formatDistanceToNowStrict, startOfDay, subDays } from 'date-fns'
 import {
   ArrowDown, ArrowUp, BarChart3, CalendarClock, CheckCircle2, Flame, GripVertical, LayoutGrid, ListTodo, NotebookPen,
@@ -47,6 +47,45 @@ const DEFS: Record<WidgetId, WidgetDef> = {
   quickadd: { title: 'Quick add', description: 'Type a task and press Enter.', icon: Sparkles, sizes: ['m', 'l', 'xl'], defaultSize: 'xl' }
 }
 const SIZE_LABEL: Record<WidgetSize, string> = { s: 'Small', m: 'Medium', l: 'Large', xl: 'Full width' }
+
+/** Columns each size takes on the 6-column page; narrow windows only use halves and full rows. */
+const SPAN: Record<WidgetSize, number> = { s: 2, m: 3, l: 4, xl: 6 }
+const NARROW_SPAN: Record<WidgetSize, number> = { s: 3, m: 3, l: 6, xl: 6 }
+
+/**
+ * Splits the layout into rows, strictly in order: a widget starts a new row
+ * when it doesn't fit in what's left of the current one. Each row then fills
+ * the full width (widgets grow in proportion to their size), so there are
+ * never gaps, and nothing moves out of the order you chose.
+ */
+function toRows(layout: WidgetSlot[], narrow: boolean): { slot: WidgetSlot; index: number; span: number }[][] {
+  const rows: { slot: WidgetSlot; index: number; span: number }[][] = []
+  let row: { slot: WidgetSlot; index: number; span: number }[] = []
+  let used = 0
+  layout.forEach((slot, index) => {
+    const span = (narrow ? NARROW_SPAN : SPAN)[slot.size]
+    if (used + span > 6 && row.length) {
+      rows.push(row)
+      row = []
+      used = 0
+    }
+    row.push({ slot, index, span })
+    used += span
+  })
+  if (row.length) rows.push(row)
+  return rows
+}
+
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 1100px)').matches)
+  useEffect(() => {
+    const mq = matchMedia('(max-width: 1100px)')
+    const on = () => setNarrow(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return narrow
+}
 const GOAL_C = 2 * Math.PI * 23
 
 function greeting(): string {
@@ -95,14 +134,14 @@ function useTodayData() {
 type TodayData = ReturnType<typeof useTodayData>
 
 /* ---------- the widgets ---------- */
-function Card({ title, action, children, flush }: { title: string; action?: ReactNode; children: ReactNode; flush?: boolean }) {
+function Card({ title, action, children, flush, center }: { title: string; action?: ReactNode; children: ReactNode; flush?: boolean; center?: boolean }) {
   return (
     <section className="w-card" aria-label={title}>
       <header className="w-head">
         <h2>{title}</h2>
         {action}
       </header>
-      <div className={flush ? 'w-body flush' : 'w-body'}>{children}</div>
+      <div className={`w-body ${flush ? 'flush' : ''} ${center ? 'center' : ''}`}>{children}</div>
     </section>
   )
 }
@@ -196,7 +235,7 @@ function FocusWidget({ d }: { d: TodayData }) {
   const { go } = useNav()
   const goalPct = d.goal ? Math.min(100, Math.round((d.studiedToday / d.goal) * 100)) : 0
   return (
-    <Card title="Focus">
+    <Card title="Focus" center>
       <div className="between">
         {d.goal > 0 && <GoalRing pct={goalPct} />}
         <div className="grow">
@@ -255,7 +294,7 @@ function GoalWidget({ d }: { d: TodayData }) {
   const { go } = useNav()
   if (!d.goal)
     return (
-      <Card title="Daily goal">
+      <Card title="Daily goal" center>
         <p className="w-empty" style={{ padding: 0 }}>
           No daily goal set.{' '}
           <button
@@ -273,7 +312,7 @@ function GoalWidget({ d }: { d: TodayData }) {
   const pct = Math.min(100, Math.round((d.studiedToday / d.goal) * 100))
   const left = Math.max(0, d.goal - d.studiedToday)
   return (
-    <Card title="Daily goal">
+    <Card title="Daily goal" center>
       <div className="row" style={{ gap: 16 }}>
         <GoalRing pct={pct} size={84} />
         <div>
@@ -309,7 +348,7 @@ function WeekWidget({ d }: { d: TodayData }) {
 
 function StreakWidget({ d }: { d: TodayData }) {
   return (
-    <Card title="Streak">
+    <Card title="Streak" center>
       <div className="row" style={{ gap: 12 }}>
         <span className="streak-flame" data-on={d.streak > 0}>
           <Flame size={26} />
@@ -407,6 +446,7 @@ export function Today({ startEditing = false }: { startEditing?: boolean }) {
   const [dragId, setDragId] = useState<WidgetId | null>(null)
   const [overId, setOverId] = useState<WidgetId | 'end' | null>(null)
   const layout = s.todayLayout
+  const narrow = useNarrow()
   const firstName = (s.name.trim() || user?.displayName || '').split(/\s+/)[0]
   const hidden = (Object.keys(DEFS) as WidgetId[]).filter((id) => !layout.some((w) => w.id === id))
 
@@ -460,11 +500,14 @@ export function Today({ startEditing = false }: { startEditing?: boolean }) {
       {editing && <p className="w-hint">Drag widgets to move them, pick a size, or remove them. Add more from the list below.</p>}
 
       <div className="w-grid">
-        {layout.map((w, i) => {
+        {toRows(layout, narrow).map((row) => (
+        <div className="w-row" key={row.map((x) => x.slot.id).join()}>
+        {row.map(({ slot: w, index: i, span }) => {
           const def = DEFS[w.id]
           return (
             <div
               key={w.id}
+              style={{ flexGrow: span, flexBasis: 0 }}
               className={`w-slot size-${w.size} ${dragId === w.id ? 'dragging' : ''} ${overId === w.id && dragId !== w.id ? 'over' : ''}`}
               draggable={editing}
               onDragStart={(e) => {
@@ -525,6 +568,8 @@ export function Today({ startEditing = false }: { startEditing?: boolean }) {
             </div>
           )
         })}
+        </div>
+        ))}
         {editing && dragId && (
           <div
             className={`w-slot size-xl w-dropend ${overId === 'end' ? 'over' : ''}`}
