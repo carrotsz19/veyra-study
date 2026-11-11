@@ -239,3 +239,107 @@ export interface LocalAiProgress {
   progress: number | null
   detail: string
 }
+
+/* ---------- Group work (the group server on the owner's phone) ---------- */
+export interface GroupUser {
+  username: string
+  displayName: string
+  photoUrl: string
+  verified: boolean
+}
+
+export interface GroupStatus {
+  /** idle: not tried yet; signed-out: no Veyra account; offline: server unreachable. */
+  state: 'idle' | 'signed-out' | 'connecting' | 'online' | 'offline'
+  me: GroupUser | null
+  error: string
+}
+
+export interface GroupMember extends GroupUser {
+  role: 'owner' | 'member'
+  joinedAt: number
+}
+
+export interface Group {
+  id: string
+  name: string
+  color: string
+  owner: string
+  role: 'owner' | 'member'
+  /** Only the owner sees it. */
+  inviteCode?: string
+  members: GroupMember[]
+  createdAt: number
+}
+
+export interface GroupTask {
+  title: string
+  details: string
+  assignee: string | null
+  due: string | null
+  done: boolean
+  doneBy: string | null
+  doneAt: number | null
+  priority: Priority
+}
+export interface GroupMessage {
+  text: string
+}
+export interface GroupNote {
+  title: string
+  icon: string
+  content: unknown
+  excerpt: string
+}
+export interface GroupEvent {
+  title: string
+  date: string | null
+  time: string | null
+  details: string
+}
+export interface GroupItemData {
+  task: GroupTask
+  message: GroupMessage
+  note: GroupNote
+  event: GroupEvent
+}
+export type GroupItemKind = keyof GroupItemData
+
+export interface GroupItem<K extends GroupItemKind = GroupItemKind> {
+  id: string
+  kind: K
+  data: GroupItemData[K]
+  rev: number
+  createdBy: string
+  createdAt: number
+  updatedBy: string
+  updatedAt: number
+  deleted: boolean
+  seq: number
+}
+
+export interface GroupInvite {
+  id: string
+  createdAt: number
+  group: { id: string; name: string; color: string }
+  invitedBy: GroupUser
+}
+
+export interface GroupPreview {
+  id: string
+  name: string
+  color: string
+  owner: GroupUser
+  memberCount: number
+  alreadyIn: boolean
+}
+
+export interface GroupApi {
+  status(): Promise<GroupStatus>
+  connect(): Promise<GroupStatus>
+  disconnect(): Promise<GroupStatus>
+  /** One request to the group server, e.g. callRaw('GET', '/groups'). Never throws; see groupCall in the UI. */
+  callRaw(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<{ ok: true; v: any } | { ok: false; error: string; status: number; extra?: any }>
+  onStatus(cb: (s: GroupStatus) => void): () => void
+  onChanged(cb: (e: { seq: number }) => void): () => void
+}

@@ -137,7 +137,7 @@ function FormatBar({ editor }: { editor: Editor }) {
 
 
 /* ---------- one rich-text area ---------- */
-function Area({
+export function Area({
   content,
   placeholder,
   slash = true,

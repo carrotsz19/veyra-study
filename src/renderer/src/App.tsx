@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { NavId, ThemeMode } from '@shared/settings'
 import { SettingsProvider, useSettings } from './data/settings'
 import { phaseLabel } from './components/timer'
-import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Monitor, Moon, NotebookPen, Plus, Settings as SettingsIcon, Sun, Timer } from 'lucide-react'
+import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Monitor, Moon, NotebookPen, Plus, Settings as SettingsIcon, Sun, Timer, Users } from 'lucide-react'
 import { useRecords } from './data/store'
 import { clock, isOverdue } from './lib/dates'
 import { sortSubjects } from './lib/subjects'
@@ -19,6 +19,7 @@ import { Calendar } from './views/Calendar'
 import { TimerView } from './views/TimerView'
 import { Stats } from './views/Stats'
 import { SubjectView } from './views/SubjectView'
+import { Groups } from './views/Groups'
 
 function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const { items: subjects } = useRecords('subject')
@@ -39,6 +40,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
     tasks: ['Tasks', ListTodo, open ? String(open) : undefined],
     notes: ['Notes', NotebookPen],
     calendar: ['Calendar', CalendarDays],
+    groups: ['Group work', Users],
     timer: ['Focus timer', Timer],
     stats: ['Stats', BarChart3]
   }
@@ -137,6 +139,8 @@ function Screen({ route }: { route: Route }) {
       return <Notes noteId={route.noteId} />
     case 'calendar':
       return <Calendar />
+    case 'groups':
+      return <Groups />
     case 'timer':
       return <TimerView />
     case 'stats':
@@ -160,7 +164,7 @@ function MovedNotice() {
   return null
 }
 
-const ROUTES = ['today', 'tasks', 'notes', 'calendar', 'timer', 'stats', 'settings']
+const ROUTES = ['today', 'tasks', 'notes', 'calendar', 'groups', 'timer', 'stats', 'settings']
 
 /** The app once settings are known: picks the start screen, remembers the last one. */
 function Shell() {

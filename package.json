@@ -11,7 +11,8 @@
     "start": "electron-vite preview",
     "dist": "npm run build && electron-builder --win",
     "test": "node --test tests/group.test.mjs",
-    "group-server": "node server/group-server.mjs"
+    "group-server": "node server/group-server.mjs",
+    "relay:setup": "node relay/setup.mjs"
   },
   "build": {
     "appId": "app.veyra.study",

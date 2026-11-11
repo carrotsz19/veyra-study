@@ -68,7 +68,25 @@ const aiApi = {
   }
 }
 
+const groupApi = {
+  status: () => ipcRenderer.invoke('group:status'),
+  connect: () => ipcRenderer.invoke('group:connect'),
+  disconnect: () => ipcRenderer.invoke('group:disconnect'),
+  /** Answers { ok, v } or { ok: false, error, status, extra }; the UI's wrapper turns that into a throw. */
+  callRaw: (method: string, path: string, body?: unknown) => ipcRenderer.invoke('group:call', method, path, body),
+  onStatus: (cb: (s: unknown) => void) => {
+    const h = (_: unknown, s: unknown) => cb(s)
+    ipcRenderer.on('group:status', h)
+    return () => ipcRenderer.removeListener('group:status', h)
+  },
+  onChanged: (cb: (e: unknown) => void) => {
+    const h = (_: unknown, e: unknown) => cb(e)
+    ipcRenderer.on('group:changed', h)
+    return () => ipcRenderer.removeListener('group:changed', h)
+  }
+}
+
 /** Saves right away, blocking: only for the moment the window closes. */
 const saveNow = (kind: string, data: unknown, id: string) => ipcRenderer.sendSync('db:putSync', kind, data, id)
 
-contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, ai: aiApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })
+contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, ai: aiApi, group: groupApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })

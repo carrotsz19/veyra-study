@@ -1,0 +1,71 @@
+/* Group work */
+.grp-status { display: flex; align-items: center; gap: 12px; color: var(--dim); }
+.grp-offline { color: var(--ink); }
+.grp-offline > svg { color: var(--dim); flex-shrink: 0; }
+.grp-invites { margin-bottom: 14px; border: 1px solid var(--accent-soft); }
+
+.grp-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .grp-layout { grid-template-columns: 200px minmax(0, 1fr); } }
+.grp-list { position: sticky; top: 0; }
+.grp-list .ig-row + .ig-row::before { left: 56px; }
+
+.grp-swatch {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  display: inline-grid; place-items: center; color: #fff; font-weight: 800; font-size: 13px;
+}
+.grp-swatch.lg { width: 40px; height: 40px; border-radius: 12px; font-size: 17px; }
+.grp-invites .grp-swatch { width: 12px; height: 12px; border-radius: 99px; }
+
+.grp-panel { min-width: 0; }
+.grp-head { margin-bottom: 14px; flex-wrap: wrap; }
+.grp-name { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -0.01em; text-transform: none; color: var(--ink); }
+
+/* chat */
+.grp-chat { display: flex; flex-direction: column; padding: 0; height: calc(100vh - 230px); min-height: 360px; }
+.grp-msgs { flex: 1; overflow-y: auto; padding: 14px 16px 6px; }
+.grp-day { text-align: center; font-size: 11.5px; font-weight: 700; color: var(--dim); margin: 14px 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+.grp-msg { display: flex; align-items: flex-end; gap: 8px; margin-top: 2px; position: relative; }
+.grp-msg.first { margin-top: 10px; }
+.grp-msg-av { width: 30px; flex-shrink: 0; }
+.grp-msg-body { max-width: min(560px, 75%); display: flex; flex-direction: column; gap: 3px; }
+.grp-bubble {
+  background: var(--panel-2); padding: 7px 12px; border-radius: 14px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.4;
+}
+.grp-msg.mine { flex-direction: row-reverse; }
+.grp-msg.mine .grp-msg-av { display: none; }
+.grp-msg.mine .grp-msg-body { align-items: flex-end; }
+.grp-msg.mine .grp-bubble { background: var(--accent); color: var(--on-tint); }
+.grp-msg-del { opacity: 0; width: 26px; height: 26px; }
+.grp-msg:hover .grp-msg-del, .grp-msg-del:focus-visible { opacity: 1; }
+.grp-compose { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line); align-items: flex-end; }
+.grp-compose textarea { resize: none; min-height: 38px; max-height: 140px; field-sizing: content; }
+
+/* notes */
+.grp-notes { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 14px; align-items: start; }
+.grp-note-list .ig-row + .ig-row::before { left: 14px; }
+.grp-note { min-width: 0; }
+.grp-note-title { border: 0; font-size: 22px; font-weight: 800; padding: 4px 0; background: transparent; }
+.grp-note-body { margin-top: 8px; }
+.grp-note-body .tiptap { min-height: 280px; }
+.grp-conflict { background: var(--bad-soft); border-radius: var(--r-control); padding: 10px 12px; margin-bottom: 12px; }
+
+/* deadlines */
+.grp-dl-form { display: grid; grid-template-columns: minmax(0, 1fr) 160px 120px auto; gap: 8px; align-items: center; }
+.grp-date {
+  width: 40px; flex-shrink: 0; text-align: center; line-height: 1.05;
+  background: var(--panel-2); border-radius: 9px; padding: 5px 0;
+}
+.grp-date b { display: block; font-size: 16px; }
+.grp-date span { font-size: 10.5px; font-weight: 700; text-transform: uppercase; color: var(--dim); }
+.grp-past { margin-top: 16px; }
+.grp-past summary { cursor: pointer; }
+
+/* members */
+.grp-members { display: flex; flex-direction: column; gap: 12px; }
+.grp-members .card + .card { margin-top: 0; }
+.grp-verified { width: 15px; height: 15px; border-radius: 99px; background: var(--accent); color: var(--on-tint); display: inline-grid; place-items: center; }
+.grp-found { margin-top: 8px; box-shadow: none; border: 1px solid var(--line); }
+.grp-code { font-size: 20px; font-weight: 800; letter-spacing: 0.18em; padding: 4px 12px; background: var(--panel-2); border-radius: var(--r-control); font-variant-numeric: tabular-nums; }
+.grp-code-input { font-size: 20px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 700; }
+.grp-colors { gap: 8px; flex-wrap: wrap; }
+.grp-preview { gap: 12px; margin-bottom: 8px; }

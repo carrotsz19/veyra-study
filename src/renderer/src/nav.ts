@@ -5,6 +5,7 @@ export type Route =
   | { name: 'tasks' }
   | { name: 'notes'; noteId?: string }
   | { name: 'calendar' }
+  | { name: 'groups' }
   | { name: 'timer' }
   | { name: 'stats' }
   | { name: 'settings' }

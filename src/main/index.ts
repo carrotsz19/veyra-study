@@ -8,6 +8,7 @@ import { GoogleCalendar, GoogleError } from './gcal'
 import { IcalError, IcalFeeds } from './ical'
 import { AiError, AiService } from './ai'
 import { LocalAi, LocalAiError } from './localai'
+import { GroupClient, GroupError } from './group'
 
 // Dev checks: run on a separate profile (sign-in, settings and data).
 if (process.env['VEYRA_USERDATA']) app.setPath('userData', process.env['VEYRA_USERDATA'])
@@ -17,6 +18,7 @@ let accounts: Accounts
 let google: GoogleCalendar | null = null
 let feeds: IcalFeeds | null = null
 let ai: AiService | null = null
+let group: GroupClient | null = null
 const localAi = new LocalAi()
 app.on('will-quit', () => localAi.stop())
 
@@ -32,6 +34,7 @@ function openGoogle(): void {
     (id) => (id ? ((db().list('subject') as Rec<'subject'>[]).find((s) => s.id === id)?.data.name ?? null) : null)
   )
   google.schedulePush(5000)
+  group = new GroupClient(folder ? join(accountDir(folder), 'group.bin') : join(app.getPath('userData'), 'group-local.bin'), () => accounts.credentials())
 }
 const gcal = (): GoogleCalendar => google!
 
@@ -42,6 +45,8 @@ function openStore(path: string): void {
   feeds = null
   ai?.dispose()
   ai = null
+  group?.dispose()
+  group = null
   store?.close()
   store = path ? new Store(path) : null
   if (store && accounts) openGoogle()
@@ -163,8 +168,8 @@ app.whenReady().then(() => {
     // Dev checks: VEYRA_FAKE_GOOGLE=1 shows sample events without a Google account.
     process.env['VEYRA_FAKE_GOOGLE']
       ? fakeEvents()
-      : Promise.all([gcal().events(from, to), feeds?.events(from, to) ?? { events: [], error: undefined }]).then(([g, f]) => ({
-          events: [...g.events, ...f.events].sort((a, b) => (a.start < b.start ? -1 : 1)),
+      : Promise.all([gcal().events(from, to), feeds?.events(from, to) ?? { events: [], error: undefined }, group?.deadlines(from, to) ?? []]).then(([g, f, shared]) => ({
+          events: [...g.events, ...f.events, ...shared].sort((a, b) => (a.start < b.start ? -1 : 1)),
           error: g.error ?? f.error
         }))
   )
@@ -186,6 +191,32 @@ app.whenReady().then(() => {
     void ai!.run(id, req, e.sender)
   })
   ipcMain.handle('ai:cancel', (_e, id: string) => ai?.cancel(id))
+  // Group work. Calls answer { ok, v } or { ok: false, error, status, extra } so the
+  // UI keeps the server's message and details (a note's newer copy on 409).
+  const idle = { state: 'idle', me: null, error: '' }
+  ipcMain.handle('group:status', (e) => {
+    group?.watch(e.sender)
+    return group?.getStatus() ?? idle
+  })
+  ipcMain.handle('group:connect', (e) => {
+    group?.watch(e.sender)
+    return group?.connect() ?? idle
+  })
+  ipcMain.handle('group:disconnect', () => {
+    group?.disconnect()
+    return group?.getStatus() ?? idle
+  })
+  ipcMain.handle('group:call', async (_e, method: string, path: string, body?: unknown) => {
+    if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || typeof path !== 'string' || !/^\/[A-Za-z0-9\-_/?=&%.@]*$/.test(path) || path.includes('..') || path.startsWith('/session') || path.startsWith('/poll'))
+      return { ok: false, error: 'That isn’t a group request.', status: 400 }
+    try {
+      if (!group) throw new GroupError('Group work isn’t ready yet.')
+      return { ok: true, v: await group.call(method, path, body) }
+    } catch (e) {
+      if (e instanceof GroupError) return { ok: false, error: e.message, status: e.status, extra: e.extra }
+      return { ok: false, error: 'Something went wrong. Try again.', status: 0 }
+    }
+  })
   ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('data:openFolder', () => shell.openPath(dirname(db().path)))
   ipcMain.handle('data:export', async () => {

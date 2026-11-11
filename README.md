@@ -72,6 +72,47 @@ The client comes from `google-client.json` in the project folder: the JSON downl
 
 **Calendars by link (read-only, no sign-in).** Paste a calendar's "Secret address in iCal format", or any `.ics` link. Repeating events, moved or cancelled occurrences and time zones are handled by `ical.js`. Links are stored encrypted.
 
+## Group work
+
+Shared tasks, chat, notes and deadlines live on a small server running on a
+spare Android phone (Termux). The phone gets a free Cloudflare quick-tunnel
+address that changes when it restarts, so it publishes the address to a tiny
+relay Worker (`relay/`), and the app looks it up there. The relay also checks
+who you are with Veyra and hands the phone a signed 15-minute pass, so your
+Veyra session never reaches the phone.
+
+**PC, once:**
+
+```
+npx wrangler login
+npm run relay:setup
+```
+
+This makes the secrets on your PC, writes `server/.env` (git ignores it),
+creates the relay's storage, deploys the relay and gives it the secrets.
+
+**Phone (Termux, from F-Droid, plus Termux:Boot):**
+
+```
+pkg install -y nodejs cloudflared
+termux-setup-storage
+mkdir -p ~/veyra-group ~/.termux/boot
+```
+
+Copy `server/group-server.mjs`, `server/.env` and `server/start-phone.sh` to
+the phone's Download folder, then:
+
+```
+cp ~/storage/downloads/group-server.mjs ~/storage/downloads/.env ~/veyra-group/
+cp ~/storage/downloads/start-phone.sh ~/.termux/boot/ && chmod +x ~/.termux/boot/start-phone.sh
+~/.termux/boot/start-phone.sh &
+```
+
+Delete `.env` from the Download folder afterwards. `tail ~/veyra-group/server.log`
+should show the tunnel address being published.
+
+Testing on the PC: `npm test` runs the server and relay tests; `TUNNEL=off npm run group-server` runs a local server.
+
 ## Layout
 
 ```

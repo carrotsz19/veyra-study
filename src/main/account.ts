@@ -298,6 +298,16 @@ export class Accounts {
     return this.state()
   }
 
+  /**
+   * Main process only (never sent to the UI): the handle and the Cookie
+   * header, so the group relay can confirm who this is with Veyra.
+   */
+  credentials(): { handle: string; cookie: string } | null {
+    const s = this.session
+    if (!s) return null
+    return { handle: s.handle, cookie: Object.entries(s.cookies).map(([k, v]) => `${k}=${v}`).join('; ') }
+  }
+
   /** For other services that are per account (Google Calendar). */
   folder(): string | null {
     return this.session?.folder ?? null

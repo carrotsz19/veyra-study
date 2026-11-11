@@ -1,7 +1,7 @@
 import type { NoteFont, NoteTemplate, Priority } from './types'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
-export type NavId = 'today' | 'tasks' | 'notes' | 'calendar' | 'timer' | 'stats'
+export type NavId = 'today' | 'tasks' | 'notes' | 'calendar' | 'groups' | 'timer' | 'stats'
 export type StartScreen = NavId | 'last'
 export type TaskSort = 'due' | 'priority' | 'created' | 'title'
 
@@ -99,6 +99,7 @@ export const NAV_LABELS: Record<NavId, string> = {
   tasks: 'Tasks',
   notes: 'Notes',
   calendar: 'Calendar',
+  groups: 'Group work',
   timer: 'Focus timer',
   stats: 'Stats'
 }
@@ -111,7 +112,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   density: 'comfortable',
   corners: 'soft',
   reduceMotion: false,
-  nav: (['today', 'tasks', 'notes', 'calendar', 'timer', 'stats'] as NavId[]).map((id) => ({ id, visible: true })),
+  nav: (['today', 'tasks', 'notes', 'calendar', 'groups', 'timer', 'stats'] as NavId[]).map((id) => ({ id, visible: true })),
   showCounts: true,
   showSubjectsInSidebar: true,
   showTimerCard: true,
@@ -161,9 +162,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
 /** Defaults filled in for anything missing (older saves, new options). */
 export function withDefaults(s: Partial<AppSettings> | null | undefined): AppSettings {
   const out = { ...DEFAULT_SETTINGS, ...(s ?? {}) }
-  // Keep every nav item, in the saved order, with new ones appended.
-  const saved = (s?.nav ?? []).filter((n) => DEFAULT_SETTINGS.nav.some((d) => d.id === n.id))
-  out.nav = [...saved, ...DEFAULT_SETTINGS.nav.filter((d) => !saved.some((n) => n.id === d.id))]
+  // Keep every nav item in the saved order; new ones go in after the item they follow by default.
+  const nav = (s?.nav ?? []).filter((n, i, all) => DEFAULT_SETTINGS.nav.some((d) => d.id === n.id) && all.findIndex((x) => x.id === n.id) === i)
+  DEFAULT_SETTINGS.nav.forEach((d, i) => {
+    if (nav.some((n) => n.id === d.id)) return
+    const after = i > 0 ? nav.findIndex((n) => n.id === DEFAULT_SETTINGS.nav[i - 1].id) : -1
+    nav.splice(after + 1, 0, { ...d })
+  })
+  out.nav = nav
   // Today's layout: the saved one, or the default built from the older on/off switches.
   const layout = (s?.todayLayout ?? []).filter((w, i, all) => WIDGETS.includes(w.id) && all.findIndex((x) => x.id === w.id) === i)
   out.todayLayout = layout.length ? layout : defaultLayout(out)
