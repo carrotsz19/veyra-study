@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { AiStats } from '@shared/types'
 
 /* =====================================================================
    AI study tools: prompts, a streaming hook, and parsers that turn the
@@ -91,6 +92,7 @@ export function useAiRun() {
   const [text, setText] = useState('')
   const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [error, setError] = useState('')
+  const [stats, setStats] = useState<AiStats | null>(null)
   const idRef = useRef<string | null>(null)
 
   useEffect(
@@ -98,6 +100,7 @@ export function useAiRun() {
       window.veyra.ai.onEvent((e) => {
         if (e.id !== idRef.current) return
         if (e.delta) setText((t) => t + e.delta)
+        if (e.stats) setStats(e.stats)
         if (e.error) {
           setError(e.error)
           setStatus('error')
@@ -113,11 +116,18 @@ export function useAiRun() {
     idRef.current = id
     setText('')
     setError('')
+    setStats(null)
     setStatus('running')
     window.veyra.ai.run(id, req)
   }, [])
   const stop = useCallback(() => {
     if (idRef.current) window.veyra.ai.cancel(idRef.current)
   }, [])
-  return { text, status, error, run, stop }
+  return { text, status, error, stats, run, stop }
+}
+
+/** "11.2 tokens/s · 143 tokens" (with ~ when the count is estimated). */
+export function formatStats(st: AiStats): string {
+  const approx = st.exact ? '' : '~'
+  return `${approx}${st.tps} tokens/s · ${approx}${st.tokens} tokens`
 }

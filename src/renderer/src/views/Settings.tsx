@@ -600,10 +600,12 @@ function AiSettings() {
   const [key, setKey] = useState('')
   const [pullName, setPullName] = useState('')
   const [pulling, setPulling] = useState<{ model: string; status: string; progress: number | null } | null>(null)
+  const [speeds, setSpeeds] = useState<Record<string, number>>({})
   const clean = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
   useEffect(() => {
     window.veyra.ai.state().then(setSt)
+    window.veyra.ai.localStatus().then((s) => setSpeeds(s.measured ?? {}))
     return window.veyra.ai.onPull((e) => setPulling(e))
   }, [])
 
@@ -689,7 +691,7 @@ function AiSettings() {
             </div>
           </Row>
           {models && models.length > 0 && (
-            <Row label="Model" keywords="model local">
+            <Row label="Model" hint={speeds[chosenModel] ? `${speeds[chosenModel]} tokens/s on this computer` : 'Speed shows after its first answer.'} keywords="model local speed tokens">
               <select className="set-select" aria-label="Local model" value={chosenModel} onChange={async (e) => setSt(await window.veyra.ai.set({ model: { provider: 'ollama', model: e.target.value } }))}>
                 {!chosenModel && <option value="">Choose a model</option>}
                 {models.map((m) => (

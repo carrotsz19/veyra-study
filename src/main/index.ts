@@ -25,7 +25,7 @@ function openGoogle(): void {
   const folder = accounts.folder()
   const file = folder ? join(accountDir(folder), 'google.bin') : join(app.getPath('userData'), 'google-local.bin')
   feeds = new IcalFeeds(folder ? join(accountDir(folder), 'ical.bin') : join(app.getPath('userData'), 'ical-local.bin'))
-  ai = new AiService(folder ? join(accountDir(folder), 'ai.bin') : join(app.getPath('userData'), 'ai-local.bin'), () => localAi.ensureRunning())
+  ai = new AiService(folder ? join(accountDir(folder), 'ai.bin') : join(app.getPath('userData'), 'ai-local.bin'), () => localAi.ensureRunning(), (model, tps) => localAi.recordSpeed(model, tps))
   google = new GoogleCalendar(
     file,
     (since) => db().changesSince(since).filter((r) => r.kind === 'task') as Rec<'task'>[],

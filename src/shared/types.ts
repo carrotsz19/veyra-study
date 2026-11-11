@@ -175,8 +175,18 @@ export interface AiState {
   hasKey: Record<Exclude<AiProvider, 'ollama'>, boolean>
 }
 
+export interface AiStats {
+  /** Tokens written in the answer. */
+  tokens: number
+  /** Tokens per second while writing (after the first token). */
+  tps: number
+  /** True when the token count is the provider's own; false when estimated from characters. */
+  exact: boolean
+}
+
 export interface AiEvent {
   id: string
+  stats?: AiStats
   delta?: string
   done?: boolean
   cancelled?: boolean
@@ -204,6 +214,10 @@ export interface LocalModelChoice {
   label: string
   sizeGB: number
   why: string
+  /** Rough tokens per second on this computer, before it has run. */
+  estTps?: [number, number]
+  /** Measured tokens per second, once it has run here. */
+  measuredTps?: number
 }
 
 export interface LocalAiStatus {
@@ -216,6 +230,8 @@ export interface LocalAiStatus {
   choices: LocalModelChoice[]
   freeGB: number
   engineSizeGB: number
+  /** Measured tokens per second by model name, for any model that has run here. */
+  measured: Record<string, number>
 }
 
 export interface LocalAiProgress {

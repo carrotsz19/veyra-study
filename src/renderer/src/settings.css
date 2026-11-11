@@ -250,3 +250,6 @@ main.main.main-settings { padding: 0; overflow: hidden; }
 .ls-group { margin-bottom: calc(26px * var(--dens)); }
 .ls-group .set-footer { padding-top: 8px; }
 .set-result .ls-group { display: none; }
+
+.ls-speed { font-size: 12px; font-weight: 650; color: var(--accent); font-variant-numeric: tabular-nums; }
+.ai-speed { font-variant-numeric: tabular-nums; color: var(--dim); }

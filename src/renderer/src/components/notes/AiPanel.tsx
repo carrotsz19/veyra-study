@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Copy, RotateCcw, Sparkles, Square, X } from 'lucide-react'
 import type { AiState } from '@shared/types'
-import { AI_LABELS, buildPrompt, parseCards, useAiRun, type AiTask } from '../../data/ai'
+import { AI_LABELS, buildPrompt, formatStats, parseCards, useAiRun, type AiTask } from '../../data/ai'
 import { useNav } from '../../nav'
 import { useToast } from '../ui'
 
@@ -21,7 +21,7 @@ export function AiPanel({
   onInsert: (task: AiTask, text: string) => void
   onClose: () => void
 }) {
-  const { text, status, error, run, stop } = useAiRun()
+  const { text, status, error, stats, run, stop } = useAiRun()
   const [cfg, setCfg] = useState<AiState | null>(null)
   const { go } = useNav()
   const [slow, setSlow] = useState(false)
@@ -122,7 +122,10 @@ export function AiPanel({
               </>
             )}
           </footer>
-          <p className="ai-note">AI can be wrong. Check answers against your course material.</p>
+          <p className="ai-note">
+            {stats && status === 'done' && <span className="ai-speed" title="How fast the answer was written">{formatStats(stats)} · </span>}
+            AI can be wrong. Check answers against your course material.
+          </p>
         </>
       )}
     </aside>

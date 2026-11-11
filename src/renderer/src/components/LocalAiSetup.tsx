@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Check, Cpu, Loader2, Sparkles } from 'lucide-react'
 import type { LocalAiProgress, LocalAiStatus } from '@shared/types'
-import { useAiRun } from '../data/ai'
+import { formatStats, useAiRun } from '../data/ai'
 
 const STEPS: [LocalAiProgress['step'], string][] = [
   ['engine', 'Download the AI engine'],
@@ -81,12 +81,18 @@ export function LocalAiSetup({ onReady }: { onReady?: () => void }) {
                   {c.model === st.recommended && <span className="pill accent">Recommended</span>}
                 </span>
                 <span className="ls-why">{c.why}</span>
+                <span className="ls-speed" title={c.measuredTps ? 'Measured on this computer' : 'A rough estimate for this computer; the real speed shows after it runs'}>
+                  {c.measuredTps ? `${c.measuredTps} tokens/s measured` : c.estTps ? `≈ ${c.estTps[0]}–${c.estTps[1]} tokens/s` : ''}
+                </span>
                 <span className="xs tert">
                   {c.model} · {st.models.includes(c.model) ? 'downloaded' : `${c.sizeGB} GB`}
                 </span>
               </button>
             ))}
           </div>
+          <p className="xs tert" style={{ margin: '8px 0 0' }}>
+            Speeds are estimates for this computer until a model has run. A token is about ¾ of a word; reading speed is about 5 tokens/s.
+          </p>
           {tooBig && <p className="ai-error">This computer has {st.hardware.ramGB} GB of memory; this model will be very slow. “Fast” is a better fit.</p>}
           {err && <p className="ai-error">{err}</p>}
           <div className="between" style={{ marginTop: 14 }}>
@@ -130,6 +136,7 @@ export function LocalAiSetup({ onReady }: { onReady?: () => void }) {
           {phase === 'done' && (
             <div className="ls-test">
               <b className="sm">Local AI is ready.</b>
+              {test.stats && test.status === 'done' && <span className="ls-speed">{formatStats(test.stats)} on this computer</span>}
               <div className="sm">{test.text || (test.status === 'running' ? <span className="ai-dots">Loading the model for its first answer (up to a minute)</span> : test.error)}</div>
             </div>
           )}

@@ -54,7 +54,9 @@ export class AiService {
   constructor(
     private file: string,
     /** Starts the local engine if it isn't running (one-click local AI). */
-    private ensureLocal?: () => Promise<void>
+    private ensureLocal?: () => Promise<void>,
+    /** Called with the measured speed after a local answer. */
+    private onLocalSpeed?: (model: string, tps: number) => void
   ) {
     try {
       if (existsSync(file) && safeStorage.isEncryptionAvailable()) this.cfg = { ...this.cfg, ...JSON.parse(safeStorage.decryptString(readFileSync(file))) }
@@ -170,7 +172,24 @@ export class AiService {
 
   /** Streams one answer to the renderer as ai:event {id, delta | done | error}. */
   async run(id: string, req: { system: string; prompt: string }, wc: WebContents): Promise<void> {
-    const send = (msg: Record<string, unknown>) => !wc.isDestroyed() && wc.send('ai:event', { id, ...msg })
+    // Speed: time from the first token to the last, and the token count.
+    let firstAt = 0
+    let chars = 0
+    const sendRaw = (msg: Record<string, unknown>) => !wc.isDestroyed() && wc.send('ai:event', { id, ...msg })
+    const send = (msg: Record<string, unknown>) => {
+      if (typeof msg.delta === 'string') {
+        if (!firstAt) firstAt = Date.now()
+        chars += msg.delta.length
+      }
+      sendRaw(msg)
+    }
+    /** Sends speed stats; without an exact count, estimates ~4 characters per token. */
+    const stats = (tokens?: number, seconds?: number) => {
+      const exact = typeof tokens === 'number' && tokens > 0
+      const n = exact ? tokens! : Math.round(chars / 4)
+      const secs = seconds ?? (firstAt ? (Date.now() - firstAt) / 1000 : 0)
+      if (n > 0 && secs > 0.05) sendRaw({ stats: { tokens: n, tps: Math.round((n / secs) * 10) / 10, exact } })
+    }
     const p = this.cfg.provider
     const ctrl = new AbortController()
     this.running.set(id, ctrl)
@@ -198,6 +217,7 @@ export class AiService {
         }
         const final = await stream.finalMessage()
         if (final.stop_reason === 'refusal') throw new AiError('Claude declined this request.')
+        stats(final.usage?.output_tokens)
         if (final.stop_reason === 'max_tokens') send({ delta: '\n\n(Stopped: the answer was too long.)' })
       } else if (p === 'ollama') {
         await this.local()
@@ -215,8 +235,14 @@ export class AiService {
           const j = JSON.parse(line)
           if (j.error) throw new AiError(String(j.error))
           if (j.message?.content) send({ delta: j.message.content })
+          if (j.done && j.eval_count && j.eval_duration) {
+            const secs = j.eval_duration / 1e9
+            stats(j.eval_count, secs)
+            this.onLocalSpeed?.(model, j.eval_count / secs)
+          }
         }
       } else if (p === 'gemini') {
+        let geminiTokens: number | undefined
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
           method: 'POST',
           signal: ctrl.signal,
@@ -228,20 +254,26 @@ export class AiService {
           if (!line.startsWith('data:')) continue
           const j = JSON.parse(line.slice(5))
           for (const part of j.candidates?.[0]?.content?.parts ?? []) if (part.text) send({ delta: part.text })
+          if (j.usageMetadata?.candidatesTokenCount) geminiTokens = j.usageMetadata.candidatesTokenCount
         }
+        stats(geminiTokens)
       } else {
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           signal: ctrl.signal,
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.key('openai')}` },
-          body: JSON.stringify({ model, stream: true, messages: [{ role: 'system', content: req.system }, { role: 'user', content: req.prompt }] })
+          body: JSON.stringify({ model, stream: true, stream_options: { include_usage: true }, messages: [{ role: 'system', content: req.system }, { role: 'user', content: req.prompt }] })
         })
+        let openaiTokens: number | undefined
         if (!res.ok) throw new AiError(res.status === 401 ? 'OpenAI didn’t accept your key.' : res.status === 429 ? 'OpenAI’s limit for your key was reached.' : `OpenAI answered ${res.status}.`)
         for await (const line of lines(res)) {
           if (!line.startsWith('data:') || line.includes('[DONE]')) continue
-          const d = JSON.parse(line.slice(5)).choices?.[0]?.delta?.content
+          const chunk = JSON.parse(line.slice(5))
+          const d = chunk.choices?.[0]?.delta?.content
           if (d) send({ delta: d })
+          if (chunk.usage?.completion_tokens) openaiTokens = chunk.usage.completion_tokens
         }
+        stats(openaiTokens)
       }
       send({ done: true })
     } catch (e) {

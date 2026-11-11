@@ -8,7 +8,7 @@
 import { app, type WebContents } from 'electron'
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync, statfsSync } from 'node:fs'
+import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statfsSync, writeFileSync } from 'node:fs'
 import { totalmem } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -62,6 +62,42 @@ export class LocalAi {
     return { ramGB: Math.round(totalmem() / GB), vramGB, gpu }
   }
 
+  /**
+   * Rough speed for a model on this computer. Writing tokens is limited by how fast
+   * the model's weights can be read from memory, so speed ≈ bandwidth ÷ model size.
+   * Laptop RAM gives ~22 GB/s in practice (this matches 11 tok/s measured for a 2 GB
+   * model on a 32 GB i7 laptop); a graphics card that holds the whole model is far
+   * faster. Small cards (< 6 GB) are counted as CPU, since Ollama often can't use them fully.
+   */
+  private estimate(sizeGB: number, hw: { vramGB: number }): [number, number] {
+    const cpuBw = 22
+    const gpuBw = hw.vramGB >= 16 ? 600 : hw.vramGB >= 10 ? 400 : hw.vramGB >= 6 ? 250 : 0
+    const fitsGpu = gpuBw > 0 && sizeGB * 1.25 <= hw.vramGB
+    const tps = fitsGpu ? (gpuBw * 0.55) / sizeGB : cpuBw / sizeGB
+    return [Math.max(1, Math.round(tps * 0.7)), Math.max(2, Math.round(tps * 1.3))]
+  }
+
+  private speedsFile = join(this.dir, 'speeds.json')
+  private speeds(): Record<string, number> {
+    try {
+      return JSON.parse(readFileSync(this.speedsFile, 'utf8'))
+    } catch {
+      return {}
+    }
+  }
+  /** Remembers how fast a model actually ran here (a running average). */
+  recordSpeed(model: string, tps: number): void {
+    if (!(tps > 0) || !isFinite(tps)) return
+    const all = this.speeds()
+    all[model] = all[model] ? Math.round((all[model] * 0.6 + tps * 0.4) * 10) / 10 : Math.round(tps * 10) / 10
+    try {
+      mkdirSync(this.dir, { recursive: true })
+      writeFileSync(this.speedsFile, JSON.stringify(all))
+    } catch {
+      /* not important */
+    }
+  }
+
   private recommend(hw: { ramGB: number; vramGB: number }): string {
     if (hw.vramGB >= 8 && hw.ramGB >= 16) return 'qwen2.5:7b'
     if (hw.ramGB >= 16 && hw.vramGB >= 4) return 'gemma3:4b'
@@ -88,7 +124,9 @@ export class LocalAi {
       /* unknown */
     }
     const engine = existsSync(this.exe) ? 'managed' : this.installedExe() || isRunning ? 'external' : null
-    return { engine, running: isRunning, models, hardware: hw, recommended: this.recommend(hw), choices: LOCAL_MODELS, freeGB, engineSizeGB: 1.6 }
+    const measured = this.speeds()
+    const choices = LOCAL_MODELS.map((c) => ({ ...c, estTps: this.estimate(c.sizeGB, hw), measuredTps: measured[c.model] }))
+    return { engine, running: isRunning, models, hardware: hw, recommended: this.recommend(hw), choices, freeGB, engineSizeGB: 1.6, measured }
   }
 
   /** Starts Ollama in the background if it isn't answering yet. */
