@@ -34,14 +34,26 @@ export interface Task {
   details?: string
 }
 
+export type NoteTemplate = 'page' | 'cornell' | 'lined' | 'grid'
+export type NoteFont = 'sans' | 'serif' | 'mono'
+
 export interface Note {
   title: string
   subjectId: string | null
-  /** TipTap JSON document. */
+  /** TipTap JSON document (the main notes area). */
   content: unknown
-  /** Plain-text preview, kept for search and lists. */
+  /** Plain-text preview, kept for search and lists (includes cues and summary). */
   excerpt: string
   pinned?: boolean
+  /** Emoji shown above the title and in lists. */
+  icon?: string
+  /** Cover band colour key (see NOTE_COVERS), or none. */
+  cover?: string | null
+  template?: NoteTemplate
+  font?: NoteFont
+  /** Cornell layout: the cue column and the summary, as TipTap JSON. */
+  cues?: unknown
+  summary?: unknown
 }
 
 export interface StudySession {

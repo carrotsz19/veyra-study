@@ -28,6 +28,11 @@ function createWindow(): void {
   if (shot) {
     win.webContents.once('did-finish-load', () => {
       setTimeout(async () => {
+        const script = process.env['VEYRA_EVAL']
+        if (script) {
+          await win.webContents.executeJavaScript(script).catch((e) => console.error('VEYRA_EVAL', e))
+          await new Promise((r) => setTimeout(r, 700))
+        }
         const img = await win.webContents.capturePage()
         const { writeFileSync } = await import('node:fs')
         writeFileSync(shot, img.toPNG())
@@ -45,7 +50,7 @@ function createWindow(): void {
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'] + (process.env['VEYRA_ROUTE'] ? '#' + process.env['VEYRA_ROUTE'] : ''))
   } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: process.env['VEYRA_ROUTE'] })
+    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: process.env['VEYRA_ROUTE'], query: process.env['VEYRA_THEME'] ? { theme: process.env['VEYRA_THEME'] } : undefined })
   }
 }
 

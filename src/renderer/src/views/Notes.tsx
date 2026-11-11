@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { NotebookPen, Plus, Search } from 'lucide-react'
+import { FileText, NotebookPen, Pin, Plus, Search } from 'lucide-react'
 import { db, useRecords } from '../data/store'
 import { Empty } from '../components/ui'
-import { NoteEditor } from '../components/NoteEditor'
+import { NoteEditor } from '../components/notes/NoteEditor'
 import { SubjectSelect } from '../components/editors'
 import { useNav } from '../nav'
 
@@ -26,7 +26,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   const shown = notes
     .filter((n) => !subjectId || n.data.subjectId === subjectId)
     .filter((n) => !query || n.data.title.toLowerCase().includes(query) || n.data.excerpt.toLowerCase().includes(query))
-    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .sort((a, b) => Number(!!b.data.pinned) - Number(!!a.data.pinned) || b.updatedAt - a.updatedAt)
   const current = notes.find((n) => n.id === selected)
 
   // Open the most recent note when nothing is picked yet.
@@ -50,7 +50,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
           </button>
         </div>
       )}
-      <div className="notes-layout" style={subjectFilter ? { height: 560 } : undefined}>
+      <div className="notes-layout" style={subjectFilter ? { height: 680 } : undefined}>
         <div className="notes-list">
           <div className="card row" style={{ padding: '4px 10px', marginBottom: 8 }}>
             <Search size={16} className="dim" />
@@ -70,17 +70,21 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
               {shown.map((n) => {
                 const s = subjects.find((x) => x.id === n.data.subjectId)
                 return (
-                  <button key={n.id} className="ig-row tap" aria-current={n.id === selected} onClick={() => setSelected(n.id)}>
-                    <span className="ig-title trunc" style={{ width: '100%', fontWeight: 600 }}>
-                      {n.data.title || 'Untitled'}
+                  <button key={n.id} className="ig-row tap note-row" aria-current={n.id === selected} onClick={() => setSelected(n.id)}>
+                    <span className="note-row-icon" style={!n.data.icon && s ? { color: s.data.color } : undefined}>
+                      {n.data.icon ?? <FileText size={17} />}
                     </span>
-                    <span className="ig-sub trunc" style={{ width: '100%' }}>
-                      {n.data.excerpt || 'Empty note'}
-                    </span>
-                    <span className="xs tert row" style={{ gap: 6 }}>
-                      {s && <span style={{ width: 7, height: 7, borderRadius: 9, background: s.data.color }} />}
-                      {s ? `${s.data.name} · ` : ''}
-                      {formatDistanceToNowStrict(n.updatedAt, { addSuffix: true })}
+                    <span className="grow" style={{ minWidth: 0 }}>
+                      <span className="note-row-title trunc">
+                        {n.data.pinned && <Pin size={11} className="tert" style={{ marginRight: 4 }} />}
+                        {n.data.title || 'Untitled'}
+                      </span>
+                      <span className="ig-sub note-row-excerpt">{n.data.excerpt || 'Empty note'}</span>
+                      <span className="xs tert row" style={{ gap: 6, marginTop: 2 }}>
+                        {s && <span style={{ width: 7, height: 7, borderRadius: 9, background: s.data.color }} />}
+                        {s ? `${s.data.name} · ` : ''}
+                        {formatDistanceToNowStrict(n.updatedAt, { addSuffix: true })}
+                      </span>
                     </span>
                   </button>
                 )
@@ -92,7 +96,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
         {current ? (
           <NoteEditor key={current.id} note={current} onDeleted={() => setSelected(undefined)} />
         ) : (
-          <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="card note-empty">
             <Empty
               icon={NotebookPen}
               title="Pick a note or start one"

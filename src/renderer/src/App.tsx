@@ -17,7 +17,9 @@ import { SubjectView } from './views/SubjectView'
 type Theme = 'system' | 'light' | 'dark'
 
 function useTheme(): [Theme, (t: Theme) => void] {
-  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('veyra.theme') as Theme) || 'system')
+  const [theme, setTheme] = useState<Theme>(
+    () => (new URLSearchParams(location.search).get('theme') as Theme) || (localStorage.getItem('veyra.theme') as Theme) || 'system'
+  )
   useEffect(() => {
     const mq = matchMedia('(prefers-color-scheme: dark)')
     const apply = () => document.documentElement.classList.toggle('dark', theme === 'dark' || (theme === 'system' && mq.matches))
