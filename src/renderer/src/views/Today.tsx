@@ -118,7 +118,7 @@ function useTodayData() {
     return {
       tasks,
       subjects: subjects.filter((x) => !x.data.archived),
-      notes: [...notes].sort((a, b) => b.updatedAt - a.updatedAt),
+      notes: notes.filter((n) => !n.data.archived).sort((a, b) => b.updatedAt - a.updatedAt),
       due,
       upcoming,
       overdue: tasks.filter((t) => isOverdue(t.data.due, t.data.done)).length,

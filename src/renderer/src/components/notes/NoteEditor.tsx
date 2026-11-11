@@ -3,13 +3,16 @@ import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/r
 import { BubbleMenu } from '@tiptap/react/menus'
 import { formatDistanceToNowStrict } from 'date-fns'
 import {
-  Bold, Code, Italic, Link2, MoreHorizontal, Palette, Pin, PinOff, Strikethrough, Trash2, Underline
+  Archive, ArchiveRestore, Bold, Code, Copy, Download, Hash, Italic, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, Pin, PinOff,
+  Strikethrough, Trash2, Underline
 } from 'lucide-react'
 import type { Note, NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, useRecords } from '../../data/store'
 import { useToast } from '../ui'
 import { docText, noteExtensions, wordCount } from './extensions'
 import { SlashMenu } from './SlashMenu'
+import { NoteToolbar } from './Toolbar'
+import { noteToMarkdown } from './markdown'
 import { useSettings } from '../../data/settings'
 
 export const NOTE_COVERS: Record<string, string> = {
@@ -123,39 +126,66 @@ function FormatBar({ editor }: { editor: Editor }) {
   )
 }
 
+
 /* ---------- one rich-text area ---------- */
 function Area({
   content,
   placeholder,
   slash = true,
   className,
-  onChange
+  onChange,
+  onActive,
+  onReady
 }: {
   content: unknown
   placeholder: string
   slash?: boolean
   className?: string
   onChange: (json: unknown, text: string) => void
+  /** Tells the page which area you're writing in, for the top toolbar. */
+  onActive?: (editor: Editor) => void
+  onReady?: (editor: Editor) => void
 }) {
   const { s } = useSettings()
-  const editor = useEditor({
-    extensions: noteExtensions(placeholder, slash),
-    content: (content as object) ?? '',
-    editorProps: { attributes: { class: `tiptap ${className ?? ''}`, spellcheck: s.spellcheck ? 'true' : 'false' } },
-    onUpdate: ({ editor: e }) => onChange(e.getJSON(), e.getText())
-  })
+  const useSlash = slash && s.noteToolbar !== 'bar'
+  const editor = useEditor(
+    {
+      extensions: noteExtensions(useSlash ? `${placeholder} Type / for blocks.` : placeholder, useSlash),
+      content: (content as object) ?? '',
+      editorProps: { attributes: { class: `tiptap ${className ?? ''}`, spellcheck: s.spellcheck ? 'true' : 'false' } },
+      onUpdate: ({ editor: e }) => onChange(e.getJSON(), e.getText()),
+      onFocus: ({ editor: e }) => onActive?.(e),
+      onCreate: ({ editor: e }) => onReady?.(e)
+    },
+    [useSlash, s.spellcheck]
+  )
   if (!editor) return null
   return (
     <>
-      <FormatBar editor={editor} />
+      {s.noteBubble && <FormatBar editor={editor} />}
       <EditorContent editor={editor} />
     </>
   )
 }
 
 /* ---------- page options popover ---------- */
-function PageMenu({ data, set, onDelete, onClose }: { data: Note; set: (p: Partial<Note>) => void; onDelete: () => void; onClose: () => void }) {
+function PageMenu({
+  data,
+  set,
+  onDelete,
+  onDuplicate,
+  onExport,
+  onClose
+}: {
+  data: Note
+  set: (p: Partial<Note>) => void
+  onDelete: () => void
+  onDuplicate: () => void
+  onExport: () => void
+  onClose: () => void
+}) {
   const ref = useRef<HTMLDivElement>(null)
+  const { s, set: setSetting } = useSettings()
   useEffect(() => {
     const away = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as globalThis.Node) && onClose()
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -197,9 +227,32 @@ function PageMenu({ data, set, onDelete, onClose }: { data: Note; set: (p: Parti
           <button key={k} className="cover-chip" aria-pressed={data.cover === k} aria-label={`${k} cover`} style={{ background: bg }} onClick={() => set({ cover: k })} />
         ))}
       </div>
+      <h2>Formatting tools</h2>
+      <div className="seg" style={{ display: 'flex' }} title="Applies to all notes">
+        {(
+          [
+            ['slash', 'Type “/”'],
+            ['bar', 'Toolbar'],
+            ['both', 'Both']
+          ] as const
+        ).map(([v, l]) => (
+          <button key={v} aria-selected={s.noteToolbar === v} onClick={() => setSetting({ noteToolbar: v })} style={{ flex: 1 }}>
+            {l}
+          </button>
+        ))}
+      </div>
       <div className="menu-sep" />
       <button className="menu-row" onClick={() => set({ pinned: !data.pinned })}>
         {data.pinned ? <PinOff size={15} /> : <Pin size={15} />} {data.pinned ? 'Unpin' : 'Pin to top'}
+      </button>
+      <button className="menu-row" onClick={onDuplicate}>
+        <Copy size={15} /> Duplicate
+      </button>
+      <button className="menu-row" onClick={onExport}>
+        <Download size={15} /> Export as Markdown
+      </button>
+      <button className="menu-row" onClick={() => set({ archived: !data.archived })}>
+        {data.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />} {data.archived ? 'Unarchive' : 'Archive'}
       </button>
       <button className="menu-row danger" onClick={onDelete}>
         <Trash2 size={15} /> Delete note
@@ -233,9 +286,79 @@ function IconPicker({ value, onPick, onClose }: { value?: string; onPick: (v: st
   )
 }
 
+/* ---------- tags ---------- */
+function Tags({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
+  const [adding, setAdding] = useState(false)
+  const [text, setText] = useState('')
+  const add = () => {
+    const t = text.trim().toLowerCase().replace(/^#/, '').replace(/\s+/g, '-').slice(0, 30)
+    if (t && !tags.includes(t)) onChange([...tags, t])
+    setText('')
+    setAdding(false)
+  }
+  return (
+    <span className="tags">
+      {tags.map((t) => (
+        <span key={t} className="tag">
+          #{t}
+          <button aria-label={`Remove tag ${t}`} onClick={() => onChange(tags.filter((x) => x !== t))}>
+            ×
+          </button>
+        </span>
+      ))}
+      {adding ? (
+        <input
+          className="tag-input"
+          autoFocus
+          value={text}
+          placeholder="tag"
+          aria-label="New tag"
+          onChange={(e) => setText(e.target.value)}
+          onBlur={add}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ',') {
+              e.preventDefault()
+              add()
+            }
+            if (e.key === 'Escape') {
+              setText('')
+              setAdding(false)
+            }
+          }}
+        />
+      ) : (
+        <button className="tag add" onClick={() => setAdding(true)}>
+          <Hash size={11} /> Tag
+        </button>
+      )}
+    </span>
+  )
+}
+
 /* ---------- the note page ---------- */
+export function duplicateNote(n: Note): Promise<Rec<'note'>> {
+  return db.put('note', { ...n, title: `${n.title || 'Untitled'} (copy)`, pinned: false, archived: false })
+}
+
+export async function exportNotes(notes: Note[]): Promise<number> {
+  const r = await window.veyra.app.exportNotes(notes.map((n) => ({ name: n.title || 'Untitled', text: noteToMarkdown(n) })))
+  return r.saved
+}
+
 /** Edits one note; saves shortly after you stop typing. Remount per note (key={note.id}). */
-export function NoteEditor({ note, onDeleted }: { note: Rec<'note'>; onDeleted: () => void }) {
+export function NoteEditor({
+  note,
+  onDeleted,
+  onOpen,
+  focusMode,
+  onToggleFocus
+}: {
+  note: Rec<'note'>
+  onDeleted: () => void
+  onOpen?: (id: string) => void
+  focusMode?: boolean
+  onToggleFocus?: () => void
+}) {
   const toast = useToast()
   const { items: subjects } = useRecords('subject')
   // One copy of the note that every field writes into, saved as a whole.
@@ -246,6 +369,7 @@ export function NoteEditor({ note, onDeleted }: { note: Rec<'note'>; onDeleted: 
   const [words, setWords] = useState(() => wordCount(Object.values(texts.current).join(' ')))
   const [menu, setMenu] = useState<'page' | 'icon' | null>(null)
   const [savedAt, setSavedAt] = useState(note.updatedAt)
+  const [active, setActive] = useState<Editor | null>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const { s: settings } = useSettings()
 
@@ -269,6 +393,8 @@ export function NoteEditor({ note, onDeleted }: { note: Rec<'note'>; onDeleted: 
     setWords(wordCount(all.replace(/·/g, ' ')))
     update({ [field]: json, excerpt: all.replace(/\s+/g, ' ').slice(0, 240) })
   }
+  // The main area is the toolbar's target until you click into another one.
+  const mainActive = (e: Editor) => setActive((cur) => cur ?? e)
 
   // Grow the title box with its text.
   useEffect(() => {
@@ -286,16 +412,37 @@ export function NoteEditor({ note, onDeleted }: { note: Rec<'note'>; onDeleted: 
     toast('Note deleted', { label: 'Undo', run: () => db.put('note', snapshot, note.id) })
     onDeleted()
   }
+  const duplicate = async () => {
+    flush()
+    const copy = await duplicateNote(latest.current)
+    setMenu(null)
+    toast('Note duplicated')
+    onOpen?.(copy.id)
+  }
+  const exportMd = async () => {
+    setMenu(null)
+    if (await exportNotes([latest.current])) toast('Note exported')
+  }
 
   const template = data.template ?? 'page'
   const subject = subjects.find((s) => s.id === data.subjectId)
+  const showBar = settings.noteToolbar !== 'slash'
 
   return (
     <div
       className={`note-page font-${data.font ?? 'sans'} layout-${template} width-${settings.noteWidth}`}
       style={{ ['--note-base' as string]: `${settings.noteSize}px` }}
     >
+      {showBar && <NoteToolbar editor={active} />}
       <div className="note-scroll">
+        {data.archived && (
+          <div className="note-banner">
+            <Archive size={14} /> This note is archived, so it’s hidden from your notes list.
+            <button className="linkbtn" onClick={() => update({ archived: false }, true)}>
+              Unarchive
+            </button>
+          </div>
+        )}
         {data.cover && NOTE_COVERS[data.cover] && <div className="note-cover" style={{ background: NOTE_COVERS[data.cover] }} />}
         <div className={`note-sheet ${data.cover ? 'has-cover' : ''}`}>
           <div className="note-actions">
@@ -313,11 +460,18 @@ export function NoteEditor({ note, onDeleted }: { note: Rec<'note'>; onDeleted: 
             <span className="save-state xs tert" aria-live="polite">
               Edited {formatDistanceToNowStrict(savedAt, { addSuffix: true })}
             </span>
+            {onToggleFocus && (
+              <button className="iconbtn plain" aria-label={focusMode ? 'Leave focus mode' : 'Focus mode'} title={focusMode ? 'Leave focus mode (Esc)' : 'Focus mode: hide everything but the page'} onClick={onToggleFocus}>
+                {focusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
+            )}
             <span className="anchor">
               <button className="iconbtn plain" aria-label="Page options" aria-expanded={menu === 'page'} onClick={() => setMenu(menu === 'page' ? null : 'page')}>
                 <MoreHorizontal size={18} />
               </button>
-              {menu === 'page' && <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onClose={() => setMenu(null)} />}
+              {menu === 'page' && (
+                <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportMd} onClose={() => setMenu(null)} />
+              )}
             </span>
           </div>
 
@@ -371,18 +525,19 @@ export function NoteEditor({ note, onDeleted }: { note: Rec<'note'>; onDeleted: 
                   ))}
               </select>
             </label>
+            <Tags tags={data.tags ?? []} onChange={(tags) => update({ tags }, true)} />
             {settings.showWordCount && (
               <>
-            <span className="tert">·</span>
-            <span className="tert num">
-              {words} {words === 1 ? 'word' : 'words'}
-            </span>
-            {words > 0 && (
-              <>
                 <span className="tert">·</span>
-                <span className="tert">{Math.max(1, Math.round(words / 200))} min read</span>
-              </>
-            )}
+                <span className="tert num">
+                  {words} {words === 1 ? 'word' : 'words'}
+                </span>
+                {words > 0 && (
+                  <>
+                    <span className="tert">·</span>
+                    <span className="tert">{Math.max(1, Math.round(words / 200))} min read</span>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -391,20 +546,20 @@ export function NoteEditor({ note, onDeleted }: { note: Rec<'note'>; onDeleted: 
             <div className="cornell">
               <div className="cornell-cues">
                 <div className="cornell-label">Cues &amp; questions</div>
-                <Area content={data.cues} placeholder="Key words, questions…" slash={false} className="cues" onChange={onArea('cues')} />
+                <Area content={data.cues} placeholder="Key words, questions…" slash={false} className="cues" onChange={onArea('cues')} onActive={setActive} />
               </div>
               <div className="cornell-notes note-main">
                 <div className="cornell-label">Notes</div>
-                <Area content={data.content} placeholder="Take notes during the lecture. Type / for blocks." onChange={onArea('content')} />
+                <Area content={data.content} placeholder="Take notes during the lecture." onChange={onArea('content')} onActive={setActive} onReady={mainActive} />
               </div>
               <div className="cornell-summary">
                 <div className="cornell-label">Summary</div>
-                <Area content={data.summary} placeholder="Sum up the page in a few sentences, in your own words." slash={false} onChange={onArea('summary')} />
+                <Area content={data.summary} placeholder="Sum up the page in a few sentences, in your own words." slash={false} onChange={onArea('summary')} onActive={setActive} />
               </div>
             </div>
           ) : (
             <div className="note-main">
-              <Area content={data.content} placeholder="Start writing, or type / for headings, callouts, tables…" onChange={onArea('content')} />
+              <Area content={data.content} placeholder="Start writing." onChange={onArea('content')} onActive={setActive} onReady={mainActive} />
             </div>
           )}
         </div>

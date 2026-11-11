@@ -35,6 +35,7 @@ const appApi = {
   setZoom: (f: number) => webFrame.setZoomFactor(Math.min(1.4, Math.max(0.8, f))),
   exportData: () => ipcRenderer.invoke('data:export'),
   openDataFolder: () => ipcRenderer.invoke('data:openFolder'),
+  exportNotes: (files: { name: string; text: string }[]) => ipcRenderer.invoke('notes:export', files),
   version: () => ipcRenderer.invoke('app:version')
 }
 

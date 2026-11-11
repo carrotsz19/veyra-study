@@ -19,7 +19,12 @@ export const CALLOUTS: Record<CalloutTone, { emoji: string; label: string }> = {
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
-    callout: { setCallout: (tone: CalloutTone) => ReturnType }
+    callout: {
+      /** Make the selected blocks a callout (lifting them out of lists first), or change an existing callout's type. */
+      setCallout: (tone: CalloutTone) => ReturnType
+      /** Turn a callout back into plain blocks. */
+      unsetCallout: () => ReturnType
+    }
   }
 }
 
@@ -43,8 +48,16 @@ export const Callout = Node.create({
     return {
       setCallout:
         (tone) =>
+        ({ editor, chain }) => {
+          if (editor.isActive(this.name)) return chain().updateAttributes(this.name, { tone }).run()
+          // Lists (and quotes) can't hold a callout around their item text, so lift the
+          // selection out to plain paragraphs first, then wrap it.
+          return chain().clearNodes().wrapIn(this.name, { tone }).run()
+        },
+      unsetCallout:
+        () =>
         ({ commands }) =>
-          commands.wrapIn(this.name, { tone })
+          commands.lift(this.name)
     }
   }
 })
@@ -195,3 +208,4 @@ export function docText(doc: unknown): string {
 }
 
 export const wordCount = (text: string) => (text ? text.split(/\s+/).filter(Boolean).length : 0)
+

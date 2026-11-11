@@ -165,6 +165,26 @@ app.whenReady().then(() => {
     writeFileSync(res.filePath, JSON.stringify({ app: 'veyra-study', version: app.getVersion(), exportedAt: new Date().toISOString(), records }, null, 2))
     return { saved: true, path: res.filePath, count: records.length }
   })
+  ipcMain.handle('notes:export', async (_e, files: { name: string; text: string }[]) => {
+    const safe = (n: string) => (n.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim() || 'Untitled').slice(0, 120)
+    if (!files.length) return { saved: 0 }
+    if (files.length === 1) {
+      const res = await dialog.showSaveDialog({ title: 'Export note', defaultPath: `${safe(files[0].name)}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }] })
+      if (res.canceled || !res.filePath) return { saved: 0 }
+      writeFileSync(res.filePath, files[0].text)
+      return { saved: 1 }
+    }
+    const res = await dialog.showOpenDialog({ title: `Choose a folder for ${files.length} notes`, properties: ['openDirectory', 'createDirectory'] })
+    if (res.canceled || !res.filePaths[0]) return { saved: 0 }
+    const used = new Set<string>()
+    for (const f of files) {
+      let base = safe(f.name)
+      for (let i = 2; used.has(base.toLowerCase()); i++) base = `${safe(f.name)} (${i})`
+      used.add(base.toLowerCase())
+      writeFileSync(join(res.filePaths[0], `${base}.md`), f.text)
+    }
+    return { saved: files.length }
+  })
   ipcMain.handle('app:open', (_e, url: string) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url)
   })

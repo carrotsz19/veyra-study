@@ -61,6 +61,11 @@ export interface AppSettings {
   noteSize: number
   spellcheck: boolean
   showWordCount: boolean
+  /** How formatting is offered: the "/" menu only, a toolbar at the top, or both. */
+  noteToolbar: 'slash' | 'bar' | 'both'
+  /** The small format bar that appears when you select text. */
+  noteBubble: boolean
+  noteSort: 'edited' | 'created' | 'title'
   /* focus timer */
   focusMin: number
   breakMin: number
@@ -135,6 +140,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   noteSize: 16,
   spellcheck: true,
   showWordCount: true,
+  noteToolbar: 'both',
+  noteBubble: true,
+  noteSort: 'edited',
   focusMin: 25,
   breakMin: 5,
   longBreakMin: 15,

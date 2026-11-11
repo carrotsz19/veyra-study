@@ -24,7 +24,7 @@ const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; 
   { id: 'sidebar', label: 'Sidebar', icon: LayoutPanelLeft, hint: 'What the sidebar shows, and in what order', keys: ['nav', 'showCounts', 'showSubjectsInSidebar', 'showTimerCard'] },
   { id: 'today', label: 'Today', icon: Home, hint: 'Your Today page’s widgets', keys: ['todayLayout', 'upcomingCount'] },
   { id: 'tasks', label: 'Tasks', icon: ListTodo, hint: 'Defaults for new tasks, and how lists sort', keys: ['defaultPriority', 'defaultDue', 'taskSort', 'showDoneInLists', 'highlightOverdue'] },
-  { id: 'notes', label: 'Notes', icon: NotebookPen, hint: 'How new notes start and how pages look', keys: ['noteTemplate', 'noteFont', 'noteCover', 'noteWidth', 'noteSize', 'spellcheck', 'showWordCount'] },
+  { id: 'notes', label: 'Notes', icon: NotebookPen, hint: 'How new notes start and how pages look', keys: ['noteTemplate', 'noteFont', 'noteCover', 'noteWidth', 'noteSize', 'spellcheck', 'showWordCount', 'noteToolbar', 'noteBubble', 'noteSort'] },
   { id: 'timer', label: 'Focus timer', icon: Timer, hint: 'Lengths, long breaks, sounds and your daily goal', keys: ['focusMin', 'breakMin', 'longBreakMin', 'longBreakEvery', 'autoStartBreaks', 'autoStartFocus', 'sound', 'volume', 'notify', 'dailyGoalMin'] },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays, hint: 'What appears on the calendar', keys: ['calendarShowTasks', 'calendarShowDone', 'calendarShowEvents'] },
   { id: 'account', label: 'Account', icon: UserRound, hint: 'Your Veyra account' },
@@ -362,6 +362,17 @@ function Notes() {
               <button key={k} className="cover-chip" aria-pressed={s.noteCover === k} aria-label={`${k} cover`} style={{ background: bg }} onClick={() => set({ noteCover: k })} />
             ))}
           </div>
+        </Row>
+      </Group>
+      <Group title="Writing">
+        <Row label="Formatting tools" hint="Type “/” for a menu of blocks, use a toolbar at the top of the page, or both." keywords="toolbar slash menu bar commands">
+          <Choice label="Formatting tools" value={s.noteToolbar} onChange={(noteToolbar) => set({ noteToolbar })} options={[['slash', 'Type “/”'], ['bar', 'Toolbar'], ['both', 'Both']]} />
+        </Row>
+        <Row label="Format bar on selection" hint="Bold, italic, highlight and more, right above the text you select." keywords="bubble floating selection">
+          <Toggle label="Format bar on selection" on={s.noteBubble} onChange={(noteBubble) => set({ noteBubble })} />
+        </Row>
+        <Row label="Sort notes by" keywords="order list">
+          <Select label="Sort notes by" value={s.noteSort} onChange={(noteSort) => set({ noteSort })} options={[['edited', 'Last edited'], ['created', 'Newest'], ['title', 'A–Z']]} />
         </Row>
       </Group>
       <Group title="Pages">

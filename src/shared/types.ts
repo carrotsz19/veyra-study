@@ -45,6 +45,10 @@ export interface Note {
   /** Plain-text preview, kept for search and lists (includes cues and summary). */
   excerpt: string
   pinned?: boolean
+  /** Archived notes leave the main list but are kept (Notes → Archived). */
+  archived?: boolean
+  /** Lower-case labels for filtering. */
+  tags?: string[]
   /** Emoji shown above the title and in lists. */
   icon?: string
   /** Cover band colour key (see NOTE_COVERS), or none. */
