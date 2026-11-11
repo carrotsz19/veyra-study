@@ -5,6 +5,15 @@ export type NavId = 'today' | 'tasks' | 'notes' | 'calendar' | 'timer' | 'stats'
 export type StartScreen = NavId | 'last'
 export type TaskSort = 'due' | 'priority' | 'created' | 'title'
 
+/** Widgets on the Today page (Today → Customize). */
+export type WidgetId = 'stats' | 'due' | 'upcoming' | 'schedule' | 'focus' | 'subjects' | 'goal' | 'week' | 'streak' | 'notes' | 'quickadd'
+/** Width on Today's 6-column grid: s = a third, m = half, l = two thirds, xl = full. */
+export type WidgetSize = 's' | 'm' | 'l' | 'xl'
+export interface WidgetSlot {
+  id: WidgetId
+  size: WidgetSize
+}
+
 /** Everything a person can change. Stored as one "settings" record, so it travels with the account. */
 export interface AppSettings {
   /* appearance */
@@ -36,6 +45,8 @@ export interface AppSettings {
   todaySchedule: boolean
   todayFocus: boolean
   todaySubjects: boolean
+  /** The Today page's widgets, in order. Empty means the default layout. */
+  todayLayout: WidgetSlot[]
   /* tasks */
   defaultPriority: Priority
   defaultDue: 'none' | 'today' | 'tomorrow' | 'week'
@@ -111,6 +122,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   todaySchedule: true,
   todayFocus: true,
   todaySubjects: true,
+  todayLayout: [],
   defaultPriority: 'normal',
   defaultDue: 'today',
   taskSort: 'due',
@@ -144,6 +156,9 @@ export function withDefaults(s: Partial<AppSettings> | null | undefined): AppSet
   // Keep every nav item, in the saved order, with new ones appended.
   const saved = (s?.nav ?? []).filter((n) => DEFAULT_SETTINGS.nav.some((d) => d.id === n.id))
   out.nav = [...saved, ...DEFAULT_SETTINGS.nav.filter((d) => !saved.some((n) => n.id === d.id))]
+  // Today's layout: the saved one, or the default built from the older on/off switches.
+  const layout = (s?.todayLayout ?? []).filter((w, i, all) => WIDGETS.includes(w.id) && all.findIndex((x) => x.id === w.id) === i)
+  out.todayLayout = layout.length ? layout : defaultLayout(out)
   return out
 }
 
@@ -151,4 +166,19 @@ export function accentColors(accent: string): { light: string; dark: string } {
   if (ACCENTS[accent]) return ACCENTS[accent]
   if (/^#[0-9a-f]{6}$/i.test(accent)) return { light: accent, dark: accent }
   return ACCENTS.clay
+}
+
+export const WIDGETS: WidgetId[] = ['stats', 'due', 'upcoming', 'schedule', 'focus', 'subjects', 'goal', 'week', 'streak', 'notes', 'quickadd']
+
+export function defaultLayout(s?: Partial<AppSettings>): WidgetSlot[] {
+  const on = (k: keyof AppSettings) => (s ? s[k] !== false : true)
+  const slots: (WidgetSlot | false)[] = [
+    on('todayStats') && { id: 'stats', size: 'xl' },
+    on('todayDue') && { id: 'due', size: 'l' },
+    on('todayFocus') && { id: 'focus', size: 's' },
+    on('todayUpcoming') && { id: 'upcoming', size: 'l' },
+    on('todaySchedule') && { id: 'schedule', size: 's' },
+    on('todaySubjects') && { id: 'subjects', size: 's' }
+  ]
+  return slots.filter(Boolean) as WidgetSlot[]
 }

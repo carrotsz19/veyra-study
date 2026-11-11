@@ -127,7 +127,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
 function Screen({ route }: { route: Route }) {
   switch (route.name) {
     case 'today':
-      return <Today />
+      return <Today startEditing={route.edit} />
     case 'tasks':
       return <Tasks />
     case 'notes':

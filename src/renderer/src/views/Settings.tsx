@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
   ArrowDown, ArrowUp, CalendarDays, Check, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, NotebookPen,
-  Palette, Play, RotateCcw, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
+  LayoutGrid, Palette, Play, RotateCcw, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
 } from 'lucide-react'
-import { ACCENTS, DEFAULT_SETTINGS, NAV_LABELS, type AppSettings, type NavId } from '@shared/settings'
+import { ACCENTS, DEFAULT_SETTINGS, NAV_LABELS, defaultLayout, type AppSettings, type NavId } from '@shared/settings'
+import { useNav } from '../nav'
 import { useSettings } from '../data/settings'
 import { playSound } from '../components/timer'
 import { useToast } from '../components/ui'
@@ -21,7 +22,7 @@ const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; 
   { id: 'general', label: 'General', icon: SlidersHorizontal, hint: 'Your name, start screen, week and time', keys: ['name', 'greeting', 'startScreen', 'weekStart', 'timeFormat'] },
   { id: 'appearance', label: 'Appearance', icon: Palette, hint: 'Theme, colour, font, size and spacing', keys: ['theme', 'accent', 'font', 'zoom', 'density', 'corners', 'reduceMotion'] },
   { id: 'sidebar', label: 'Sidebar', icon: LayoutPanelLeft, hint: 'What the sidebar shows, and in what order', keys: ['nav', 'showCounts', 'showSubjectsInSidebar', 'showTimerCard'] },
-  { id: 'today', label: 'Today', icon: Home, hint: 'What your Today page shows', keys: ['todayStats', 'todayDue', 'todayUpcoming', 'upcomingCount', 'todaySchedule', 'todayFocus', 'todaySubjects'] },
+  { id: 'today', label: 'Today', icon: Home, hint: 'Your Today page’s widgets', keys: ['todayLayout', 'upcomingCount'] },
   { id: 'tasks', label: 'Tasks', icon: ListTodo, hint: 'Defaults for new tasks, and how lists sort', keys: ['defaultPriority', 'defaultDue', 'taskSort', 'showDoneInLists', 'highlightOverdue'] },
   { id: 'notes', label: 'Notes', icon: NotebookPen, hint: 'How new notes start and how pages look', keys: ['noteTemplate', 'noteFont', 'noteCover', 'noteWidth', 'noteSize', 'spellcheck', 'showWordCount'] },
   { id: 'timer', label: 'Focus timer', icon: Timer, hint: 'Lengths, long breaks, sounds and your daily goal', keys: ['focusMin', 'breakMin', 'longBreakMin', 'longBreakEvery', 'autoStartBreaks', 'autoStartFocus', 'sound', 'volume', 'notify', 'dailyGoalMin'] },
@@ -284,25 +285,30 @@ function Sidebar() {
 
 function Today() {
   const { s, set } = useSettings()
-  const t = (key: keyof AppSettings, label: string, hint: string) => (
-    <Row label={label} hint={hint} keywords="today dashboard home">
-      <Toggle label={label} on={s[key] as boolean} onChange={(v) => set({ [key]: v } as Partial<AppSettings>)} />
-    </Row>
-  )
+  const { go } = useNav()
+  const q = useContext(QueryCtx)
   return (
-    <Group title="Show on Today">
-      {t('todayStats', 'Summary cards', 'Studied today, done today and overdue.')}
-      {t('todayDue', 'Due today', 'Tasks due today, overdue ones, and what you finished today.')}
-      {t('todayUpcoming', 'Coming up', 'The next tasks with a due date.')}
-      {s.todayUpcoming && (
-        <Row label="How many coming up" keywords="upcoming number">
-          <Stepper label="tasks coming up" value={s.upcomingCount} min={1} max={20} onChange={(upcomingCount) => set({ upcomingCount })} />
+    <>
+      <Group title="Widgets" footer="On Today, choose Customize to drag widgets around, change their size, remove them or add new ones.">
+        <Row label="Arrange Today" hint={`${s.todayLayout.length} widget${s.todayLayout.length === 1 ? '' : 's'} on your page.`} keywords="widgets dashboard layout customize edit home">
+          <button className="btn sm" onClick={() => go({ name: 'today', edit: true })}>
+            <LayoutGrid size={14} /> Customize Today
+          </button>
         </Row>
+        <Row label="Reset widgets" hint="Back to the original layout." keywords="widgets dashboard layout default">
+          <button className="btn ghost sm" onClick={() => set({ todayLayout: defaultLayout() })}>
+            Reset
+          </button>
+        </Row>
+      </Group>
+      {(!q || matches(q, 'coming up upcoming tasks how many')) && (
+        <Group title="Widget options">
+          <Row label="Tasks in “Coming up”" keywords="upcoming number how many">
+            <Stepper label="tasks coming up" value={s.upcomingCount} min={1} max={20} onChange={(upcomingCount) => set({ upcomingCount })} />
+          </Row>
+        </Group>
       )}
-      {t('todaySchedule', 'Today’s schedule', 'Events from your connected calendars.')}
-      {t('todayFocus', 'Focus timer', 'The timer, with your daily goal.')}
-      {t('todaySubjects', 'Subjects', 'Progress for each subject.')}
-    </Group>
+    </>
   )
 }
 

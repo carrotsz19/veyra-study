@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react'
 
 export type Route =
-  | { name: 'today' }
+  | { name: 'today'; edit?: boolean }
   | { name: 'tasks' }
   | { name: 'notes'; noteId?: string }
   | { name: 'calendar' }
