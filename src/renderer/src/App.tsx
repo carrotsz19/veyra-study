@@ -20,6 +20,7 @@ import { TimerView } from './views/TimerView'
 import { Stats } from './views/Stats'
 import { SubjectView } from './views/SubjectView'
 import { Groups } from './views/Groups'
+import { prefetchGroups } from './data/groups'
 
 function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const { items: subjects } = useRecords('subject')
@@ -170,6 +171,9 @@ const ROUTES = ['today', 'tasks', 'notes', 'calendar', 'groups', 'timer', 'stats
 function Shell() {
   const { ready, s } = useSettings()
   const [route, go] = useState<Route | null>(null)
+  const signedIn = useAccount().state.mode === 'account'
+  // Group work loads in the background, so the tab opens ready.
+  useEffect(() => (signedIn ? prefetchGroups() : undefined), [signedIn])
 
   useEffect(() => {
     if (!ready || route) return

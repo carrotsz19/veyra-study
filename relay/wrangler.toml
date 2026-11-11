@@ -10,7 +10,7 @@ workers_dev = true
 # and paste the id it prints below.
 [[kv_namespaces]]
 binding = "RELAY"
-id = "PASTE_THE_KV_NAMESPACE_ID_HERE"
+id = "873f512f236d4be284ccd7b347c0a78e"
 
 # Talks to the Veyra Worker directly (a Worker can't fetch another Worker's
 # workers.dev address on the same account).

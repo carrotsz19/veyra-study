@@ -35,6 +35,8 @@ function openGoogle(): void {
   )
   google.schedulePush(5000)
   group = new GroupClient(folder ? join(accountDir(folder), 'group.bin') : join(app.getPath('userData'), 'group-local.bin'), () => accounts.credentials())
+  // Connect in the background so Group work is ready when it's opened.
+  if (folder) void group.connect()
 }
 const gcal = (): GoogleCalendar => google!
 

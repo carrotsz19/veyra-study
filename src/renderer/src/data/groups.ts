@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import type { Group, GroupInvite, GroupItem, GroupItemData, GroupItemKind, GroupStatus } from '@shared/types'
 
 const api = window.veyra.group
@@ -29,14 +29,40 @@ export function useGroupChanged(cb: () => void): void {
   useEffect(() => api.onChanged(() => ref.current()), [])
 }
 
-/** The connection, connecting the first time Group work opens. */
+/* ---------- shared state, so Group work opens with what was already loaded ---------- */
+
+/** Runs a load; a call that comes in while one is running runs it once more after. */
+function serial(fn: () => Promise<void>): () => Promise<void> {
+  let busy: Promise<void> | null = null
+  let again = false
+  return () => {
+    if (busy) {
+      again = true
+      return busy
+    }
+    busy = (async () => {
+      do {
+        again = false
+        await fn()
+      } while (again)
+      busy = null
+    })()
+    return busy
+  }
+}
+
+let lastStatus: GroupStatus | null = null
+api.onStatus((s) => (lastStatus = s))
+
+/** The connection (the app starts connecting in the background when it opens). */
 export function useGroupStatus(): { status: GroupStatus | null; retry: () => void } {
-  const [status, setStatus] = useState<GroupStatus | null>(null)
+  const [status, setStatus] = useState<GroupStatus | null>(lastStatus)
   useEffect(() => {
     let live = true
     const off = api.onStatus((s) => live && setStatus(s))
     api.status().then((s) => {
       if (!live) return
+      lastStatus = s
       setStatus(s)
       if (s.state === 'idle' || s.state === 'offline' || s.state === 'signed-out') api.connect().then((r) => live && setStatus(r))
     })
@@ -51,85 +77,131 @@ export function useGroupStatus(): { status: GroupStatus | null; retry: () => voi
   return { status, retry }
 }
 
+/* your groups and invites */
+let groupsCache: { groups: Group[] | null; invites: GroupInvite[] } = { groups: null, invites: [] }
+const groupSubs = new Set<() => void>()
+const notifyGroups = () => groupSubs.forEach((f) => f())
+const loadGroups = serial(async () => {
+  try {
+    const [g, i] = await Promise.all([groupCall<{ groups: Group[] }>('GET', '/groups'), groupCall<{ invites: GroupInvite[] }>('GET', '/invites')])
+    groupsCache = { groups: g.groups, invites: i.invites }
+    for (const id of [...stores.keys()]) if (!g.groups.some((x) => x.id === id)) stores.delete(id)
+    notifyGroups()
+  } catch {
+    /* the status card shows what went wrong */
+  }
+})
+
 /** Your groups and pending invites, kept fresh. */
 export function useGroups(online: boolean) {
-  const [groups, setGroups] = useState<Group[] | null>(null)
-  const [invites, setInvites] = useState<GroupInvite[]>([])
-  const load = useCallback(async () => {
-    try {
-      const [g, i] = await Promise.all([groupCall<{ groups: Group[] }>('GET', '/groups'), groupCall<{ invites: GroupInvite[] }>('GET', '/invites')])
-      setGroups(g.groups)
-      setInvites(i.invites)
-    } catch {
-      /* the status card shows what went wrong */
-    }
+  const [, tick] = useReducer((x: number) => x + 1, 0)
+  useEffect(() => {
+    groupSubs.add(tick)
+    return () => void groupSubs.delete(tick)
   }, [])
   useEffect(() => {
-    if (online) void load()
-  }, [online, load])
-  useGroupChanged(load)
-  return { groups, invites, reload: load, setGroups }
+    if (online) void loadGroups()
+  }, [online])
+  const setGroups = useCallback((fn: (all: Group[] | null) => Group[] | null) => {
+    groupsCache = { ...groupsCache, groups: fn(groupsCache.groups) }
+    notifyGroups()
+  }, [])
+  return { groups: groupsCache.groups, invites: groupsCache.invites, reload: loadGroups, setGroups }
 }
 
-/** Everything in one group, fetched once and then only what changed. */
-export function useGroupItems(groupId: string) {
-  const [items, setItems] = useState<Map<string, GroupItem>>(new Map())
-  const [loaded, setLoaded] = useState(false)
-  const [error, setError] = useState('')
-  const seq = useRef(0)
-  const busy = useRef<Promise<void> | null>(null)
-  const again = useRef(false)
-
-  const load = useCallback(async () => {
-    if (busy.current) {
-      again.current = true
-      return busy.current
-    }
-    busy.current = (async () => {
-      do {
-        again.current = false
-        try {
-          const r = await groupCall<{ items: GroupItem[]; seq: number }>('GET', `/groups/${gid(groupId)}/items?since=${seq.current}`)
-          seq.current = Math.max(seq.current, r.seq)
-          if (r.items.length)
-            setItems((old) => {
-              const m = new Map(old)
-              for (const it of r.items) {
-                const mine = m.get(it.id)
-                if (mine && mine.seq > it.seq) continue
-                if (it.deleted) m.delete(it.id)
-                else m.set(it.id, it)
-              }
-              return m
-            })
-          setError('')
-          setLoaded(true)
-        } catch (e) {
-          setError(e instanceof Error ? e.message : 'Couldn’t load this group.')
+/* each group's items, fetched once and then only what changed */
+interface ItemStore {
+  seq: number
+  items: Map<string, GroupItem>
+  loaded: boolean
+  error: string
+  subs: Set<() => void>
+  load: () => Promise<void>
+}
+const stores = new Map<string, ItemStore>()
+function itemStore(groupId: string): ItemStore {
+  let s = stores.get(groupId)
+  if (s) return s
+  const st: ItemStore = { seq: 0, items: new Map(), loaded: false, error: '', subs: new Set(), load: async () => {} }
+  st.load = serial(async () => {
+    try {
+      const r = await groupCall<{ items: GroupItem[]; seq: number }>('GET', `/groups/${gid(groupId)}/items?since=${st.seq}`)
+      st.seq = Math.max(st.seq, r.seq)
+      if (r.items.length) {
+        const m = new Map(st.items)
+        for (const it of r.items) {
+          const mine = m.get(it.id)
+          if (mine && mine.seq > it.seq) continue
+          if (it.deleted) m.delete(it.id)
+          else m.set(it.id, it)
         }
-      } while (again.current)
-      busy.current = null
-    })()
-    return busy.current
-  }, [groupId])
+        st.items = m
+      }
+      st.error = ''
+      st.loaded = true
+    } catch (e) {
+      st.error = e instanceof Error ? e.message : 'Couldn’t load this group.'
+    }
+    st.subs.forEach((f) => f())
+  })
+  stores.set(groupId, st)
+  return st
+}
 
+// One listener for the whole app: refresh what's loaded when anything changes.
+api.onChanged(() => {
+  if (groupsCache.groups) void loadGroups()
+  for (const s of stores.values()) if (s.subs.size || s.loaded) void s.load()
+})
+
+/** Loads Group work in the background (called when the app starts), so the tab opens ready. */
+export function prefetchGroups(): () => void {
+  let done = false
+  const run = () => {
+    if (done) return
+    done = true
+    let open: string | null = null
+    try {
+      open = localStorage.getItem('veyra.group')
+    } catch {
+      /* storage unavailable */
+    }
+    if (open) void itemStore(open).load()
+    void loadGroups().then(() => {
+      const first = groupsCache.groups?.find((g) => g.id === open) ?? groupsCache.groups?.[0]
+      if (first && first.id !== open) void itemStore(first.id).load()
+    })
+  }
+  const off = api.onStatus((s) => s.state === 'online' && run())
+  api.status().then((s) => s.state === 'online' && run())
+  return off
+}
+
+/** Everything in one group. */
+export function useGroupItems(groupId: string) {
+  const s = itemStore(groupId)
+  const [, tick] = useReducer((x: number) => x + 1, 0)
   useEffect(() => {
-    void load()
-  }, [load])
-  useGroupChanged(load)
+    s.subs.add(tick)
+    void s.load()
+    return () => void s.subs.delete(tick)
+  }, [s])
 
   /** Puts a saved item in straight away (before the change feed confirms it). */
-  const apply = useCallback((it: GroupItem | { id: string; deleted: true }) => {
-    setItems((old) => {
-      const m = new Map(old)
+  const apply = useCallback(
+    (it: GroupItem | { id: string; deleted: true }) => {
+      const m = new Map(s.items)
       if ('kind' in it && !it.deleted) m.set(it.id, it)
       else m.delete(it.id)
-      return m
-    })
-  }, [])
+      s.items = m
+      s.subs.forEach((f) => f())
+    },
+    [s]
+  )
 
+  const items = s.items
   const list = <K extends GroupItemKind>(kind: K) => [...items.values()].filter((i) => i.kind === kind) as GroupItem<K>[]
-  return { items, list, loaded, error, apply, reload: load }
+  return { items, list, loaded: s.loaded, error: s.error, apply, reload: s.load }
 }
 
 export type ItemsApi = ReturnType<typeof useGroupItems>

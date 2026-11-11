@@ -91,7 +91,7 @@ export function Groups() {
       </div>
     )
 
-  if (!status || status.state === 'connecting' || status.state === 'idle' || (online && !groups))
+  if (!groups && (!status || status.state === 'connecting' || status.state === 'idle' || online))
     return (
       <div className="inner view">
         <Header />
@@ -101,7 +101,7 @@ export function Groups() {
       </div>
     )
 
-  if (!online || !groups)
+  if (!groups)
     return (
       <div className="inner view">
         <Header />
@@ -109,7 +109,7 @@ export function Groups() {
           <WifiOff size={18} />
           <div className="grow">
             <b>Can’t reach the group server</b>
-            <div className="sm dim">{status.error || 'It may be switched off or restarting. Your own tasks and notes still work.'}</div>
+            <div className="sm dim">{status?.error || 'It may be switched off or restarting. Your own tasks and notes still work.'}</div>
           </div>
           <button className="btn sec" onClick={retry}>
             <RefreshCw size={15} /> Try again
@@ -142,6 +142,20 @@ export function Groups() {
           <Plus size={16} /> New group
         </button>
       </Header>
+
+      {status && status.state !== 'online' && (
+        <div className="card grp-status grp-offline grp-banner">
+          {status.state === 'connecting' ? <RefreshCw size={16} className="spin" /> : <WifiOff size={16} />}
+          <span className="grow sm">
+            {status.state === 'connecting' ? 'Reconnecting… showing what was last loaded.' : `${status.error || 'Can’t reach the group server.'} Showing what was last loaded.`}
+          </span>
+          {status.state !== 'connecting' && (
+            <button className="btn sec sm" onClick={retry}>
+              Try again
+            </button>
+          )}
+        </div>
+      )}
 
       {invites.length > 0 && (
         <div className="ig grp-invites">
@@ -202,7 +216,7 @@ export function Groups() {
             <GroupPanel
               key={open.id}
               group={open}
-              me={status.me}
+              me={status?.me ?? null}
               onChanged={(g) => setGroups((all) => all && all.map((x) => (x.id === g.id ? g : x)))}
               onGone={() => {
                 setOpenId(null)

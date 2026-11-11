@@ -168,23 +168,44 @@ export class GroupClient {
     }
   }
 
-  /** Connects (signing in if needed) and starts listening for changes. */
-  async connect(): Promise<GroupStatus> {
+  private connecting: Promise<GroupStatus> | null = null
+  private wakePoll: (() => void) | null = null
+  /**
+   * Connects (signing in if needed) and starts listening for changes. With a
+   * saved session it goes online straight away and lets the first request
+   * (the long-poll) confirm it, so opening Group work costs no extra trip.
+   */
+  connect(): Promise<GroupStatus> {
     if (!this.credentials()) {
       this.setStatus({ state: 'signed-out', me: null, error: '' })
-      return this.status
+      return Promise.resolve(this.status)
     }
-    this.setStatus({ state: 'connecting', error: '' })
-    try {
-      const r = await this.call('GET', '/me')
-      this.saved.me = r.me
-      this.save()
-      this.setStatus({ state: 'online', me: r.me, error: '' })
+    if (this.status.state === 'online' && this.polling) return Promise.resolve(this.status)
+    if (this.saved.session && this.saved.me) {
+      // Retrying while the poll waits to try again: wake it now; it goes online when it gets through.
+      if (this.polling && this.wakePoll) {
+        this.setStatus({ state: 'connecting', error: '' })
+        this.wakePoll()
+        return Promise.resolve(this.status)
+      }
+      this.setStatus({ state: 'online', me: this.saved.me, error: '' })
       this.poll()
-    } catch (e) {
-      this.setStatus({ state: 'offline', error: e instanceof GroupError ? e.message : 'Couldn’t connect to the group server.' })
+      return Promise.resolve(this.status)
     }
-    return this.status
+    this.connecting ??= (async () => {
+      this.setStatus({ state: 'connecting', error: '' })
+      try {
+        const r = await this.call('GET', '/me')
+        this.saved.me = r.me
+        this.save()
+        this.setStatus({ state: 'online', me: r.me, error: '' })
+        this.poll()
+      } catch (e) {
+        this.setStatus({ state: 'offline', error: e instanceof GroupError ? e.message : 'Couldn’t connect to the group server.' })
+      }
+      return this.status
+    })().finally(() => (this.connecting = null))
+    return this.connecting
   }
 
   disconnect(): void {
@@ -280,7 +301,11 @@ export class GroupClient {
       } catch (e) {
         if (!this.credentials()) break
         this.setStatus({ state: 'offline', error: e instanceof GroupError ? e.message : 'Lost the connection to the group server.' })
-        await new Promise((r) => setTimeout(r, wait))
+        await new Promise<void>((r) => {
+          this.wakePoll = r
+          setTimeout(r, wait)
+        })
+        this.wakePoll = null
         wait = Math.min(30000, wait * 2)
       }
     }

@@ -69,3 +69,4 @@
 .grp-code-input { font-size: 20px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 700; }
 .grp-colors { gap: 8px; flex-wrap: wrap; }
 .grp-preview { gap: 12px; margin-bottom: 8px; }
+.grp-banner { margin-bottom: 14px; padding: 10px 14px; }
