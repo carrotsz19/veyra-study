@@ -1,0 +1,55 @@
+{
+  "name": "veyra-study",
+  "version": "0.1.0",
+  "description": "Veyra: a study app for tasks, notes, deadlines and focus time",
+  "main": "out/main/index.js",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "npm run typecheck && electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "electron-vite preview",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "build": {
+    "appId": "app.veyra.study",
+    "productName": "Veyra",
+    "files": [
+      "out/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "dependencies": {
+    "@tiptap/extension-highlight": "^3.33.1",
+    "@tiptap/extension-list": "^3.33.1",
+    "@tiptap/extensions": "^3.33.1",
+    "@tiptap/pm": "^3.33.1",
+    "@tiptap/react": "^3.33.1",
+    "@tiptap/starter-kit": "^3.33.1",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.72.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "45.3.0",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.0.0"
+  },
+  "allowScripts": {
+    "electron@45.3.0": true,
+    "esbuild@0.28.2": true,
+    "electron-winstaller@5.4.0": true
+  }
+}
