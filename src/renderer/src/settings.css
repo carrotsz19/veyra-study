@@ -255,3 +255,8 @@ main.main.main-settings { padding: 0; overflow: hidden; }
 .ai-speed { font-variant-numeric: tabular-nums; color: var(--dim); }
 
 .sync-row { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+.mcp-apps { box-shadow: none; border: 1px solid var(--line); }
+.mcp-apps .ig-row { align-items: flex-start; }
+.mcp-apps .ig-row + .ig-row::before { left: 14px; }
+.mcp-code { display: block; margin-top: 6px; padding: 6px 8px; border-radius: 8px; background: var(--panel-2); font-size: 11.5px; white-space: pre-wrap; word-break: break-all; color: var(--dim); }

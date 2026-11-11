@@ -18,6 +18,7 @@ import { FileError, Files, registerFileScheme } from './files'
 import { DriveError, GoogleDrive } from './drive'
 import { Sync } from './sync'
 import { VoiceError, Whisper } from './whisper'
+import { McpServer, addToClient, clientConfigPath, clientHasVeyra, mcpEntry } from './mcp'
 
 // Dev checks: VEYRA_FAKE_MIC=1 records a test tone instead of the real microphone.
 if (process.env['VEYRA_FAKE_MIC']) app.commandLine.appendSwitch('use-fake-device-for-media-stream')
@@ -441,6 +442,58 @@ app.whenReady().then(() => {
     tray.on('click', () => showWindow())
   }
   const reminders = new Reminders(() => store, (screen) => showWindow(screen))
+
+  // AI apps (MCP): reads go through here; writes refresh the screens and sync like any edit.
+  const mcp = new McpServer({
+    store: () => store,
+    allowWrites: () => appSettings().mcpAllowWrites,
+    changed: (kinds, ids) => {
+      for (const w of BrowserWindow.getAllWindows()) if (!w.webContents.isDestroyed()) w.webContents.send('db:external', { kinds, ids })
+      sync?.schedule()
+      if (kinds.includes('task') || kinds.includes('subject')) google?.schedulePush()
+    }
+  })
+  let mcpError = ''
+  const mcpApply = async () => {
+    mcpError = ''
+    try {
+      if (appSettings().mcpEnabled) await mcp.start()
+      else mcp.stop()
+    } catch (e) {
+      mcpError = e instanceof Error ? e.message : 'The AI connector couldn’t start.'
+    }
+  }
+  const mcpState = () => {
+    const e = mcpEntry()
+    return {
+      running: mcp.running(),
+      port: mcp.port,
+      command: e.command,
+      args: e.args,
+      claude: { path: clientConfigPath('claude'), added: clientHasVeyra('claude') },
+      gemini: { path: clientConfigPath('gemini'), added: clientHasVeyra('gemini') },
+      ...(mcpError ? { error: mcpError } : {})
+    }
+  }
+  setTimeout(() => void mcpApply(), 1500) // once the database is open
+  app.on('will-quit', () => mcp.stop())
+  ipcMain.handle('mcp:state', () => mcpState())
+  ipcMain.handle('mcp:apply', async () => {
+    await mcpApply()
+    return mcpState()
+  })
+  ipcMain.handle('mcp:add', (_e, client: string) =>
+    friendly(async () => {
+      if (client !== 'claude' && client !== 'gemini') throw new ApiError('Unknown app.')
+      if (!mcp.running()) await mcpApply()
+      try {
+        const file = addToClient(client)
+        return { ...mcpState(), file }
+      } catch (e) {
+        throw new ApiError(e instanceof Error ? e.message : 'Couldn’t change that app’s settings.')
+      }
+    })
+  )
   app.on('will-quit', () => reminders.dispose())
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

@@ -443,3 +443,20 @@ export interface VoiceApi {
   onTranscribing(cb: (e: { id: string; progress: number }) => void): () => void
   saveRecording(name: string, mime: string, bytes: Uint8Array): Promise<Attachment>
 }
+
+/* ---------- AI apps (MCP) ---------- */
+export interface McpState {
+  running: boolean
+  port: number
+  /** How AI apps start Veyra's bridge. */
+  command: string
+  args: string[]
+  claude: { path: string; added: boolean }
+  gemini: { path: string; added: boolean }
+  error?: string
+}
+export interface McpApi {
+  state(): Promise<McpState>
+  apply(): Promise<McpState>
+  add(client: 'claude' | 'gemini'): Promise<McpState & { file: string }>
+}

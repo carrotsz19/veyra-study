@@ -69,6 +69,9 @@ export interface AppSettings {
   voiceModel: 'base' | 'small'
   voiceLanguage: string
   voiceAutoTranscribe: boolean
+  /** AI apps (MCP) can read Veyra; and, separately, change it. */
+  mcpEnabled: boolean
+  mcpAllowWrites: boolean
   /* notes */
   noteTemplate: NoteTemplate
   noteFont: NoteFont
@@ -161,6 +164,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   voiceModel: 'base',
   voiceLanguage: 'auto',
   voiceAutoTranscribe: true,
+  mcpEnabled: false,
+  mcpAllowWrites: false,
   noteTemplate: 'page',
   noteFont: 'sans',
   noteCover: 'none',

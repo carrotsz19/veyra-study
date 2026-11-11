@@ -9,7 +9,7 @@ import { useSettings } from '../data/settings'
 import { playSound } from '../components/timer'
 import { useToast } from '../components/ui'
 import { NOTE_COVERS } from '../components/notes/NoteEditor'
-import { AccountSection, DriveSection, GoogleSection } from './Connections'
+import { AccountSection, AiAppsSection, DriveSection, GoogleSection } from './Connections'
 import { LocalAiSetup } from '../components/LocalAiSetup'
 import { db, useRecords } from '../data/store'
 import { sortSubjects } from '../lib/subjects'
@@ -35,7 +35,7 @@ const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; 
   { id: 'calendar', label: 'Calendar', icon: CalendarDays, hint: 'What appears on the calendar', keys: ['calendarShowTasks', 'calendarShowDone', 'calendarShowEvents'] },
   { id: 'ai', label: 'AI', icon: Sparkles, hint: 'Local AI or your own Claude, Gemini or OpenAI key' },
   { id: 'account', label: 'Account', icon: UserRound, hint: 'Your Veyra account' },
-  { id: 'connections', label: 'Connections', icon: Link2, hint: 'Google Calendar, Google Drive and calendar links' },
+  { id: 'connections', label: 'Connections', icon: Link2, hint: 'Google Calendar, Google Drive, calendar links and AI apps' },
   { id: 'data', label: 'Data & privacy', icon: Database, hint: 'Export, where data lives, and resets' }
 ]
 
@@ -941,6 +941,7 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
         <>
           <GoogleSection />
           <DriveSection />
+          <AiAppsSection />
         </>
       )
     case 'data':
@@ -952,7 +953,7 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
 /** Pages that are cards rather than rows: search shows a shortcut to them. */
 const JUMPS: { id: SectionId; words: string }[] = [
   { id: 'account', words: 'account sign in sign out log out veyra username email password profile photo' },
-  { id: 'connections', words: 'connected calendars google calendar drive backup docs ical ics link sync outlook icloud events connect' }
+  { id: 'connections', words: 'connected calendars google calendar drive backup docs mcp claude gemini chatgpt codex ai apps connector ical ics link sync outlook icloud events connect' }
 ]
 
 const SEARCHABLE: SectionId[] = ['general', 'appearance', 'sidebar', 'subjects', 'ai', 'today', 'tasks', 'notes', 'timer', 'calendar', 'data']

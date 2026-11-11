@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { CalendarDays, Check, ExternalLink, HardDrive, Link2, LogOut, Plus, RefreshCw, Trash2, UserRound } from 'lucide-react'
+import { Bot, CalendarDays, Check, Copy, ExternalLink, HardDrive, Link2, LogOut, Plus, RefreshCw, Trash2, UserRound } from 'lucide-react'
 import { backupNow, backupStatus, onBackupStatus, useDrive } from '../data/drive'
-import type { GoogleState, SyncStatus } from '@shared/types'
+import type { GoogleState, McpState, SyncStatus } from '@shared/types'
+import { useSettings } from '../data/settings'
 import { Avatar, useAccount, Welcome } from '../components/account'
 import { useToast } from '../components/ui'
 
@@ -455,6 +456,119 @@ function SyncRow() {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ---------- AI apps (MCP) ---------- */
+export function AiAppsSection() {
+  const toast = useToast()
+  const { s, set } = useSettings()
+  const [m, setM] = useState<McpState | null>(null)
+  const [busy, setBusy] = useState('')
+  useEffect(() => {
+    void window.veyra.mcp.state().then(setM)
+  }, [])
+  // Start or stop it once the switch is saved.
+  useEffect(() => {
+    const t = setTimeout(() => void window.veyra.mcp.apply().then(setM), 700)
+    return () => clearTimeout(t)
+  }, [s.mcpEnabled])
+  if (!m) return null
+
+  const add = async (client: 'claude' | 'gemini', label: string) => {
+    setBusy(client)
+    try {
+      const r = await window.veyra.mcp.add(client)
+      setM(r)
+      toast(`Added to ${label}. Restart ${label} to use it.`)
+    } catch (e) {
+      toast(clean(e))
+    } finally {
+      setBusy('')
+    }
+  }
+  const q = (v: string) => (/\s/.test(v) ? `"${v}"` : v)
+  const claudeCode = `claude mcp add veyra-study --scope user --env ELECTRON_RUN_AS_NODE=1 -- ${q(m.command)} ${m.args.map(q).join(' ')}`
+  const codex = `[mcp_servers.veyra-study]\ncommand = '${m.command}'\nargs = [${m.args.map((a) => `'${a}'`).join(', ')}]\nenv = { ELECTRON_RUN_AS_NODE = "1" }`
+  const copy = (text: string) => void navigator.clipboard.writeText(text).then(() => toast('Copied'))
+
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <div className="row" style={{ gap: 14, alignItems: 'flex-start' }}>
+        <div className="avatar lg" style={{ background: 'var(--panel-2)', color: '#7a4f9a' }}>
+          <Bot size={20} />
+        </div>
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>AI apps (MCP)</div>
+          <div className="sm dim">
+            Let Claude, Gemini or ChatGPT on this computer see your tasks, notes and study time, using your own subscription. Veyra only answers apps on this computer.
+          </div>
+          <label className="toggle-row" style={{ marginTop: 14 }}>
+            <span>
+              <b>Let AI apps use Veyra</b>
+              <span className="sm dim">Works while Veyra is open (or in the tray).</span>
+            </span>
+            <input type="checkbox" className="switch" checked={s.mcpEnabled} onChange={(e) => set({ mcpEnabled: e.target.checked })} />
+          </label>
+          {s.mcpEnabled && (
+            <>
+              <label className="toggle-row" style={{ marginTop: 10 }}>
+                <span>
+                  <b>Allow changes</b>
+                  <span className="sm dim">AI apps can add and update tasks and write notes. Off: they can only read.</span>
+                </span>
+                <input type="checkbox" className="switch" checked={s.mcpAllowWrites} onChange={(e) => set({ mcpAllowWrites: e.target.checked })} />
+              </label>
+              {m.error && <p className="welcome-err" style={{ textAlign: 'left' }}>{m.error}</p>}
+              <h2 style={{ marginTop: 18 }}>Connect an app</h2>
+              <div className="ig mcp-apps">
+                <div className="ig-row">
+                  <div className="grow">
+                    <div className="ig-title">Claude Desktop</div>
+                    <div className="ig-sub">{m.claude.added ? 'Added. Restart Claude if you haven’t.' : 'Adds Veyra to Claude’s settings (keeping a backup).'}</div>
+                  </div>
+                  <button className={`btn sm ${m.claude.added ? 'sec' : ''}`} disabled={!!busy || !m.running} onClick={() => add('claude', 'Claude Desktop')}>
+                    {m.claude.added ? 'Update' : 'Add to Claude'}
+                  </button>
+                </div>
+                <div className="ig-row">
+                  <div className="grow">
+                    <div className="ig-title">Gemini CLI</div>
+                    <div className="ig-sub">{m.gemini.added ? 'Added.' : 'Adds Veyra to ~/.gemini/settings.json (keeping a backup).'}</div>
+                  </div>
+                  <button className={`btn sm ${m.gemini.added ? 'sec' : ''}`} disabled={!!busy || !m.running} onClick={() => add('gemini', 'Gemini CLI')}>
+                    {m.gemini.added ? 'Update' : 'Add to Gemini'}
+                  </button>
+                </div>
+                <div className="ig-row">
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div className="ig-title">Claude Code</div>
+                    <div className="ig-sub">Run this once in a terminal.</div>
+                    <code className="mcp-code">{claudeCode}</code>
+                  </div>
+                  <button className="btn sec sm" onClick={() => copy(claudeCode)}>
+                    <Copy size={13} /> Copy
+                  </button>
+                </div>
+                <div className="ig-row">
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div className="ig-title">ChatGPT desktop and Codex</div>
+                    <div className="ig-sub">Add it in ChatGPT’s settings under MCP servers, or paste into ~/.codex/config.toml. The ChatGPT website can’t reach apps on your computer.</div>
+                    <code className="mcp-code">{codex}</code>
+                  </div>
+                  <button className="btn sec sm" onClick={() => copy(codex)}>
+                    <Copy size={13} /> Copy
+                  </button>
+                </div>
+              </div>
+              <p className="xs dim" style={{ marginTop: 10 }}>
+                {m.running ? `Running on this computer only (127.0.0.1:${m.port}), with a private key.` : 'Starting…'} Try asking: “What’s due this week in Veyra?”
+              </p>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
