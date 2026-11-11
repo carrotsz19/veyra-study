@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { CalendarDays, Check, ExternalLink, HardDrive, Link2, LogOut, Plus, RefreshCw, Trash2, UserRound } from 'lucide-react'
 import { backupNow, backupStatus, onBackupStatus, useDrive } from '../data/drive'
-import type { GoogleState } from '@shared/types'
+import type { GoogleState, SyncStatus } from '@shared/types'
 import { Avatar, useAccount, Welcome } from '../components/account'
 import { useToast } from '../components/ui'
 
@@ -28,7 +28,7 @@ export function AccountSection() {
                 {u.email ? ` · ${u.email}` : ''}
               </div>
               <div className="xs tert" style={{ marginTop: 2 }}>
-                Veyra account · the same one as IronLog and Cashline. Your study data is kept for this account on this computer.
+                Veyra account · the same one as IronLog and Cashline.
               </div>
             </div>
           </div>
@@ -43,7 +43,9 @@ export function AccountSection() {
             <LogOut size={15} /> Sign out
           </button>
         </div>
-      ) : (
+      ) : null}
+      {u && <SyncRow />}
+      {u ? null : (
         <div className="between">
           <div className="row" style={{ gap: 14 }}>
             <div className="avatar lg">
@@ -411,6 +413,48 @@ export function DriveSection() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/* ---------- sync across your computers ---------- */
+function SyncRow() {
+  const toast = useToast()
+  const [s, setS] = useState<SyncStatus | null>(null)
+  useEffect(() => {
+    window.veyra.sync.status().then(setS)
+    return window.veyra.sync.onStatus(setS)
+  }, [])
+  if (!s) return null
+  return (
+    <div className="sync-row">
+      <label className="toggle-row">
+        <span>
+          <b>Sync across my computers</b>
+          <span className="sm dim">
+            Your tasks, notes, subjects and study time on every computer you sign in to, through your Veyra server. Settings and attached files stay on each computer.
+          </span>
+        </span>
+        <input type="checkbox" className="switch" checked={s.enabled} onChange={async (e) => setS(await window.veyra.sync.setEnabled(e.target.checked))} />
+      </label>
+      {s.enabled && (
+        <div className="between" style={{ marginTop: 8 }}>
+          <span className={`sm ${s.state === 'error' ? '' : 'dim'}`} style={s.state === 'error' ? { color: 'var(--bad)' } : undefined}>
+            {s.state === 'syncing' ? 'Syncing…' : s.state === 'error' ? s.error : s.lastSync ? `Synced ${formatDistanceToNowStrict(s.lastSync, { addSuffix: true })}` : 'Not synced yet'}
+          </span>
+          <button
+            className="btn sec sm"
+            disabled={s.state === 'syncing'}
+            onClick={async () => {
+              const r = await window.veyra.sync.now()
+              setS(r)
+              if (r.state === 'idle') toast('Up to date')
+            }}
+          >
+            <RefreshCw size={14} className={s.state === 'syncing' ? 'spin' : ''} /> Sync now
+          </button>
+        </div>
+      )}
     </div>
   )
 }

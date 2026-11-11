@@ -1,12 +1,18 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
-import type { VeyraDb } from '../shared/types'
+import type { Kind, VeyraDb } from '../shared/types'
 
 const db: VeyraDb = {
   list: (kind) => ipcRenderer.invoke('db:list', kind),
   put: (kind, data, id) => ipcRenderer.invoke('db:put', kind, data, id),
   remove: (id) => ipcRenderer.invoke('db:remove', id),
   changesSince: (since) => ipcRenderer.invoke('db:changesSince', since),
-  info: () => ipcRenderer.invoke('db:info')
+  info: () => ipcRenderer.invoke('db:info'),
+  /** Records changed by another device (personal sync). */
+  onExternal: (cb: (e: { kinds: Kind[]; ids: string[] }) => void) => {
+    const h = (_: unknown, e: { kinds: Kind[]; ids: string[] }) => cb(e)
+    ipcRenderer.on('db:external', h)
+    return () => void ipcRenderer.removeListener('db:external', h)
+  }
 }
 
 const account = {
@@ -86,6 +92,17 @@ const groupApi = {
   }
 }
 
+const syncApi = {
+  status: () => ipcRenderer.invoke('sync:status'),
+  now: () => ipcRenderer.invoke('sync:now'),
+  setEnabled: (on: boolean) => ipcRenderer.invoke('sync:set', on),
+  onStatus: (cb: (s: unknown) => void) => {
+    const h = (_: unknown, s: unknown) => cb(s)
+    ipcRenderer.on('sync:status', h)
+    return () => ipcRenderer.removeListener('sync:status', h)
+  }
+}
+
 const driveApi = {
   state: () => ipcRenderer.invoke('drive:state'),
   connect: () => ipcRenderer.invoke('drive:connect'),
@@ -116,4 +133,4 @@ const filesApi = {
 /** Saves right away, blocking: only for the moment the window closes. */
 const saveNow = (kind: string, data: unknown, id: string) => ipcRenderer.sendSync('db:putSync', kind, data, id)
 
-contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })
+contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })

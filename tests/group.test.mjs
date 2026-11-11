@@ -29,7 +29,12 @@ async function api(token, method, path, body) {
   })
   return { status: res.status, body: await res.json() }
 }
-const login = async (u) => (await api(null, 'POST', '/session', { pass: pass(u) })).body.session
+// One session per person (the server allows 20 sign-ins a minute from one address).
+const sessions = new Map()
+const login = async (u) => {
+  if (!sessions.has(u)) sessions.set(u, (await api(null, 'POST', '/session', { pass: pass(u) })).body.session)
+  return sessions.get(u)
+}
 
 before(async () => {
   dataDir = mkdtempSync(join(tmpdir(), 'veyra-group-test-'))
@@ -207,6 +212,42 @@ test('an owner leaving hands the group on', async () => {
   assert.equal(view.owner, 'bob')
   assert.equal(view.role, 'owner')
   assert.equal((await api(a, 'GET', `/groups/${g.id}`)).status, 404)
+})
+
+/* ---------------- personal sync ---------------- */
+test('personal sync: your own records only, newest edit wins, paged pulls', async () => {
+  const a = await login('alice')
+  const b = await login('bob')
+  const rec = (id, title, updatedAt, deviceId = 'pc-1', extra = {}) => ({ id, kind: 'task', data: { title }, createdAt: 1, updatedAt, deletedAt: null, deviceId, ...extra })
+
+  let r = await api(a, 'POST', '/sync/push', { records: [rec('t1', 'Essay', 100), rec('t2', 'Lab', 100)] })
+  assert.equal(r.status, 200)
+  assert.equal(r.body.accepted, 2)
+
+  // Bob never sees Alice's records.
+  assert.equal((await api(b, 'GET', '/sync/pull?since=0')).body.records.length, 0)
+
+  // An older edit from another device loses; a newer one wins; a tie goes to the higher device id.
+  r = await api(a, 'POST', '/sync/push', { records: [rec('t1', 'old', 50, 'pc-2'), rec('t2', 'Lab report', 200, 'pc-2')] })
+  assert.equal(r.body.accepted, 1)
+  r = await api(a, 'POST', '/sync/push', { records: [rec('t2', 'tie-low', 200, 'pc-0'), rec('t1', 'tie-high', 100, 'pc-9')] })
+  assert.equal(r.body.accepted, 1)
+  const all = (await api(a, 'GET', '/sync/pull?since=0')).body.records
+  assert.deepEqual(Object.fromEntries(all.map((x) => [x.id, x.data.title])), { t1: 'tie-high', t2: 'Lab report' })
+
+  // Deletes travel as tombstones; bad records and other kinds are skipped.
+  r = await api(a, 'POST', '/sync/push', { records: [rec('t2', 'Lab report', 300, 'pc-1', { deletedAt: 300 }), { id: '../x', kind: 'task', data: {} }, rec('s1', 'x', 1, 'pc', { kind: 'settings' })] })
+  assert.equal(r.body.accepted, 1)
+  assert.equal(r.body.skipped, 2)
+
+  // Pull pages through everything changed since a cursor.
+  const first = (await api(a, 'GET', '/sync/pull?since=0&limit=1')).body
+  assert.equal(first.records.length, 1)
+  assert.equal(first.more, true)
+  const rest = (await api(a, 'GET', `/sync/pull?since=${first.seq}&limit=10`)).body
+  assert.equal(rest.more, false)
+  assert.equal(rest.records.find((x) => x.id === 't2').deletedAt, 300)
+  assert.equal((await api(a, 'GET', `/sync/pull?since=${rest.seq}`)).body.records.length, 0)
 })
 
 /* ---------------- relay ---------------- */

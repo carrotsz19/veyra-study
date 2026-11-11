@@ -88,6 +88,8 @@ export interface VeyraDb {
   /** Records (including tombstones) changed after `since`. Used by sync. */
   changesSince(since: number): Promise<Rec[]>
   info(): Promise<{ deviceId: string; dbPath: string }>
+  /** Records another device changed (personal sync). Desktop only. */
+  onExternal?(cb: (e: { kinds: Kind[]; ids: string[] }) => void): () => void
 }
 
 export interface AccountUser {
@@ -399,3 +401,18 @@ export interface DriveApi {
 }
 
 export type DrivePicked = { kind: 'doc'; name: string; html: string } | { kind: 'file'; file: Attachment }
+
+/* ---------- personal sync across your devices ---------- */
+export interface SyncStatus {
+  enabled: boolean
+  state: 'idle' | 'syncing' | 'error'
+  lastSync?: number
+  error: string
+}
+
+export interface SyncApi {
+  status(): Promise<SyncStatus>
+  now(): Promise<SyncStatus>
+  setEnabled(on: boolean): Promise<SyncStatus>
+  onStatus(cb: (s: SyncStatus) => void): () => void
+}

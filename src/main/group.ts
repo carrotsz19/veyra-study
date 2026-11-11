@@ -36,6 +36,8 @@ export class GroupClient {
   private disposed = false
   private lastSeq = 0
   private listeners = new Set<WebContents>()
+  /** Called when the server says something changed (personal sync listens). */
+  onRemoteChange: (() => void) | null = null
   /** Shared tasks and deadlines per group, kept up to date with ?since= (for Calendar and Today). */
   private dated = new Map<string, { seq: number; group: Group; items: Map<string, GroupItem> }>()
   private datedAt = 0
@@ -292,6 +294,7 @@ export class GroupClient {
       try {
         const r = await this.call('GET', `/poll?since=${this.lastSeq}`)
         if (r.seq > this.lastSeq) {
+          this.onRemoteChange?.()
           const first = this.lastSeq === 0
           this.lastSeq = r.seq
           this.datedAt = 0

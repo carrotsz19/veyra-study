@@ -253,3 +253,5 @@ main.main.main-settings { padding: 0; overflow: hidden; }
 
 .ls-speed { font-size: 12px; font-weight: 650; color: var(--accent); font-variant-numeric: tabular-nums; }
 .ai-speed { font-variant-numeric: tabular-nums; color: var(--dim); }
+
+.sync-row { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }

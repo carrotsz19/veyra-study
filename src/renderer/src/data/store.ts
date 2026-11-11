@@ -10,6 +10,19 @@ const backend: VeyraDb = window.veyra.db
 type Listener = (kind: Kind) => void
 const listeners = new Set<Listener>()
 const emit = (kind: Kind): void => listeners.forEach((l) => l(kind))
+// Another device changed records (personal sync): reload those lists, and tell open editors.
+type ExternalListener = (ids: string[]) => void
+const externalListeners = new Set<ExternalListener>()
+backend.onExternal?.(({ kinds, ids }) => {
+  kinds.forEach(emit)
+  externalListeners.forEach((l) => l(ids))
+})
+/** Runs with the ids of records another device just changed. */
+export const onExternalChange = (l: ExternalListener): (() => void) => {
+  externalListeners.add(l)
+  return () => void externalListeners.delete(l)
+}
+
 /** Runs whenever records of any kind are saved or removed here. */
 export const onRecordsChanged = (l: Listener): (() => void) => {
   listeners.add(l)

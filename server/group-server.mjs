@@ -32,7 +32,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:f
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION = '1.0.0'
+const VERSION = '1.1.0'
 const HERE = dirname(fileURLToPath(import.meta.url))
 
 /* ---------- settings ---------- */
@@ -93,6 +93,14 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS items_group_seq ON items(group_id, seq);
   CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  -- Personal sync: each person's own records (tasks, notes, subjects, study time), never shared.
+  CREATE TABLE IF NOT EXISTS personal (
+    username TEXT NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL,
+    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER,
+    device_id TEXT NOT NULL, seq INTEGER NOT NULL,
+    PRIMARY KEY (username, id)
+  );
+  CREATE INDEX IF NOT EXISTS personal_seq ON personal(username, seq);
 `)
 const q = (sql) => db.prepare(sql)
 const metaGet = (k) => q('SELECT value FROM meta WHERE key = ?').get(k)?.value
@@ -508,6 +516,69 @@ route('DELETE', '/groups/:id/items/:item', ({ me, params }) => {
   return { ok: true }
 })
 
+/* ---------- personal sync (only ever your own records) ---------- */
+const SYNC_KINDS = new Set(['subject', 'task', 'note', 'session'])
+const SYNC_MAX_RECORD = 1_500_000
+const SYNC_MAX_ROWS = 100_000
+
+// Your devices send what they changed. The newest edit of each record wins
+// (ties go to the higher device id, so every device agrees).
+route('POST', '/sync/push', ({ me, body }) => {
+  limit(`sync:${me}`, 240, 60_000)
+  const list = Array.isArray(body?.records) ? body.records.slice(0, 2000) : null
+  if (!list) throw new HttpError(400, 'Nothing to sync.')
+  const count = q('SELECT count(*) AS n FROM personal WHERE username = ?').get(me).n
+  let accepted = 0
+  let skipped = 0
+  db.exec('BEGIN')
+  try {
+    for (const r of list) {
+      const ok =
+        r && typeof r.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(r.id) && SYNC_KINDS.has(r.kind) && r.data && typeof r.data === 'object' &&
+        Number.isFinite(r.createdAt) && Number.isFinite(r.updatedAt) && (r.deletedAt === null || Number.isFinite(r.deletedAt)) &&
+        typeof r.deviceId === 'string' && r.deviceId.length <= 64
+      const json = ok ? JSON.stringify(r.data) : ''
+      if (!ok || json.length > SYNC_MAX_RECORD) {
+        skipped++
+        continue
+      }
+      const old = q('SELECT updated_at, device_id, kind FROM personal WHERE username = ? AND id = ?').get(me, r.id)
+      if (old && (old.updated_at > r.updatedAt || (old.updated_at === r.updatedAt && old.device_id >= r.deviceId))) continue
+      if (old && old.kind !== r.kind) {
+        skipped++
+        continue
+      }
+      if (!old && count + accepted >= SYNC_MAX_ROWS) throw new HttpError(413, 'Your synced data is over the limit (100,000 items).')
+      q(
+        `INSERT INTO personal (username, id, kind, data, created_at, updated_at, deleted_at, device_id, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(username, id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at, device_id = excluded.device_id, seq = excluded.seq`
+      ).run(me, r.id, r.kind, json, r.createdAt, r.updatedAt, r.deletedAt ?? null, r.deviceId, nextSeq())
+      accepted++
+    }
+    db.exec('COMMIT')
+  } catch (e) {
+    db.exec('ROLLBACK')
+    throw e
+  }
+  if (accepted) notify([me])
+  return { accepted, skipped, seq }
+})
+
+// …and fetch what your other devices changed.
+route('GET', '/sync/pull', ({ me, url }) => {
+  limit(`sync:${me}`, 240, 60_000)
+  const since = Number(url.searchParams.get('since') || 0)
+  const max = Math.min(1000, Math.max(1, Number(url.searchParams.get('limit') || 500)))
+  const rows = q('SELECT * FROM personal WHERE username = ? AND seq > ? ORDER BY seq LIMIT ?').all(me, since, max + 1)
+  const more = rows.length > max
+  const page = rows.slice(0, max)
+  return {
+    records: page.map((r) => ({ id: r.id, kind: r.kind, data: JSON.parse(r.data), createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at, deviceId: r.device_id })),
+    seq: page.length ? page[page.length - 1].seq : Math.max(since, 0),
+    more
+  }
+})
+
 // Long-poll: answers as soon as anything in your groups or invites changes, or after ~25 s.
 route('GET', '/poll', async ({ me, url, req }) => {
   const since = Number(url.searchParams.get('since') || 0)
@@ -529,13 +600,14 @@ route('GET', '/poll', async ({ me, url, req }) => {
 
 /* ---------- HTTP plumbing ---------- */
 const MAX_BODY = 600_000
+const MAX_SYNC_BODY = 4_000_000
 
-async function readBody(req) {
+async function readBody(req, max = MAX_BODY) {
   const chunks = []
   let n = 0
   for await (const c of req) {
     n += c.length
-    if (n > MAX_BODY) throw new HttpError(413, 'That’s too large.')
+    if (n > max) throw new HttpError(413, 'That’s too large.')
     chunks.push(c)
   }
   if (!n) return null
@@ -570,7 +642,7 @@ const server = createServer(async (req, res) => {
       const params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]))
       limit(`all:${ip}`, 1200, 60_000)
       const auth = r.auth ? sessionUser(req) : {}
-      const body = req.method === 'GET' || req.method === 'DELETE' ? null : await readBody(req)
+      const body = req.method === 'GET' || req.method === 'DELETE' ? null : await readBody(req, url.pathname === '/sync/push' ? MAX_SYNC_BODY : MAX_BODY)
       const out = await r.handler({ ...auth, params, body, url, req, ip })
       return send(200, out)
     }

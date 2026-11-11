@@ -11,6 +11,7 @@ import { LocalAi, LocalAiError } from './localai'
 import { GroupClient, GroupError } from './group'
 import { FileError, Files, registerFileScheme } from './files'
 import { DriveError, GoogleDrive } from './drive'
+import { Sync } from './sync'
 
 // Dev checks: run on a separate profile (sign-in, settings and data).
 if (process.env['VEYRA_USERDATA']) app.setPath('userData', process.env['VEYRA_USERDATA'])
@@ -25,6 +26,7 @@ let feeds: IcalFeeds | null = null
 let ai: AiService | null = null
 let group: GroupClient | null = null
 let drive: GoogleDrive | null = null
+let sync: Sync | null = null
 const localAi = new LocalAi()
 const files = new Files(() => (accounts ? accounts.folder() : null))
 app.on('will-quit', () => localAi.stop())
@@ -45,6 +47,14 @@ function openGoogle(): void {
   group = new GroupClient(folder ? join(accountDir(folder), 'group.bin') : join(app.getPath('userData'), 'group-local.bin'), () => accounts.credentials())
   // Connect in the background so Group work is ready when it's opened.
   if (folder) void group.connect()
+  // Your own data on every computer you sign in to (only with a Veyra account).
+  if (folder && store) {
+    sync = new Sync(store, group, (kinds, ids) => {
+      for (const w of BrowserWindow.getAllWindows()) if (!w.webContents.isDestroyed()) w.webContents.send('db:external', { kinds, ids })
+      if (kinds.includes('task') || kinds.includes('subject')) google?.schedulePush()
+    })
+    sync.schedule(4000)
+  }
 }
 const gcal = (): GoogleCalendar => google!
 
@@ -55,6 +65,8 @@ function openStore(path: string): void {
   feeds = null
   ai?.dispose()
   ai = null
+  sync?.dispose()
+  sync = null
   group?.dispose()
   group = null
   drive?.dispose()
@@ -133,6 +145,10 @@ app.whenReady().then(() => {
   setInterval(() => google?.schedulePush(0), 15 * 60 * 1000)
 
   files.handleProtocol()
+  const noSync = { enabled: false, state: 'idle', error: '' }
+  ipcMain.handle('sync:status', () => sync?.getStatus() ?? noSync)
+  ipcMain.handle('sync:now', () => sync?.run() ?? noSync)
+  ipcMain.handle('sync:set', (_e, on: boolean) => sync?.setEnabled(!!on) ?? noSync)
   const gdrive = (): GoogleDrive => {
     if (!drive) throw new DriveError('Google Drive isn’t ready yet.')
     return drive
@@ -158,6 +174,7 @@ app.whenReady().then(() => {
   ipcMain.handle('db:put', (_e, kind, data, id) => {
     const rec = db().put(kind, data, id)
     if (kind === 'task' || kind === 'subject') google?.schedulePush()
+    sync?.schedule()
     return rec
   })
   // Synchronous save, used only while the window is closing so the last edit isn't lost.
@@ -165,6 +182,7 @@ app.whenReady().then(() => {
     try {
       e.returnValue = db().put(kind, data, id)
       if (kind === 'task') google?.schedulePush()
+      sync?.schedule(0)
     } catch {
       e.returnValue = null
     }
@@ -172,6 +190,7 @@ app.whenReady().then(() => {
   ipcMain.handle('db:remove', (_e, id) => {
     db().remove(id)
     google?.schedulePush()
+    sync?.schedule()
   })
   ipcMain.handle('db:changesSince', (_e, since) => db().changesSince(since))
   ipcMain.handle('db:info', () => ({ deviceId: db().deviceId, dbPath: db().path }))
@@ -282,6 +301,7 @@ app.whenReady().then(() => {
       n++
     }
     google?.schedulePush()
+    sync?.schedule(0)
     return { imported: n }
   }))
   ipcMain.handle('notes:export', async (_e, files: { name: string; text: string }[]) => {

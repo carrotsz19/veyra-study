@@ -4,7 +4,7 @@ import {
   Archive, ArchiveRestore, CheckSquare, Copy, Download, FileText, FolderInput, HardDrive, NotebookPen, Pin, PinOff, Plus, Search, Square, Trash2, X
 } from 'lucide-react'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
-import { db, useRecords } from '../data/store'
+import { db, onExternalChange, useRecords } from '../data/store'
 import { Empty, useToast } from '../components/ui'
 import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../components/notes/NoteEditor'
 import { useSettings } from '../data/settings'
@@ -96,6 +96,12 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
       return b.updatedAt - a.updatedAt
     })
   const current = notes.find((n) => n.id === selected)
+  const currentStamp = current?.updatedAt
+  useEffect(() => {
+    if (!remotePending.current) return
+    remotePending.current = false
+    setRemoteBump((b) => b + 1)
+  }, [currentStamp])
   const archivedCount = notes.filter((n) => n.data.archived).length
   const pickedNotes = notes.filter((n) => picked.has(n.id))
 
@@ -118,6 +124,19 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   }
 
   const { state: drive } = useDrive()
+  // Another computer changed the open note: show its version (anything you were typing is saved first, and newer wins).
+  // The list reloads a moment after the change arrives, so reopen the editor once the new version is here.
+  const [remoteBump, setRemoteBump] = useState(0)
+  const openId = useRef<string | undefined>(undefined)
+  const remotePending = useRef(false)
+  openId.current = selected
+  useEffect(
+    () =>
+      onExternalChange((ids) => {
+        if (openId.current && ids.includes(openId.current)) remotePending.current = true
+      }),
+    []
+  )
   const [importing, setImporting] = useState(false)
   const fromDrive = async () => {
     setImporting(true)
@@ -412,7 +431,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
           </div>
         ) : current ? (
           <NoteEditor
-            key={current.id}
+            key={`${current.id}:${remoteBump}`}
             note={current}
             onDeleted={() => setSelected(undefined)}
             onOpen={(id) => setSelected(id)}
