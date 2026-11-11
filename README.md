@@ -59,26 +59,25 @@ The app signs in through the Veyra Worker's existing endpoints (`getLoginSalt`, 
 - The first account to sign in on a computer takes over the data that was there before. Signing out keeps each account's data on disk.
 - `VEYRA_SERVER` points the app at another server, such as staging.
 
-## Google Calendar setup
+## Google Calendar
 
-You use your own Google OAuth client:
-1. Create a Google Cloud project and enable the **Google Calendar API**.
-2. Set up the OAuth consent screen as **External**, with the publishing status **In production**. In "Testing", Google expires access every 7 days.
-3. Create an OAuth client of type **Desktop app**, and paste its ID and secret in **Settings → Google Calendar**.
+**Connect (both ways).** Veyra Study has its own Google OAuth client (a Desktop app client in the owner's Google Cloud project), built in at build time. Users click **Connect** in Settings and approve in their browser. The redirect goes to a loopback address (`127.0.0.1`) and uses PKCE.
+- Scopes:
+  - `calendar.app.created`: create and manage only the Veyra Study calendar.
+  - `calendar.calendarlist.readonly` and `calendar.events.readonly`: read calendars and events.
+- Event IDs come from task IDs, so pushing a deadline again never creates a duplicate.
+- Until Google verifies the app, users see an "unverified app" warning, and at most 100 can connect.
 
-Sign-in opens your browser. The redirect goes to a loopback address (`127.0.0.1`) and uses PKCE.
+The client comes from `google-client.json` in the project folder: the JSON downloaded from Google Cloud → Clients. It is **git-ignored and never committed**. You can also set `VEYRA_GOOGLE_CLIENT_ID` and `VEYRA_GOOGLE_CLIENT_SECRET`. Without either, the Connect button is hidden and people can enter their own client under "Advanced".
 
-Scopes:
-- `calendar.app.created`: create and manage only the Veyra Study calendar.
-- `calendar.calendarlist.readonly` and `calendar.events.readonly`: read your calendars and events.
-
-Event IDs come from task IDs, so pushing a deadline again never creates a duplicate.
+**Calendars by link (read-only, no sign-in).** Paste a calendar's "Secret address in iCal format", or any `.ics` link. Repeating events, moved or cancelled occurrences and time zones are handled by `ical.js`. Links are stored encrypted.
 
 ## Layout
 
 ```
 src/main/        Electron main process: window, SQLite store (db.ts), IPC,
-                 Veyra accounts (account.ts), Google Calendar (gcal.ts)
+                 Veyra accounts (account.ts), Google Calendar (gcal.ts),
+                 iCal links (ical.ts)
 src/preload/     exposes window.veyra.db to the UI
 src/shared/      types shared by both sides
 src/renderer/    React UI: views/, components/, data/, lib/, styles.css

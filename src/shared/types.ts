@@ -122,7 +122,19 @@ export interface GoogleEvent {
   link: string
 }
 
+export interface IcalFeed {
+  id: string
+  name: string
+  color: string
+  error?: string
+}
+
 export interface GoogleState {
+  /** The app has its own Google client, so connecting is one click. */
+  builtIn: boolean
+  /** Using a client the user entered instead of the built-in one. */
+  customClient: boolean
+  feeds: IcalFeed[]
   connected: boolean
   clientId: string
   hasSecret: boolean
@@ -137,7 +149,10 @@ export interface GoogleState {
 
 export interface GoogleApi {
   state(): Promise<GoogleState>
-  connect(clientId: string, clientSecret: string): Promise<GoogleState>
+  /** Empty id: use the app's built-in client. */
+  connect(clientId?: string, clientSecret?: string): Promise<GoogleState>
+  addFeed(url: string, name: string): Promise<GoogleState>
+  removeFeed(id: string): Promise<GoogleState>
   disconnect(): Promise<GoogleState>
   setOptions(o: { pushTasks?: boolean; shown?: string[] | null }): Promise<GoogleState>
   events(fromIso: string, toIso: string): Promise<{ events: GoogleEvent[]; error?: string }>

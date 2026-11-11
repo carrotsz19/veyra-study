@@ -4,6 +4,7 @@ import type { Rec } from '../shared/types'
 import { Store } from './db'
 import { Accounts, ApiError, accountDir } from './account'
 import { GoogleCalendar, GoogleError } from './gcal'
+import { IcalError, IcalFeeds } from './ical'
 
 // Dev checks: run on a separate profile (sign-in, settings and data).
 if (process.env['VEYRA_USERDATA']) app.setPath('userData', process.env['VEYRA_USERDATA'])
@@ -11,11 +12,13 @@ if (process.env['VEYRA_USERDATA']) app.setPath('userData', process.env['VEYRA_US
 let store: Store | null = null
 let accounts: Accounts
 let google: GoogleCalendar | null = null
+let feeds: IcalFeeds | null = null
 
 /** One Google connection per account (or for the no-account data). */
 function openGoogle(): void {
   const folder = accounts.folder()
   const file = folder ? join(accountDir(folder), 'google.bin') : join(app.getPath('userData'), 'google-local.bin')
+  feeds = new IcalFeeds(folder ? join(accountDir(folder), 'ical.bin') : join(app.getPath('userData'), 'ical-local.bin'))
   google = new GoogleCalendar(
     file,
     (since) => db().changesSince(since).filter((r) => r.kind === 'task') as Rec<'task'>[],
@@ -28,6 +31,8 @@ const gcal = (): GoogleCalendar => google!
 function openStore(path: string): void {
   google?.dispose()
   google = null
+  feeds?.dispose()
+  feeds = null
   store?.close()
   store = path ? new Store(path) : null
   if (store && accounts) openGoogle()
@@ -41,7 +46,7 @@ const friendly = async <T>(fn: () => Promise<T>): Promise<T> => {
   try {
     return await fn()
   } catch (e) {
-    throw new Error(e instanceof ApiError || e instanceof GoogleError ? e.message : 'Something went wrong. Try again.')
+    throw new Error(e instanceof ApiError || e instanceof GoogleError || e instanceof IcalError ? e.message : 'Something went wrong. Try again.')
   }
 }
 
@@ -121,13 +126,29 @@ app.whenReady().then(() => {
   ipcMain.handle('account:signOut', () => friendly(() => accounts.signOut()))
   ipcMain.handle('account:guest', () => accounts.continueAsGuest())
   ipcMain.handle('account:legal', () => accounts.legalUrls())
-  ipcMain.handle('google:state', () => gcal().state())
-  ipcMain.handle('google:connect', (_e, id: string, secret: string) => friendly(() => gcal().connect(id, secret)))
-  ipcMain.handle('google:disconnect', () => friendly(() => gcal().disconnect()))
-  ipcMain.handle('google:options', (_e, o) => friendly(() => gcal().setOptions(o)))
+  const withFeeds = <T extends object>(s: T) => ({ ...s, feeds: feeds?.list() ?? [] })
+  ipcMain.handle('google:state', () => withFeeds(gcal().state()))
+  ipcMain.handle('google:connect', (_e, id?: string, secret?: string) => friendly(async () => withFeeds(await gcal().connect(id, secret))))
+  ipcMain.handle('google:disconnect', () => friendly(async () => withFeeds(await gcal().disconnect())))
+  ipcMain.handle('google:options', (_e, o) => friendly(async () => withFeeds(await gcal().setOptions(o))))
+  ipcMain.handle('google:addFeed', (_e, url: string, name: string) =>
+    friendly(async () => {
+      await feeds!.add(url, name)
+      return withFeeds(gcal().state())
+    })
+  )
+  ipcMain.handle('google:removeFeed', (_e, id: string) => {
+    feeds!.remove(id)
+    return withFeeds(gcal().state())
+  })
   ipcMain.handle('google:events', (_e, from: string, to: string) =>
     // Dev checks: VEYRA_FAKE_GOOGLE=1 shows sample events without a Google account.
-    process.env['VEYRA_FAKE_GOOGLE'] ? fakeEvents() : gcal().events(from, to)
+    process.env['VEYRA_FAKE_GOOGLE']
+      ? fakeEvents()
+      : Promise.all([gcal().events(from, to), feeds?.events(from, to) ?? { events: [], error: undefined }]).then(([g, f]) => ({
+          events: [...g.events, ...f.events].sort((a, b) => (a.start < b.start ? -1 : 1)),
+          error: g.error ?? f.error
+        }))
   )
   ipcMain.handle('google:sync', () => friendly(() => gcal().push()))
   ipcMain.handle('app:open', (_e, url: string) => {

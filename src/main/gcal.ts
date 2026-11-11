@@ -84,11 +84,13 @@ export class GoogleCalendar {
     writeFileSync(this.file, safeStorage.encryptString(JSON.stringify(this.cfg)))
   }
 
-  state(): GoogleState {
+  state(): Omit<GoogleState, 'feeds'> {
     const c = this.cfg
     return {
+      builtIn: !!__GOOGLE_CLIENT__.id,
+      customClient: !!c?.clientId && c.clientId !== __GOOGLE_CLIENT__.id,
       connected: !!c?.refreshToken,
-      clientId: c?.clientId ?? '',
+      clientId: c?.clientId && c.clientId !== __GOOGLE_CLIENT__.id ? c.clientId : '',
       hasSecret: !!c?.clientSecret,
       email: c?.email ?? '',
       pushTasks: c?.pushTasks ?? true,
@@ -100,9 +102,17 @@ export class GoogleCalendar {
   }
 
   /* ---------- sign-in ---------- */
-  async connect(clientId: string, clientSecret: string): Promise<GoogleState> {
+  async connect(clientId = '', clientSecret = ''): Promise<Omit<GoogleState, 'feeds'>> {
     clientId = clientId.trim()
     clientSecret = clientSecret.trim()
+    if (!clientId) {
+      // The app's own client, built in at build time.
+      if (!__GOOGLE_CLIENT__.id) throw new GoogleError('This build has no Google client. Enter one below.')
+      clientId = __GOOGLE_CLIENT__.id
+      clientSecret = __GOOGLE_CLIENT__.secret
+    } else if (!clientSecret && clientId === this.cfg?.clientId) {
+      clientSecret = this.cfg.clientSecret ?? ''
+    }
     if (!/\.apps\.googleusercontent\.com$/.test(clientId)) throw new GoogleError('That doesn’t look like a client ID. It ends in .apps.googleusercontent.com.')
     const verifier = b64url(randomBytes(48))
     const challenge = b64url(createHash('sha256').update(verifier).digest())
@@ -178,7 +188,7 @@ export class GoogleCalendar {
     return this.state()
   }
 
-  async disconnect(): Promise<GoogleState> {
+  async disconnect(): Promise<Omit<GoogleState, 'feeds'>> {
     const token = this.cfg?.refreshToken
     if (token) fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(token), { method: 'POST' }).catch(() => {})
     // Keep the client ID so connecting again is one click.
@@ -192,7 +202,7 @@ export class GoogleCalendar {
     return this.state()
   }
 
-  async setOptions(o: { pushTasks?: boolean; shown?: string[] | null }): Promise<GoogleState> {
+  async setOptions(o: { pushTasks?: boolean; shown?: string[] | null }): Promise<Omit<GoogleState, 'feeds'>> {
     if (!this.cfg) return this.state()
     if (o.pushTasks !== undefined) {
       this.cfg.pushTasks = o.pushTasks

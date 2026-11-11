@@ -21,7 +21,9 @@ const account = {
 
 const google = {
   state: () => ipcRenderer.invoke('google:state'),
-  connect: (id: string, secret: string) => ipcRenderer.invoke('google:connect', id, secret),
+  connect: (id?: string, secret?: string) => ipcRenderer.invoke('google:connect', id, secret),
+  addFeed: (url: string, name: string) => ipcRenderer.invoke('google:addFeed', url, name),
+  removeFeed: (id: string) => ipcRenderer.invoke('google:removeFeed', id),
   disconnect: () => ipcRenderer.invoke('google:disconnect'),
   setOptions: (o: unknown) => ipcRenderer.invoke('google:options', o),
   events: (from: string, to: string) => ipcRenderer.invoke('google:events', from, to),
