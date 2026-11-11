@@ -82,3 +82,64 @@ export interface VeyraDb {
   changesSince(since: number): Promise<Rec[]>
   info(): Promise<{ deviceId: string; dbPath: string }>
 }
+
+export interface AccountUser {
+  username: string
+  displayName: string
+  email: string
+  emailVerified: boolean
+  photoUrl?: string
+}
+
+export interface AccountState {
+  mode: 'account' | 'guest' | 'none'
+  user: AccountUser | null
+  server: string
+  /** 'moved' after the first sign-in adopted this computer's data, or a sign-out reason. */
+  notice?: string
+}
+
+export interface AccountApi {
+  state(): Promise<AccountState>
+  refresh(): Promise<AccountState>
+  signIn(username: string, password: string): Promise<AccountState>
+  signUp(input: { username: string; email: string; password: string; acceptLegal: boolean }): Promise<AccountState>
+  signOut(): Promise<AccountState>
+  continueAsGuest(): Promise<AccountState>
+  legalUrls(): Promise<{ terms: string; privacy: string; terms2: string; privacy2: string }>
+}
+
+export interface GoogleEvent {
+  id: string
+  title: string
+  calendar: string
+  color: string
+  allDay: boolean
+  /** All-day: "YYYY-MM-DD" (end exclusive). Timed: ISO date-time. */
+  start: string
+  end: string
+  location: string
+  link: string
+}
+
+export interface GoogleState {
+  connected: boolean
+  clientId: string
+  hasSecret: boolean
+  email: string
+  pushTasks: boolean
+  /** Calendar ids to show; null = the ones selected in Google Calendar. */
+  shown: string[] | null
+  calendars: { id: string; summary: string; color: string; selected: boolean; primary: boolean }[]
+  error?: string
+  lastSync?: number
+}
+
+export interface GoogleApi {
+  state(): Promise<GoogleState>
+  connect(clientId: string, clientSecret: string): Promise<GoogleState>
+  disconnect(): Promise<GoogleState>
+  setOptions(o: { pushTasks?: boolean; shown?: string[] | null }): Promise<GoogleState>
+  events(fromIso: string, toIso: string): Promise<{ events: GoogleEvent[]; error?: string }>
+  syncNow(): Promise<{ pushed: number }>
+}

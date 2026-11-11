@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Moon, NotebookPen, Plus, Sun, Timer } from 'lucide-react'
+import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Moon, NotebookPen, Plus, Settings as SettingsIcon, Sun, Timer } from 'lucide-react'
 import { useRecords } from './data/store'
 import { clock, isOverdue } from './lib/dates'
 import { NavCtx, type Route } from './nav'
-import { ToastProvider } from './components/ui'
+import { ToastProvider, useToast } from './components/ui'
+import { AccountGate, useAccount } from './components/account'
+import { Settings } from './views/Settings'
 import { TimerProvider, useTimer } from './components/timer'
 import { SubjectDialog } from './components/editors'
 import { Today } from './views/Today'
@@ -37,6 +39,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const timer = useTimer()
   const [theme, setTheme] = useTheme()
   const [adding, setAdding] = useState(false)
+  const user = useAccount().state.user
 
   const open = tasks.filter((t) => !t.data.done).length
   const overdue = tasks.filter((t) => isOverdue(t.data.due, t.data.done)).length
@@ -100,10 +103,25 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
           </div>
         </button>
       )}
-      <button className="navbtn" style={{ marginTop: 10, color: 'var(--dim)' }} onClick={() => setTheme(nextTheme[theme])} title="Change theme">
-        {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
-        {theme === 'system' ? 'Theme: System' : theme === 'dark' ? 'Theme: Dark' : 'Theme: Light'}
-      </button>
+      <div className="side-foot">
+        <button className="account-chip" aria-current={route.name === 'settings'} onClick={() => go({ name: 'settings' })} title="Account and settings">
+          <span className="avatar">
+            {user ? user.photoUrl ? <img src={user.photoUrl} alt="" /> : (user.displayName || user.username).slice(0, 1).toUpperCase() : <SettingsIcon size={15} />}
+          </span>
+          <span className="grow" style={{ minWidth: 0 }}>
+            <span className="trunc" style={{ display: 'block', fontWeight: 650 }}>{user ? user.displayName : 'Settings'}</span>
+            <span className="trunc xs dim" style={{ display: 'block' }}>{user ? `@${user.username}` : 'Not signed in'}</span>
+          </span>
+        </button>
+        <button
+          className="iconbtn plain"
+          onClick={() => setTheme(nextTheme[theme])}
+          title={theme === 'system' ? 'Theme: System' : theme === 'dark' ? 'Theme: Dark' : 'Theme: Light'}
+          aria-label="Change theme"
+        >
+          {theme === 'dark' ? <Moon size={16} /> : theme === 'light' ? <Sun size={16} /> : <span style={{ fontSize: 11, fontWeight: 800 }}>A</span>}
+        </button>
+      </div>
       {adding && <SubjectDialog onClose={() => setAdding(false)} onSaved={(id) => go({ name: 'subject', id })} />}
     </aside>
   )
@@ -125,17 +143,33 @@ function Screen({ route }: { route: Route }) {
       return <Stats />
     case 'subject':
       return <SubjectView id={route.id} />
+    case 'settings':
+      return <Settings />
   }
+}
+
+/** After the first sign-in moved this computer's data into the account. */
+function MovedNotice() {
+  const toast = useToast()
+  useEffect(() => {
+    if (sessionStorage.getItem('veyra.moved')) {
+      sessionStorage.removeItem('veyra.moved')
+      toast('Your notes, tasks and study time are now in your Veyra account.')
+    }
+  }, [toast])
+  return null
 }
 
 export function App() {
   const [route, go] = useState<Route>(() => {
     // Start screen from the URL hash (#tasks, #stats...), used by dev checks.
     const name = location.hash.slice(1)
-    return ['today', 'tasks', 'notes', 'calendar', 'timer', 'stats'].includes(name) ? ({ name } as Route) : { name: 'today' }
+    return ['today', 'tasks', 'notes', 'calendar', 'timer', 'stats', 'settings'].includes(name) ? ({ name } as Route) : { name: 'today' }
   })
   return (
     <ToastProvider>
+      <AccountGate>
+      <MovedNotice />
       <TimerProvider>
         <NavCtx.Provider value={{ route, go }}>
           <div className="shell">
@@ -146,6 +180,7 @@ export function App() {
           </div>
         </NavCtx.Provider>
       </TimerProvider>
+      </AccountGate>
     </ToastProvider>
   )
 }

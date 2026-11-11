@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { format, startOfDay } from 'date-fns'
+import { addDays, format, startOfDay } from 'date-fns'
 import { CheckCircle2, Pause, Play, Plus } from 'lucide-react'
 import { useRecords } from '../data/store'
 import { clock, duration, isOverdue, todayKey } from '../lib/dates'
@@ -9,6 +9,7 @@ import { TaskList } from '../components/TaskList'
 import { TaskDialog } from '../components/editors'
 import { useTimer } from '../components/timer'
 import { useNav } from '../nav'
+import { eventDays, eventTime, useGoogleEvents } from '../data/google'
 
 function greeting(): string {
   const h = new Date().getHours()
@@ -24,6 +25,9 @@ export function Today() {
   const [adding, setAdding] = useState(false)
 
   const today = todayKey()
+  const [dayStart] = useState(() => startOfDay(new Date()))
+  const { events } = useGoogleEvents(dayStart, addDays(dayStart, 1))
+  const todaysEvents = events.filter((e) => eventDays(e).includes(today))
   const focus = tasks.filter(
     (t) => (!t.data.done && t.data.due && t.data.due <= today) || (t.data.done && t.data.completedAt && t.data.completedAt >= startOfDay(new Date()).getTime())
   )
@@ -79,6 +83,24 @@ export function Today() {
         </div>
 
         <div className="stack">
+          {todaysEvents.length > 0 && (
+            <div>
+              <h2>Today’s schedule</h2>
+              <div className="ig">
+                {todaysEvents.map((e) => (
+                  <div key={e.id} className="ig-row">
+                    <span style={{ width: 4, alignSelf: 'stretch', borderRadius: 4, background: e.color, marginLeft: 2 }} />
+                    <div className="grow">
+                      <div className="ig-title trunc">{e.title}</div>
+                      <div className="ig-sub trunc">
+                        {eventTime(e)} · {e.calendar}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <h2>Focus</h2>
             <div className="card between">

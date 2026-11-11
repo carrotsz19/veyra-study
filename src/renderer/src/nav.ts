@@ -7,6 +7,7 @@ export type Route =
   | { name: 'calendar' }
   | { name: 'timer' }
   | { name: 'stats' }
+  | { name: 'settings' }
   | { name: 'subject'; id: string }
 
 export const NavCtx = createContext<{ route: Route; go: (r: Route) => void }>({ route: { name: 'today' }, go: () => {} })

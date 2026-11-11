@@ -62,6 +62,14 @@ export class Store {
     return this.lastStamp
   }
 
+  close(): void {
+    try {
+      this.db.close()
+    } catch {
+      /* already closed */
+    }
+  }
+
   list(kind: Kind): Rec[] {
     const rows = this.db
       .prepare(`SELECT * FROM records WHERE kind = ? AND deleted_at IS NULL ORDER BY created_at`)

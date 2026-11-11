@@ -9,4 +9,23 @@ const db: VeyraDb = {
   info: () => ipcRenderer.invoke('db:info')
 }
 
-contextBridge.exposeInMainWorld('veyra', { db })
+const account = {
+  state: () => ipcRenderer.invoke('account:state'),
+  refresh: () => ipcRenderer.invoke('account:refresh'),
+  signIn: (username: string, password: string) => ipcRenderer.invoke('account:signIn', username, password),
+  signUp: (input: { username: string; email: string; password: string; acceptLegal: boolean }) => ipcRenderer.invoke('account:signUp', input),
+  signOut: () => ipcRenderer.invoke('account:signOut'),
+  continueAsGuest: () => ipcRenderer.invoke('account:guest'),
+  legalUrls: () => ipcRenderer.invoke('account:legal')
+}
+
+const google = {
+  state: () => ipcRenderer.invoke('google:state'),
+  connect: (id: string, secret: string) => ipcRenderer.invoke('google:connect', id, secret),
+  disconnect: () => ipcRenderer.invoke('google:disconnect'),
+  setOptions: (o: unknown) => ipcRenderer.invoke('google:options', o),
+  events: (from: string, to: string) => ipcRenderer.invoke('google:events', from, to),
+  syncNow: () => ipcRenderer.invoke('google:sync')
+}
+
+contextBridge.exposeInMainWorld('veyra', { db, account, google, open: (url: string) => ipcRenderer.invoke('app:open', url) })
