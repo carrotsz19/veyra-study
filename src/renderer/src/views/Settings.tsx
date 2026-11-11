@@ -368,12 +368,16 @@ function Tasks() {
             </Row>
           </>
         )}
+        {!onAndroid() && (
+          <>
         <Row label="Keep running in the tray" hint="Closing the window leaves Veyra in the system tray, so reminders still come. Quit from the tray icon." keywords="background tray minimize close">
           <Toggle label="Keep running in the tray" on={s.keepInTray} onChange={(keepInTray) => set({ keepInTray })} />
         </Row>
         <Row label="Start with Windows" hint="Opens quietly in the tray when you sign in to Windows. (Works in the installed app.)" keywords="startup login boot launch">
           <Toggle label="Start with Windows" on={s.startWithWindows} onChange={(startWithWindows) => set({ startWithWindows })} />
         </Row>
+          </>
+        )}
       </Group>
     </>
   )

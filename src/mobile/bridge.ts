@@ -8,6 +8,7 @@ import type { Kind } from '@shared/types'
 import * as idb from './idb'
 import * as acct from './account'
 import * as online from './online'
+import * as reminders from './reminders'
 
 type Veyra = Window['veyra']
 const unsub = () => () => {}
@@ -23,11 +24,13 @@ const db: Veyra['db'] = {
   put: async (kind, data, id) => {
     const rec = await idb.put(kind, data, id)
     online.sync.schedule()
+    if (kind === 'task' || kind === 'settings') reminders.schedule()
     return rec
   },
   remove: async (id) => {
     await idb.remove(id)
     online.sync.schedule()
+    reminders.schedule()
   },
   changesSince: (since) => idb.changesSince(since),
   info: async () => ({ deviceId: await idb.deviceId(), dbPath: 'This phone' }),
@@ -139,7 +142,7 @@ const appApi: Veyra['app'] = {
   materialSupported: false,
   setMaterial: async () => {},
   setStartup: async () => false,
-  onNav: unsub
+  onNav: (cb) => reminders.onNav(cb)
 }
 
 export async function installBridge(): Promise<void> {
@@ -163,6 +166,10 @@ export async function installBridge(): Promise<void> {
   }
   window.veyra = veyra
   // What other devices change shows up on the screens straight away.
-  online.setOnApplied((kinds, ids) => emitExternal(kinds, ids))
+  online.setOnApplied((kinds, ids) => {
+    emitExternal(kinds, ids)
+    if (kinds.includes('task')) reminders.schedule()
+  })
+  reminders.startReminders()
   online.startOnline()
 }
