@@ -394,4 +394,8 @@ export interface DriveApi {
   saveDoc(noteId: string, title: string, html: string): Promise<{ url: string }>
   backup(files: DriveBackupFile[], through: number): Promise<DriveState & { uploaded: number; removed: number }>
   resetBackup(): Promise<DriveState>
+  /** Opens Google's file picker in the browser; Docs come back as HTML, other files as attachments. */
+  pick(): Promise<DrivePicked[]>
 }
+
+export type DrivePicked = { kind: 'doc'; name: string; html: string } | { kind: 'file'; file: Attachment }

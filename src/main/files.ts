@@ -103,6 +103,15 @@ export class Files {
     return { id, name: clean, mime: MIME[ext] ?? mime ?? 'application/octet-stream', size: bytes.byteLength }
   }
 
+  /** A file downloaded from somewhere else (Google Drive). */
+  fromDownload(name: string, mime: string, bytes: Uint8Array): Attachment {
+    if (bytes.byteLength > MAX_FILE) throw new FileError(`“${name}” is over 200 MB, which is too big to attach.`)
+    const clean = (String(name || '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim() || 'File').slice(0, 160)
+    const id = `${randomUUID()}.${extOf(clean)}`
+    writeFileSync(join(this.dir(), id), bytes)
+    return { id, name: clean, mime: MIME[extOf(clean)] ?? mime ?? 'application/octet-stream', size: bytes.byteLength }
+  }
+
   async pick(): Promise<Attachment[]> {
     const r = await dialog.showOpenDialog({ title: 'Attach files to this note', properties: ['openFile', 'multiSelections'] })
     if (r.canceled) return []

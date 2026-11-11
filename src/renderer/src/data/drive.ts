@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { generateHTML } from '@tiptap/core'
+import { generateHTML, generateJSON } from '@tiptap/core'
 import type { DriveState, Note } from '@shared/types'
-import { onRecordsChanged } from './store'
-import { noteExtensions } from '../components/notes/extensions'
+import { db, onRecordsChanged } from './store'
+import { docText, noteExtensions } from '../components/notes/extensions'
 import { noteToMarkdown } from '../components/notes/markdown'
 
 const api = window.veyra.drive
@@ -116,4 +116,35 @@ export function startDriveBackup(): () => void {
     clearInterval(every)
     if (timer) clearTimeout(timer)
   }
+}
+
+/* ---------- Open from Drive ---------- */
+/**
+ * Opens Google's file picker. Each Google Doc becomes a note; other files
+ * (PDFs, pictures, Slides and Sheets as PDFs) go into one new note as
+ * attachments. Returns the new notes' ids.
+ */
+export async function importFromDrive(subjectId: string | null): Promise<string[]> {
+  const picked = await api.pick()
+  extensions ??= noteExtensions('')
+  const ids: string[] = []
+  for (const p of picked) {
+    if (p.kind !== 'doc') continue
+    let content: unknown = null
+    try {
+      content = generateJSON(p.html.replace(/<style[\s\S]*?<\/style>/gi, ''), extensions)
+    } catch {
+      content = null
+    }
+    const rec = await db.put('note', { title: p.name, subjectId, content, excerpt: docText(content).slice(0, 300) })
+    ids.push(rec.id)
+  }
+  const files = picked.flatMap((p) => (p.kind === 'file' ? [p.file] : []))
+  if (files.length) {
+    const content = { type: 'doc', content: files.map((f) => ({ type: 'attachment', attrs: { ...f } })) }
+    const title = files.length === 1 ? files[0].name.replace(/\.[a-z0-9]{1,8}$/i, '') : 'Files from Google Drive'
+    const rec = await db.put('note', { title, subjectId, content, excerpt: files.map((f) => f.name).join(', ').slice(0, 300) })
+    ids.push(rec.id)
+  }
+  return ids
 }

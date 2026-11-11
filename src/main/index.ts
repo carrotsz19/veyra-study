@@ -41,7 +41,7 @@ function openGoogle(): void {
     (id) => (id ? ((db().list('subject') as Rec<'subject'>[]).find((s) => s.id === id)?.data.name ?? null) : null)
   )
   google.schedulePush(5000)
-  drive = new GoogleDrive(folder ? join(accountDir(folder), 'drive.bin') : join(app.getPath('userData'), 'drive-local.bin'))
+  drive = new GoogleDrive(folder ? join(accountDir(folder), 'drive.bin') : join(app.getPath('userData'), 'drive-local.bin'), files)
   group = new GroupClient(folder ? join(accountDir(folder), 'group.bin') : join(app.getPath('userData'), 'group-local.bin'), () => accounts.credentials())
   // Connect in the background so Group work is ready when it's opened.
   if (folder) void group.connect()
@@ -141,6 +141,7 @@ app.whenReady().then(() => {
   ipcMain.handle('drive:connect', () => friendly(() => gdrive().connect()))
   ipcMain.handle('drive:disconnect', () => friendly(async () => gdrive().disconnect()))
   ipcMain.handle('drive:setBackup', (_e, on: boolean) => friendly(async () => gdrive().setBackup(!!on)))
+  ipcMain.handle('drive:pick', () => friendly(() => gdrive().pickAndImport()))
   ipcMain.handle('drive:resetBackup', () => friendly(async () => gdrive().resetBackup()))
   ipcMain.handle('drive:saveDoc', (_e, noteId: string, title: string, html: string) =>
     friendly(() => gdrive().saveDoc(String(noteId), String(title ?? ''), String(html ?? '').slice(0, 5_000_000)))

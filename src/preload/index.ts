@@ -92,6 +92,7 @@ const driveApi = {
   disconnect: () => ipcRenderer.invoke('drive:disconnect'),
   setBackup: (on: boolean) => ipcRenderer.invoke('drive:setBackup', on),
   resetBackup: () => ipcRenderer.invoke('drive:resetBackup'),
+  pick: () => ipcRenderer.invoke('drive:pick'),
   saveDoc: (noteId: string, title: string, html: string) => ipcRenderer.invoke('drive:saveDoc', noteId, title, html),
   backup: (files: unknown[], through: number) => ipcRenderer.invoke('drive:backup', files, through)
 }

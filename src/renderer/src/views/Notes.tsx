@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
 import {
-  Archive, ArchiveRestore, CheckSquare, Copy, Download, FileText, FolderInput, NotebookPen, Pin, PinOff, Plus, Search, Square, Trash2, X
+  Archive, ArchiveRestore, CheckSquare, Copy, Download, FileText, FolderInput, HardDrive, NotebookPen, Pin, PinOff, Plus, Search, Square, Trash2, X
 } from 'lucide-react'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, useRecords } from '../data/store'
@@ -10,6 +10,7 @@ import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../componen
 import { useSettings } from '../data/settings'
 import { SubjectSelect } from '../components/editors'
 import { useNav } from '../nav'
+import { cleanError, importFromDrive, useDrive } from '../data/drive'
 
 /** A new note, starting from the defaults in Settings → Notes. */
 export async function newNote(subjectId: string | null, d?: { noteTemplate: NoteTemplate; noteFont: NoteFont; noteCover: string }): Promise<string> {
@@ -114,6 +115,26 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     if (view === 'archived') setView('notes')
     setSelected(id)
     if (!subjectFilter) go({ name: 'notes', noteId: id })
+  }
+
+  const { state: drive } = useDrive()
+  const [importing, setImporting] = useState(false)
+  const fromDrive = async () => {
+    setImporting(true)
+    toast('Pick files in the browser window that opened…')
+    try {
+      const ids = await importFromDrive(subjectId)
+      if (ids.length) {
+        if (view === 'archived') setView('notes')
+        setSelected(ids[0])
+        if (!subjectFilter) go({ name: 'notes', noteId: ids[0] })
+        toast(ids.length === 1 ? 'Brought in from Google Drive' : `${ids.length} notes brought in from Google Drive`)
+      }
+    } catch (e) {
+      toast(cleanError(e, 'Couldn’t bring that in from Drive.'))
+    } finally {
+      setImporting(false)
+    }
   }
 
   const switchView = (v: View) => {
@@ -233,6 +254,11 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             <button className={`btn ${selecting ? 'sec' : 'ghost'}`} onClick={() => (selecting ? clearPick() : setSelecting(true))} title="Select several notes (or Ctrl-click them)">
               <CheckSquare size={15} /> {selecting ? 'Cancel' : 'Select'}
             </button>
+            {drive?.connected && drive.canPick && (
+              <button className="btn ghost" disabled={importing} onClick={fromDrive} title="Open Google Docs and files from your Drive">
+                <HardDrive size={15} /> {importing ? 'Waiting for Drive…' : 'From Drive'}
+              </button>
+            )}
             <button className="btn" onClick={create} title="New note (Ctrl+N)">
               <Plus size={16} /> New note
             </button>
