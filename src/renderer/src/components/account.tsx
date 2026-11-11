@@ -5,6 +5,7 @@ import '@fontsource/inter/600.css'
 import '@fontsource/inter/700.css'
 import '@fontsource/inter/800.css'
 import './auth.css'
+import { onAndroid } from '../lib/phone'
 import type { AccountState } from '@shared/types'
 
 const api = window.veyra.account
@@ -132,7 +133,7 @@ export function Welcome({
         </span>
         <div>
           <h2>Your studies, your training and your money, in one place.</h2>
-          <p>One Veyra account opens Veyra Study, IronLog and Cashline, on your phone and on this computer.</p>
+          <p>One Veyra account opens Veyra Study, IronLog and Cashline, on your phone and on your computer.</p>
           <div className="wb-apps">
             <span className="wb-app">
               <i style={{ background: '#2f5f8a' }}>S</i>
@@ -253,7 +254,7 @@ export function Welcome({
               <button type="button" className="btn btn-plain dim" onClick={() => api.continueAsGuest().then(onDone)}>
                 Use Veyra Study without an account
               </button>
-              <p className="guest-note">Everything stays on this computer. You can sign in later and keep it all.</p>
+              <p className="guest-note">Everything stays on this {onAndroid() ? 'phone' : 'computer'}. You can sign in later and keep it all.</p>
             </>
           )}
         </div>

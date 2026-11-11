@@ -4,8 +4,9 @@
  * Features that only make sense on a computer (Google sign-in, Drive, local
  * AI, AI apps, the tray) report themselves as off.
  */
-import type { AccountState, Kind } from '@shared/types'
+import type { Kind } from '@shared/types'
 import * as idb from './idb'
+import * as acct from './account'
 
 type Veyra = Window['veyra']
 const unsub = () => () => {}
@@ -28,32 +29,16 @@ const db: Veyra['db'] = {
   }
 }
 
-/* ---------- account (guest for now) ---------- */
-const MODE = 'veyra.mode'
-const accountState = (): AccountState => {
-  let mode: AccountState['mode'] = 'none'
-  try {
-    mode = localStorage.getItem(MODE) === 'guest' ? 'guest' : 'none'
-  } catch {
-    /* storage unavailable */
-  }
-  return { mode, user: null, server: 'https://veyra.igreenrobotz.workers.dev' }
-}
+/* ---------- account ---------- */
 const account: Veyra['account'] = {
-  state: async () => accountState(),
-  refresh: async () => accountState(),
-  signIn: () => Promise.reject(new Error('Signing in on the phone is coming next. Use Veyra Study without an account for now.')),
-  signUp: () => Promise.reject(new Error('Create your account on the computer app for now.')),
-  signOut: async () => {
-    localStorage.removeItem(MODE)
-    return accountState()
-  },
-  continueAsGuest: async () => {
-    localStorage.setItem(MODE, 'guest')
-    return accountState()
-  },
+  state: async () => acct.state(),
+  refresh: () => acct.refresh(),
+  signIn: (u, p) => acct.signIn(u, p),
+  signUp: (input) => acct.signUp(input),
+  signOut: () => acct.signOut(),
+  continueAsGuest: async () => acct.continueAsGuest(),
   legalUrls: async () => {
-    const b = 'https://veyra.igreenrobotz.workers.dev/'
+    const b = acct.SERVER + '/'
     return { legal: `${b}?page=legal`, terms: `${b}?page=terms&app=ironlog`, privacy: `${b}?page=privacy&app=ironlog`, terms2: `${b}?page=terms&app=cashline`, privacy2: `${b}?page=privacy&app=cashline` }
   }
 }
@@ -146,7 +131,8 @@ const appApi: Veyra['app'] = {
   onNav: unsub
 }
 
-export function installBridge(): void {
+export async function installBridge(): Promise<void> {
+  await acct.start()
   const veyra: Veyra = {
     db,
     account,

@@ -6,12 +6,23 @@
  */
 import type { DataByKind, Kind, Rec } from '@shared/types'
 
-const DB_NAME = 'veyra-study'
+/** Each account has its own database on the phone; "veyra-study" holds data from before signing in. */
+const GUEST_DB = 'veyra-study'
+let name = GUEST_DB
+let device: string | null = null
 let dbp: Promise<IDBDatabase> | null = null
 
-function open(): Promise<IDBDatabase> {
-  dbp ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1)
+/** Picks the database (at start-up, before anything reads). */
+export function useDatabase(db: string): void {
+  if (db === name && dbp) return
+  name = db
+  dbp = null
+  device = null
+}
+
+function openNamed(db: string): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(db, 1)
     req.onupgradeneeded = () => {
       const db = req.result
       const recs = db.createObjectStore('records', { keyPath: 'id' })
@@ -22,7 +33,31 @@ function open(): Promise<IDBDatabase> {
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
   })
+}
+function open(): Promise<IDBDatabase> {
+  dbp ??= openNamed(name)
   return dbp
+}
+
+/** The first account signed in on this phone takes over what was made before (if its own database is empty). */
+export async function adoptGuestInto(target: string): Promise<void> {
+  if (target === GUEST_DB) return
+  const [from, to] = await Promise.all([openNamed(GUEST_DB), openNamed(target)])
+  try {
+    const have = await done(to.transaction('records').objectStore('records').count())
+    if (have) return
+    const recs = (await done(from.transaction('records').objectStore('records').getAll())) as Rec[]
+    if (!recs.length) return
+    const tx = to.transaction('records', 'readwrite')
+    for (const r of recs) if (r.kind !== 'settings') tx.objectStore('records').put(r)
+    await new Promise<void>((res, rej) => ((tx.oncomplete = () => res()), (tx.onerror = () => rej(tx.error))))
+    const clear = from.transaction('records', 'readwrite')
+    clear.objectStore('records').clear()
+    await new Promise<void>((res) => (clear.oncomplete = () => res()))
+  } finally {
+    from.close()
+    to.close()
+  }
 }
 const done = <T>(r: IDBRequest<T>) => new Promise<T>((res, rej) => ((r.onsuccess = () => res(r.result)), (r.onerror = () => rej(r.error))))
 async function store(name: 'records' | 'meta', mode: IDBTransactionMode = 'readonly') {
@@ -36,7 +71,6 @@ export async function setMeta(key: string, value: string): Promise<void> {
   await done((await store('meta', 'readwrite')).put(value, key))
 }
 
-let device: string | null = null
 export async function deviceId(): Promise<string> {
   if (device) return device
   device = (await meta('device_id')) ?? null

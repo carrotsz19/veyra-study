@@ -67,6 +67,8 @@
     font-weight: 650; font-size: 15px; padding: 6px 4px 10px 0; margin-left: -4px;
   }
 
+  /* the sign-in screen clears the status bar and the gesture bar too */
+  html .vauth .view { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); min-height: 100dvh; }
   /* general */
   /* The compose button makes these, so the page's own New task / New note buttons go. */
   html .phone-shell:is([data-route='today'], [data-route='tasks'], [data-route='notes'], [data-route='calendar'], [data-route='subject']) .topbar .btn:not(.ghost):last-child { display: none; }

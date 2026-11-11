@@ -7,7 +7,7 @@ import '../renderer/src/account.css'
 import '../renderer/src/settings.css'
 import '../renderer/src/phone.css'
 
-installBridge()
+await installBridge()
 document.documentElement.classList.add('phone')
 {
   let theme: string | null = null
