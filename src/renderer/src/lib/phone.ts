@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
-/** Phone-sized screen (the Android app, or a very narrow window). */
-const query = '(max-width: 720px)'
+/** Phone-sized screen, held either way (the Android app, or a very narrow window). */
+const query = '(max-width: 720px), (max-height: 540px) and (pointer: coarse)'
 export const isPhone = () => matchMedia(query).matches
 
 export function usePhone(): boolean {

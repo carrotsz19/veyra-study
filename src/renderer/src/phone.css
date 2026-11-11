@@ -1,5 +1,6 @@
-/* ---------- phone layout (the Android app; screens 720px wide or less) ---------- */
-@media (max-width: 720px) {
+/* ---------- phone layout (the Android app, in portrait or landscape) ---------- */
+/* A phone held either way: narrow, or short with a touch screen (landscape). */
+@media (max-width: 720px), (max-height: 540px) and (pointer: coarse) {
   /* The floating dock: 62px tall, 12px above the bottom (plus the gesture bar). */
   :root { --dock-h: 62px; --dock-gap: calc(12px + env(safe-area-inset-bottom)); --tabbar: calc(var(--dock-h) + var(--dock-gap) + 8px); }
   html, body { overscroll-behavior: none; }
@@ -9,14 +10,15 @@
   /* Pages scroll under the floating dock, with room to read the last line. */
   .phone-shell main.main {
     height: 100dvh;
-    padding: calc(14px + env(safe-area-inset-top)) 16px calc(var(--tabbar) + 16px);
+    padding: calc(14px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(var(--tabbar) + 16px) calc(16px + env(safe-area-inset-left));
     overflow-y: auto;
   }
   .phone-shell main.main.main-settings { padding: env(safe-area-inset-top) 0 0; }
 
   /* One UI dock: a floating rounded bar, and a separate round compose button beside it. */
   .phone-dock {
-    position: fixed; left: 12px; right: 12px; bottom: var(--dock-gap); z-index: 40;
+    position: fixed; left: calc(12px + env(safe-area-inset-left)); right: calc(12px + env(safe-area-inset-right)); bottom: var(--dock-gap); z-index: 40;
+    max-width: 560px; margin: 0 auto;
     display: flex; align-items: center; gap: 10px; pointer-events: none;
   }
   .phone-dock > * { pointer-events: auto; }
