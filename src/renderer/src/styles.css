@@ -352,23 +352,47 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
 .task-group h2 { padding-left: 4px; }
 .note-sheet:focus-within .save-state, .note-sheet:focus-within .ghost-chip { opacity: 1; }
 
-/* ---------- see-through window (Settings → Appearance → Window background, Windows 11) ---------- */
+/* ---------- see-through window (Settings → Appearance → Window background, Windows 11) ----------
+   Like Windows 11's own apps: the glass shows in the sidebar and around the edges; the page sits on
+   a light layer with a rounded corner; cards and controls stay solid enough to read and use. */
 html.material,
 html.material body { background: transparent; }
 html.material {
-  /* Cards stay mostly solid so text reads well over anything behind the window. */
-  --panel: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
-  --panel-2: color-mix(in srgb, var(--fill-secondary) 70%, transparent);
+  --layer: rgba(252, 251, 249, 0.66);
+  --layer-edge: rgba(0, 0, 0, 0.07);
+  --panel: rgba(255, 255, 255, 0.9);
+  --panel-2: rgba(0, 0, 0, 0.05);
+  --line: rgba(0, 0, 0, 0.08);
+  --fill-tertiary: rgba(0, 0, 0, 0.045);
+  --switch-off: rgba(0, 0, 0, 0.16);
 }
-html.material aside.side { background: color-mix(in srgb, var(--bg-elevated) 18%, transparent); border-right-color: color-mix(in srgb, var(--line) 70%, transparent); }
-html.material main.main { background: color-mix(in srgb, var(--bg-grouped) 40%, transparent); }
-html.material[data-material='mica'] main.main { background: color-mix(in srgb, var(--bg-grouped) 38%, transparent); }
-html.material[data-material='mica'] aside.side { background: transparent; }
-html.material .set-nav { background: color-mix(in srgb, var(--bg-elevated) 14%, transparent); }
-html.material .appearance-preview { background: color-mix(in srgb, var(--bg-grouped) 60%, transparent); }
+html.material.dark {
+  --layer: rgba(28, 26, 22, 0.6);
+  --layer-edge: rgba(255, 255, 255, 0.07);
+  --panel: rgba(46, 43, 38, 0.82);
+  --panel-2: rgba(255, 255, 255, 0.07);
+  --line: rgba(255, 255, 255, 0.08);
+  --fill-tertiary: rgba(255, 255, 255, 0.06);
+  --switch-off: rgba(255, 255, 255, 0.18);
+}
+/* The sidebar is the glass itself. */
+html.material aside.side { background: transparent; border-right: 0; }
+/* The page: one calm layer with a rounded top-left corner. */
+html.material main.main {
+  background: var(--layer);
+  border-top: 1px solid var(--layer-edge);
+  border-left: 1px solid var(--layer-edge);
+  border-top-left-radius: 12px;
+}
+html.material[data-material='mica'] main.main { background: color-mix(in srgb, var(--layer) 88%, transparent); }
+/* Settings: its own list sits on the same layer, set off by a hairline only. */
+html.material .set-nav { background: transparent; border-right-color: var(--line); }
+html.material .appearance-preview { background: var(--layer); }
+/* Controls keep their shape over any wallpaper. */
+html.material .switch:not(:checked) { background: var(--switch-off); }
+html.material .seg { background: var(--panel-2); }
 /* Things that float over the page: frosted, so what's under them doesn't show through sharply. */
-html.material :is(.dialog, .popover, .tb-pop, .ctx-menu, .slash-menu, .fb-colors) {
-  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
-  backdrop-filter: blur(30px) saturate(1.6);
+html.material :is(.dialog, .popover, .tb-pop, .ctx-menu, .slash-menu, .fb-colors, .rec-bar) {
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+  backdrop-filter: blur(30px) saturate(1.5);
 }
-html.material .card, html.material .ig { backdrop-filter: blur(18px) saturate(1.3); }
