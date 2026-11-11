@@ -81,6 +81,7 @@ export function TimerView() {
                   type="number"
                   min={1}
                   max={180}
+                  disabled={dirty}
                   value={t.settings.focusMin}
                   onChange={(e) => t.setSettings({ ...t.settings, focusMin: Math.max(1, Math.min(180, +e.target.value || 1)) })}
                 />
@@ -92,13 +93,16 @@ export function TimerView() {
                   type="number"
                   min={1}
                   max={60}
+                  disabled={dirty}
                   value={t.settings.breakMin}
                   onChange={(e) => t.setSettings({ ...t.settings, breakMin: Math.max(1, Math.min(60, +e.target.value || 1)) })}
                 />
               </div>
             </div>
             <p className="xs dim" style={{ margin: '10px 0 0' }}>
-              Focus time is saved when a block finishes, or when you stop or skip after at least a minute.
+              {dirty
+                ? 'Stop the current block to change its length.'
+                : 'Focus time is saved when a block finishes, or when you stop or skip after at least a minute.'}
             </p>
           </div>
           <div>
