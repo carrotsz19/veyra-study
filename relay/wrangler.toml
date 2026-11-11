@@ -1,0 +1,23 @@
+# Veyra Study relay. Deploy from this folder: npx wrangler deploy
+# Setup steps are in README.md ("Group work: setting up the server").
+name = "veyra-study-relay"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+# The phone's current address lives here. Create it with:
+#   npx wrangler kv namespace create RELAY
+# and paste the id it prints below.
+[[kv_namespaces]]
+binding = "RELAY"
+id = "PASTE_THE_KV_NAMESPACE_ID_HERE"
+
+# Talks to the Veyra Worker directly (a Worker can't fetch another Worker's
+# workers.dev address on the same account).
+[[services]]
+binding = "VEYRA"
+service = "veyra"
+
+# Secrets (never in this file):
+#   npx wrangler secret put RELAY_SECRET   (the phone uses it to publish its address)
+#   npx wrangler secret put SIGNING_KEY    (shared with the phone to check sign-in passes)

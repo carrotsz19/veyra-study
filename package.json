@@ -9,7 +9,9 @@
     "build": "npm run typecheck && electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start": "electron-vite preview",
-    "dist": "npm run build && electron-builder --win"
+    "dist": "npm run build && electron-builder --win",
+    "test": "node --test tests/group.test.mjs",
+    "group-server": "node server/group-server.mjs"
   },
   "build": {
     "appId": "app.veyra.study",
