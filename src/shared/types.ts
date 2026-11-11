@@ -363,6 +363,7 @@ export interface FilesApi {
   fromBytes(name: string, mime: string, bytes: Uint8Array): Promise<Attachment>
   open(id: string): Promise<void>
   reveal(id: string): Promise<void>
+  read(id: string): Promise<Uint8Array>
   pathFor(file: File): string
 }
 
@@ -417,4 +418,28 @@ export interface SyncApi {
   now(): Promise<SyncStatus>
   setEnabled(on: boolean): Promise<SyncStatus>
   onStatus(cb: (s: SyncStatus) => void): () => void
+}
+
+/* ---------- voice recordings and offline transcription ---------- */
+export type VoiceModel = 'base' | 'small'
+export interface VoiceStatus {
+  engine: boolean
+  models: VoiceModel[]
+  choices: { id: VoiceModel; label: string; sizeMB: number; why: string }[]
+}
+export interface VoiceProgress {
+  step: 'engine' | 'unpack' | 'model' | 'done'
+  progress: number | null
+  detail: string
+}
+export interface VoiceApi {
+  status(): Promise<VoiceStatus>
+  setup(model: VoiceModel): Promise<VoiceStatus>
+  cancelSetup(): Promise<void>
+  onProgress(cb: (p: VoiceProgress) => void): () => void
+  /** A 16 kHz mono WAV in, text out. */
+  transcribe(id: string, wav: Uint8Array, model: VoiceModel, language: string): Promise<string>
+  cancel(id: string): Promise<void>
+  onTranscribing(cb: (e: { id: string; progress: number }) => void): () => void
+  saveRecording(name: string, mime: string, bytes: Uint8Array): Promise<Attachment>
 }

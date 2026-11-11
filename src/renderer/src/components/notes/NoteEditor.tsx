@@ -11,6 +11,8 @@ import { db, useRecords } from '../../data/store'
 import { useToast } from '../ui'
 import { docText, noteExtensions, wordCount } from './extensions'
 import { onAttachError } from './attachment'
+import { onVoiceMessage } from '../../data/voice'
+import { RecorderBar } from './Voice'
 import { cleanError, saveNoteToDocs } from '../../data/drive'
 import { SlashMenu } from './SlashMenu'
 import { NoteToolbar } from './Toolbar'
@@ -390,6 +392,7 @@ export function NoteEditor({
 }) {
   const toast = useToast()
   useEffect(() => onAttachError(toast), [toast])
+  useEffect(() => onVoiceMessage(toast), [toast])
   const { items: subjects } = useRecords('subject')
   // One copy of the note that every field writes into, saved as a whole.
   const latest = useRef<Note>(note.data)
@@ -673,6 +676,7 @@ export function NoteEditor({
         </div>
       </div>
       <SlashMenu />
+      <RecorderBar />
       {aiJob && <AiPanel key={aiJob.task + aiJob.source.length} task={aiJob.task} source={aiJob.source} title={data.title} onInsert={insertAi} onClose={() => setAiJob(null)} />}
     </div>
     </NoteAiCtx.Provider>

@@ -4,11 +4,11 @@
  * it by that name. The UI shows them through the veyra-file:// protocol,
  * which only ever serves files from that folder.
  */
-import { app, dialog, net, protocol, shell } from 'electron'
+import { app, dialog, protocol, shell } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { Readable } from 'node:stream'
 import { basename, extname, join, resolve, sep } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { accountDir } from './account'
 
 export interface Attachment {
@@ -31,7 +31,7 @@ const MIME: Record<string, string> = {
   doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', mp4: 'video/mp4', zip: 'application/zip'
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', webm: 'audio/webm', ogg: 'audio/ogg', opus: 'audio/ogg', mp4: 'video/mp4', zip: 'application/zip'
 }
 const extOf = (name: string) => extname(name).slice(1).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'bin'
 export const mimeOf = (name: string) => MIME[extOf(name)] ?? 'application/octet-stream'
@@ -69,7 +69,21 @@ export class Files {
       const id = decodeURIComponent(new URL(req.url).pathname.replace(/^\//, ''))
       const p = this.pathOf(id)
       if (!p || !existsSync(p)) return new Response('Not found', { status: 404 })
-      return net.fetch(pathToFileURL(p).toString())
+      // Byte ranges, so audio and video players can find the length and seek.
+      const size = statSync(p).size
+      const type = mimeOf(p)
+      const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get('range') ?? '')
+      if (m && size > 0) {
+        let start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2] || 0))
+        let end = m[1] && m[2] ? Number(m[2]) : size - 1
+        end = Math.min(end, size - 1)
+        if (start > end || start >= size) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
+        start = Math.max(0, start)
+        const body = Readable.toWeb(createReadStream(p, { start, end })) as ReadableStream
+        return new Response(body, { status: 206, headers: { 'Content-Type': type, 'Content-Length': String(end - start + 1), 'Content-Range': `bytes ${start}-${end}/${size}`, 'Accept-Ranges': 'bytes' } })
+      }
+      const body = Readable.toWeb(createReadStream(p)) as ReadableStream
+      return new Response(body, { headers: { 'Content-Type': type, 'Content-Length': String(size), 'Accept-Ranges': 'bytes' } })
     })
   }
 
@@ -128,6 +142,14 @@ export class Files {
   reveal(id: string): void {
     const p = this.pathOf(id)
     if (p && existsSync(p)) shell.showItemInFolder(p)
+  }
+
+  /** The file's bytes (for transcribing a recording). */
+  read(id: string): Uint8Array {
+    const p = this.pathOf(id)
+    if (!p || !existsSync(p)) throw new FileError('That file isn’t on this computer.')
+    if (statSync(p).size > 1024 * 1024 * 1024) throw new FileError('That recording is too long to transcribe (over 1 GB).')
+    return new Uint8Array(readFileSync(p))
   }
 
   /** Full path, for uploading to Drive (main process only). */

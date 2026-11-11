@@ -8,6 +8,7 @@ import Typography from '@tiptap/extension-typography'
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import { AttachmentDrop, AttachmentNode, attachFiles, canAttach } from './attachment'
+import { startRecording } from '../../data/voice'
 
 /* ---------- Callout: a tinted box with an emoji, for key ideas and definitions ---------- */
 export type CalloutTone = 'idea' | 'definition' | 'warning' | 'example'
@@ -105,6 +106,17 @@ export const SLASH_ITEMS: SlashItem[] = [
     run: (e, r) => {
       chain(e, r).run()
       void attachFiles(e)
+    }
+  },
+  {
+    title: 'Voice recording',
+    hint: 'Record, then get a transcript',
+    icon: '🎙️',
+    keywords: 'record audio voice microphone mic lecture transcribe transcript dictate',
+    attach: true,
+    run: (e, r) => {
+      chain(e, r).run()
+      void startRecording(e)
     }
   }
 ]

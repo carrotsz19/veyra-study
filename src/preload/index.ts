@@ -102,6 +102,25 @@ const groupApi = {
   }
 }
 
+const voiceApi = {
+  status: () => ipcRenderer.invoke('voice:status'),
+  setup: (model: string) => ipcRenderer.invoke('voice:setup', model),
+  cancelSetup: () => ipcRenderer.invoke('voice:cancelSetup'),
+  onProgress: (cb: (p: unknown) => void) => {
+    const h = (_: unknown, p: unknown) => cb(p)
+    ipcRenderer.on('voice:progress', h)
+    return () => void ipcRenderer.removeListener('voice:progress', h)
+  },
+  transcribe: (id: string, wav: Uint8Array, model: string, language: string) => ipcRenderer.invoke('voice:transcribe', id, wav, model, language),
+  cancel: (id: string) => ipcRenderer.invoke('voice:cancel', id),
+  onTranscribing: (cb: (e: unknown) => void) => {
+    const h = (_: unknown, e: unknown) => cb(e)
+    ipcRenderer.on('voice:transcribing', h)
+    return () => void ipcRenderer.removeListener('voice:transcribing', h)
+  },
+  saveRecording: (name: string, mime: string, bytes: Uint8Array) => ipcRenderer.invoke('voice:save', name, mime, bytes)
+}
+
 const syncApi = {
   status: () => ipcRenderer.invoke('sync:status'),
   now: () => ipcRenderer.invoke('sync:now'),
@@ -130,6 +149,7 @@ const filesApi = {
   fromBytes: (name: string, mime: string, bytes: Uint8Array) => ipcRenderer.invoke('files:fromBytes', name, mime, bytes),
   open: (id: string) => ipcRenderer.invoke('files:open', id),
   reveal: (id: string) => ipcRenderer.invoke('files:reveal', id),
+  read: (id: string) => ipcRenderer.invoke('files:read', id),
   /** The path of a dropped file ('' for pasted data, which has none). */
   pathFor: (file: File) => {
     try {
@@ -143,4 +163,4 @@ const filesApi = {
 /** Saves right away, blocking: only for the moment the window closes. */
 const saveNow = (kind: string, data: unknown, id: string) => ipcRenderer.sendSync('db:putSync', kind, data, id)
 
-contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })
+contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, voice: voiceApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })

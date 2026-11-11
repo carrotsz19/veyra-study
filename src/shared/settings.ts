@@ -65,6 +65,10 @@ export interface AppSettings {
   /** Closing the window keeps Veyra in the tray (so reminders still come). */
   keepInTray: boolean
   startWithWindows: boolean
+  /** Voice recordings: which offline model transcribes, in which language, and whether it starts by itself. */
+  voiceModel: 'base' | 'small'
+  voiceLanguage: string
+  voiceAutoTranscribe: boolean
   /* notes */
   noteTemplate: NoteTemplate
   noteFont: NoteFont
@@ -154,6 +158,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   eveningTime: '19:00',
   keepInTray: true,
   startWithWindows: false,
+  voiceModel: 'base',
+  voiceLanguage: 'auto',
+  voiceAutoTranscribe: true,
   noteTemplate: 'page',
   noteFont: 'sans',
   noteCover: 'none',

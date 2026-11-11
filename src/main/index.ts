@@ -17,7 +17,10 @@ import { GroupClient, GroupError } from './group'
 import { FileError, Files, registerFileScheme } from './files'
 import { DriveError, GoogleDrive } from './drive'
 import { Sync } from './sync'
+import { VoiceError, Whisper } from './whisper'
 
+// Dev checks: VEYRA_FAKE_MIC=1 records a test tone instead of the real microphone.
+if (process.env['VEYRA_FAKE_MIC']) app.commandLine.appendSwitch('use-fake-device-for-media-stream')
 // Dev checks: run on a separate profile (sign-in, settings and data).
 if (process.env['VEYRA_USERDATA']) app.setPath('userData', process.env['VEYRA_USERDATA'])
 
@@ -60,6 +63,8 @@ let group: GroupClient | null = null
 let drive: GoogleDrive | null = null
 let sync: Sync | null = null
 const localAi = new LocalAi()
+const whisper = new Whisper()
+app.on('will-quit', () => whisper.stopAll())
 const files = new Files(() => (accounts ? accounts.folder() : null))
 app.on('will-quit', () => localAi.stop())
 
@@ -116,7 +121,7 @@ const friendly = async <T>(fn: () => Promise<T>): Promise<T> => {
   try {
     return await fn()
   } catch (e) {
-    throw new Error(e instanceof ApiError || e instanceof GoogleError || e instanceof IcalError || e instanceof AiError || e instanceof LocalAiError || e instanceof FileError || e instanceof DriveError ? e.message : 'Something went wrong. Try again.')
+    throw new Error(e instanceof ApiError || e instanceof GoogleError || e instanceof IcalError || e instanceof AiError || e instanceof LocalAiError || e instanceof FileError || e instanceof DriveError || e instanceof VoiceError ? e.message : 'Something went wrong. Try again.')
   }
 }
 
@@ -213,6 +218,12 @@ app.whenReady().then(() => {
   setInterval(() => google?.schedulePush(0), 15 * 60 * 1000)
 
   files.handleProtocol()
+  ipcMain.handle('voice:status', () => whisper.status())
+  ipcMain.handle('voice:setup', (e, model) => friendly(() => whisper.setup(model, e.sender)))
+  ipcMain.handle('voice:cancelSetup', () => whisper.cancelSetup())
+  ipcMain.handle('voice:transcribe', (e, id: string, wav: Uint8Array, model, language: string) => friendly(() => whisper.transcribe(String(id), wav, model === 'small' ? 'small' : 'base', String(language), e.sender)))
+  ipcMain.handle('voice:cancel', (_e, id: string) => whisper.cancel(String(id)))
+  ipcMain.handle('voice:save', (_e, name: string, mime: string, bytes: Uint8Array) => friendly(async () => files.fromDownload(String(name), String(mime), bytes)))
   const noSync = { enabled: false, state: 'idle', error: '' }
   ipcMain.handle('sync:status', () => sync?.getStatus() ?? noSync)
   ipcMain.handle('sync:now', () => sync?.run() ?? noSync)
@@ -238,6 +249,7 @@ app.whenReady().then(() => {
   ipcMain.handle('files:fromBytes', (_e, name: string, mime: string, bytes: Uint8Array) => friendly(async () => files.fromBytes(name, mime, bytes)))
   ipcMain.handle('files:open', (_e, id: string) => friendly(() => files.open(id)))
   ipcMain.handle('files:reveal', (_e, id: string) => files.reveal(id))
+  ipcMain.handle('files:read', (_e, id: string) => friendly(async () => files.read(String(id))))
   ipcMain.handle('db:list', (_e, kind) => db().list(kind))
   ipcMain.handle('db:put', (_e, kind, data, id) => {
     const rec = db().put(kind, data, id)

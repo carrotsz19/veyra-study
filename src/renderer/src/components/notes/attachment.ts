@@ -2,6 +2,7 @@ import { Extension, Node, mergeAttributes, type Editor } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Attachment as FileInfo } from '@shared/types'
+import { cancelTranscription, transcribeInto, watchTranscription } from '../../data/voice'
 
 const files = window.veyra.files
 
@@ -112,7 +113,7 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
     }
   },
   addNodeView() {
-    return ({ node }) => {
+    return ({ node, editor, getPos }) => {
       const { id, name, mime, size } = node.attrs as FileInfo
       const dom = document.createElement('div')
       dom.className = 'att'
@@ -125,7 +126,54 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
         t.textContent = `📎 ${name} isn’t on this computer`
         dom.append(t)
       }
-      if (isImage(mime)) {
+      let unwatch: (() => void) | null = null
+      if (/^audio\//.test(mime)) {
+        // A voice recording: a player, and Transcribe (offline, on this computer).
+        dom.classList.add('att-audio')
+        dom.innerHTML = `<div class="att-audio-head"><span class="att-icon">🎙️</span><span class="att-text"><b></b><small></small></span><button type="button" class="att-open att-transcribe">Transcribe</button><button type="button" class="att-open att-cancel" hidden>Cancel</button></div><audio controls preload="metadata"></audio>`
+        dom.querySelector('b')!.textContent = name
+        const small = dom.querySelector('small')!
+        small.textContent = fileSize(size)
+        const audio = dom.querySelector('audio')!
+        audio.src = fileUrl(id)
+        audio.addEventListener('error', missing)
+        const showLength = () => {
+          if (Number.isFinite(audio.duration)) small.textContent = `${Math.floor(audio.duration / 60)}:${String(Math.floor(audio.duration % 60)).padStart(2, '0')} · ${fileSize(size)}`
+        }
+        audio.addEventListener('loadedmetadata', () => {
+          // In-app recordings (WebM) don't say how long they are; seeking to the end makes the player work it out.
+          if (audio.duration === Infinity) {
+            const fix = () => {
+              audio.removeEventListener('timeupdate', fix)
+              audio.currentTime = 0
+              showLength()
+            }
+            audio.addEventListener('timeupdate', fix)
+            audio.currentTime = 1e9
+          } else showLength()
+        })
+        audio.addEventListener('durationchange', showLength)
+        const btn = dom.querySelector('.att-transcribe') as HTMLButtonElement
+        const cancel = dom.querySelector('.att-cancel') as HTMLButtonElement
+        btn.hidden = !canAttach(editor)
+        btn.addEventListener('click', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          void transcribeInto(editor, () => (typeof getPos === 'function' ? getPos() : undefined), { id, name, mime, size })
+        })
+        cancel.addEventListener('click', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          void cancelTranscription(id)
+        })
+        unwatch = watchTranscription(id, (st) => {
+          btn.disabled = !!st?.running
+          btn.textContent = st?.running ? (st.progress == null ? 'Transcribing…' : `Transcribing ${Math.round(st.progress * 100)}%`) : st?.error ? 'Try again' : 'Transcribe'
+          cancel.hidden = !st?.running
+          btn.title = st?.error ?? ''
+          if (st?.error) report(st.error)
+        })
+      } else if (isImage(mime)) {
         dom.classList.add('att-image')
         const img = document.createElement('img')
         img.src = fileUrl(id)
@@ -149,7 +197,13 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
         })
         dom.addEventListener('dblclick', open)
       }
-      return { dom, ignoreMutation: () => true, stopEvent: (e) => e.type === 'dblclick' || (e.target as HTMLElement)?.classList?.contains('att-open') }
+      return {
+        dom,
+        ignoreMutation: () => true,
+        // Clicks on the player and buttons are theirs, not the editor's.
+        stopEvent: (e) => e.type === 'dblclick' || !!(e.target as HTMLElement)?.closest?.('.att-open, audio'),
+        destroy: () => unwatch?.()
+      }
     }
   }
 })

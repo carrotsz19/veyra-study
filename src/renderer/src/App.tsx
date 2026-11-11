@@ -22,6 +22,7 @@ import { SubjectView } from './views/SubjectView'
 import { Groups } from './views/Groups'
 import { prefetchGroups } from './data/groups'
 import { startDriveBackup } from './data/drive'
+import { VoiceSetupHost } from './components/notes/Voice'
 
 function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const { items: subjects } = useRecords('subject')
@@ -210,6 +211,7 @@ function Shell() {
       <NavCtx.Provider value={{ route, go }}>
         <div className="shell">
           <Sidebar route={route} go={go} />
+          <VoiceSetupHost />
           <main className={`main ${route.name === 'settings' ? 'main-settings' : ''}`}>
             <Screen key={route.name + ('id' in route ? route.id : '')} route={route} />
           </main>
