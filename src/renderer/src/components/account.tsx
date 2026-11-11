@@ -117,7 +117,11 @@ export function Welcome({
   }
 
   const open = (url?: string) => url && window.veyra.open(url)
-  const server = legal?.legal ? legal.legal.replace(/\/?\?page=legal$/, '/') : ''
+  const [server, setServer] = useState('')
+  useEffect(() => {
+    api.state().then((st) => setServer(st.server + '/'))
+  }, [])
+  const [showPw, setShowPw] = useState(false)
 
   return (
     <div className={`vauth ${onCancel ? 'overlay' : ''}`}>
@@ -206,7 +210,10 @@ export function Welcome({
               )}
               <div className="field">
                 <label className="sr-only" htmlFor="auth-pass">Password</label>
-                <input id="auth-pass" aria-label="Password" type="password" autoComplete={up ? 'new-password' : 'current-password'} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <input id="auth-pass" aria-label="Password" type={showPw ? 'text' : 'password'} autoComplete={up ? 'new-password' : 'current-password'} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <button type="button" className="pw-toggle" aria-label={showPw ? 'Hide password' : 'Show password'} aria-pressed={showPw} onClick={() => setShowPw(!showPw)}>
+                  {showPw ? 'Hide' : 'Show'}
+                </button>
               </div>
             </div>
           </form>
@@ -242,9 +249,12 @@ export function Welcome({
             </button>
           )}
           {!onCancel && (
-            <button type="button" className="btn btn-plain dim" onClick={() => api.continueAsGuest().then(onDone)}>
-              Use Veyra Study without an account
-            </button>
+            <>
+              <button type="button" className="btn btn-plain dim" onClick={() => api.continueAsGuest().then(onDone)}>
+                Use Veyra Study without an account
+              </button>
+              <p className="guest-note">Everything stays on this computer. You can sign in later and keep it all.</p>
+            </>
           )}
         </div>
       </section>

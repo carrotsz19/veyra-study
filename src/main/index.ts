@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { dirname, join } from 'node:path'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import type { Rec } from '../shared/types'
 import { Store } from './db'
 import { Accounts, ApiError, accountDir } from './account'
@@ -113,6 +113,15 @@ app.whenReady().then(() => {
     if (kind === 'task' || kind === 'subject') google?.schedulePush()
     return rec
   })
+  // Synchronous save, used only while the window is closing so the last edit isn't lost.
+  ipcMain.on('db:putSync', (e, kind, data, id) => {
+    try {
+      e.returnValue = db().put(kind, data, id)
+      if (kind === 'task') google?.schedulePush()
+    } catch {
+      e.returnValue = null
+    }
+  })
   ipcMain.handle('db:remove', (_e, id) => {
     db().remove(id)
     google?.schedulePush()
@@ -165,6 +174,26 @@ app.whenReady().then(() => {
     writeFileSync(res.filePath, JSON.stringify({ app: 'veyra-study', version: app.getVersion(), exportedAt: new Date().toISOString(), records }, null, 2))
     return { saved: true, path: res.filePath, count: records.length }
   })
+  ipcMain.handle('data:import', () => friendly(async () => {
+    const res = await dialog.showOpenDialog({ title: 'Import a Veyra Study backup', filters: [{ name: 'Veyra Study backup', extensions: ['json'] }], properties: ['openFile'] })
+    if (res.canceled || !res.filePaths[0]) return { imported: 0 }
+    let file: any
+    try {
+      file = JSON.parse(readFileSync(res.filePaths[0], 'utf8'))
+    } catch {
+      throw new ApiError('That file isn’t a Veyra Study backup.')
+    }
+    if (file?.app !== 'veyra-study' || !Array.isArray(file.records)) throw new ApiError('That file isn’t a Veyra Study backup.')
+    const kinds = new Set(['subject', 'task', 'note', 'session', 'settings'])
+    let n = 0
+    for (const r of file.records) {
+      if (!r || typeof r.id !== 'string' || !kinds.has(r.kind) || typeof r.data !== 'object') continue
+      db().put(r.kind, r.data, r.id)
+      n++
+    }
+    google?.schedulePush()
+    return { imported: n }
+  }))
   ipcMain.handle('notes:export', async (_e, files: { name: string; text: string }[]) => {
     const safe = (n: string) => (n.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim() || 'Untitled').slice(0, 120)
     if (!files.length) return { saved: 0 }

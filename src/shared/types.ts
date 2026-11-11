@@ -19,6 +19,8 @@ export interface Subject {
   name: string
   color: string
   archived?: boolean
+  /** Position in the sidebar and lists (Settings → Subjects); lower comes first. */
+  order?: number
 }
 
 export type Priority = 'low' | 'normal' | 'high'

@@ -58,6 +58,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [set]
   )
 
+  // Save a pending change if the window closes before the debounce fires.
+  useEffect(() => {
+    const onUnload = () => {
+      if (!timer.current) return
+      clearTimeout(timer.current)
+      timer.current = null
+      window.veyra.saveNow('settings', { ...(stored ?? {}), ...pending.current }, SETTINGS_ID)
+    }
+    window.addEventListener('beforeunload', onUnload)
+    return () => window.removeEventListener('beforeunload', onUnload)
+  }, [stored])
+
   useApplyAppearance(local)
 
   return <SettingsCtx.Provider value={{ ready: loaded, s: local, set, reset }}>{children}</SettingsCtx.Provider>
@@ -90,10 +102,9 @@ function useApplyAppearance(s: AppSettings) {
     root.classList.toggle('dark', dark)
     const { light, dark: darkColor } = accentColors(s.accent)
     const tint = dark ? darkColor : light
+    // Only the accent changes; red stays red for overdue, high priority and delete.
     root.style.setProperty('--tint', tint)
-    root.style.setProperty('--negative', tint)
     root.style.setProperty('--tint-soft', dark ? `color-mix(in srgb, ${tint} 24%, #1e1c17)` : `color-mix(in srgb, ${tint} 17%, #ffffff)`)
-    root.style.setProperty('--negative-soft', dark ? `color-mix(in srgb, ${tint} 22%, #1e1c17)` : `color-mix(in srgb, ${tint} 15%, #ffffff)`)
     root.dataset.font = s.font
     root.dataset.density = s.density
     root.dataset.corners = s.corners

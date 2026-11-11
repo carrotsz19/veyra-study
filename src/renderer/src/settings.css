@@ -221,3 +221,9 @@ main.main.main-settings { padding: 0; overflow: hidden; }
 
 /* Compact widgets sit in the middle when a taller neighbour stretches the row. */
 .w-body.center { display: flex; flex-direction: column; justify-content: center; }
+
+.set-jump { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 720px; margin: 0 auto 10px; border: 0; text-align: left;
+  background: var(--panel); color: var(--ink); padding: 12px 16px; border-radius: var(--r-card); box-shadow: var(--elev-1); }
+.set-jump:hover { box-shadow: var(--elev-2); }
+.set-jump b { display: block; font-size: 14.5px; }
+.set-main:has(.set-jump) .set-none { display: none; }

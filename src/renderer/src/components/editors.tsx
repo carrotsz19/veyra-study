@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Check, Trash2 } from 'lucide-react'
 import type { Priority, Rec, Subject, Task } from '@shared/types'
 import { db, useRecords } from '../data/store'
-import { SUBJECT_COLORS, blankTask, defaultDueDate } from '../lib/subjects'
+import { SUBJECT_COLORS, blankTask, defaultDueDate, sortSubjects } from '../lib/subjects'
 import { useSettings } from '../data/settings'
 import { Dialog, Seg, useToast } from './ui'
 
@@ -11,7 +11,7 @@ export function SubjectSelect({ value, onChange, noneLabel = 'No subject' }: { v
   return (
     <select value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
       <option value="">{noneLabel}</option>
-      {subjects
+      {sortSubjects(subjects)
         .filter((s) => !s.data.archived || s.id === value)
         .map((s) => (
           <option key={s.id} value={s.id}>
@@ -142,6 +142,10 @@ export function SubjectDialog({ subject, onClose, onSaved }: { subject?: Rec<'su
                 {s.color === c && <Check size={14} />}
               </button>
             ))}
+            <label className={`swatch custom-swatch ${SUBJECT_COLORS.includes(s.color) ? '' : 'on'}`} title="Any colour" style={SUBJECT_COLORS.includes(s.color) ? undefined : { background: s.color }}>
+              <input type="color" aria-label="Pick any colour" value={s.color} onChange={(e) => setS({ ...s, color: e.target.value })} />
+              {SUBJECT_COLORS.includes(s.color) ? '+' : <Check size={14} />}
+            </label>
           </div>
         </div>
         <div className="actions">

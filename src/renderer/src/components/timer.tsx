@@ -26,6 +26,8 @@ interface TimerState {
   stop: () => void
   skip: () => void
   setSubject: (id: string | null) => void
+  /** Start (or keep) studying this subject; time already spent on another subject is saved first. */
+  study: (id: string | null) => void
 }
 
 const Ctx = createContext<TimerState | null>(null)
@@ -164,10 +166,37 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   }
   const skip = () => {
     if (phase === 'focus') {
-      saveFocus(total - remaining)
-      enter('break', false)
+      const spent = total - remaining
+      saveFocus(spent)
+      // A block you finish early still counts toward the long break.
+      const done = spent >= 60 ? streak + 1 : streak
+      const long = spent >= 60 && s.longBreakEvery > 0 && done % s.longBreakEvery === 0
+      setStreak(long ? 0 : done)
+      enter(long ? 'long' : 'break', false)
     } else enter('focus', false)
   }
+  /** Switching subject mid-block saves the time so far to the old subject, then starts a fresh block. */
+  const changeSubject = (id: string | null) => {
+    if (id === subjectId) return
+    if (phase === 'focus' && startedAt.current != null) {
+      saveFocus(total - remaining)
+      setSubject(id)
+      enter('focus', running)
+      return
+    }
+    setSubject(id)
+  }
+  const study = (id: string | null) => {
+    if (phase === 'focus' && startedAt.current != null && id !== subjectId) {
+      saveFocus(total - remaining)
+      setSubject(id)
+      enter('focus', true)
+      return
+    }
+    setSubject(id)
+    if (phase !== 'focus') enter('focus', true)
+    else if (!running) start()
+  }
 
-  return <Ctx.Provider value={{ phase, running, remaining, total, subjectId, streak, start, pause, stop, skip, setSubject }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ phase, running, remaining, total, subjectId, streak, start, pause, stop, skip, setSubject: changeSubject, study }}>{children}</Ctx.Provider>
 }

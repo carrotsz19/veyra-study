@@ -12,6 +12,7 @@ import { useToast } from '../ui'
 import { docText, noteExtensions, wordCount } from './extensions'
 import { SlashMenu } from './SlashMenu'
 import { NoteToolbar } from './Toolbar'
+import { LinkInput } from './LinkInput'
 import { noteToMarkdown } from './markdown'
 import { useSettings } from '../../data/settings'
 
@@ -45,6 +46,7 @@ const TEMPLATES: [NoteTemplate, string, string][] = [
 /* ---------- floating format bar ---------- */
 function FormatBar({ editor }: { editor: Editor }) {
   const [colors, setColors] = useState(false)
+  const [linking, setLinking] = useState(false)
   const s = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -69,8 +71,12 @@ function FormatBar({ editor }: { editor: Editor }) {
       editor={editor}
       className="format-bar"
       options={{ placement: 'top', offset: 8 }}
-      shouldShow={({ editor: e, state }) => !state.selection.empty && e.isEditable && !e.isActive('codeBlock')}
+      shouldShow={({ editor: e, state }) => linking || (!state.selection.empty && e.isEditable && !e.isActive('codeBlock'))}
     >
+      {linking ? (
+        <LinkInput editor={editor} onDone={() => setLinking(false)} />
+      ) : (
+        <>
       <select
         className="fb-select"
         aria-label="Text style"
@@ -92,11 +98,7 @@ function FormatBar({ editor }: { editor: Editor }) {
       {btn('Underline', s.underline, () => c().toggleUnderline().run(), <Underline size={15} />)}
       {btn('Strikethrough', s.strike, () => c().toggleStrike().run(), <Strikethrough size={15} />)}
       {btn('Code', s.code, () => c().toggleCode().run(), <Code size={15} />)}
-      {btn('Link', s.link, () => {
-        if (s.link) return c().unsetLink().run()
-        const url = prompt('Link address')
-        if (url) c().setLink({ href: /^https?:\/\//.test(url) ? url : `https://${url}` }).run()
-      }, <Link2 size={15} />)}
+      {btn('Link', s.link, () => setLinking(true), <Link2 size={15} />)}
       <span className="fb-sep" />
       <span className="fb-colors-wrap">
         {btn('Highlight', s.highlight, () => setColors((v) => !v), <Palette size={15} />)}
@@ -122,6 +124,8 @@ function FormatBar({ editor }: { editor: Editor }) {
           </span>
         )}
       </span>
+        </>
+      )}
     </BubbleMenu>
   )
 }
@@ -163,7 +167,17 @@ function Area({
   return (
     <>
       {s.noteBubble && <FormatBar editor={editor} />}
-      <EditorContent editor={editor} />
+      <EditorContent
+        editor={editor}
+        onClick={(e) => {
+          // Ctrl+click (or Cmd+click) opens a link in the browser.
+          const a = (e.target as HTMLElement).closest('a[href]') as HTMLAnchorElement | null
+          if (a && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault()
+            window.veyra.open(a.href)
+          }
+        }}
+      />
     </>
   )
 }
@@ -386,6 +400,17 @@ export function NoteEditor({
     else timer.current = setTimeout(flush, 500)
   }
   useEffect(() => () => void (timer.current && flush()), []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Closing the window doesn't unmount React, so save anything pending right now.
+  useEffect(() => {
+    const onUnload = () => {
+      if (!timer.current) return
+      clearTimeout(timer.current)
+      timer.current = null
+      window.veyra.saveNow('note', latest.current, note.id)
+    }
+    window.addEventListener('beforeunload', onUnload)
+    return () => window.removeEventListener('beforeunload', onUnload)
+  }, [note.id])
 
   const onArea = (field: 'content' | 'cues' | 'summary') => (json: unknown, text: string) => {
     texts.current[field] = text

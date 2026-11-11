@@ -5,6 +5,7 @@ import {
   Quote, Redo2, Rows2, Strikethrough, Table, Trash2, Underline, Undo2
 } from 'lucide-react'
 import { CALLOUTS, type CalloutTone } from './extensions'
+import { LinkInput } from './LinkInput'
 
 const HL = [
   ['Yellow', 'var(--hl-yellow)'],
@@ -137,17 +138,9 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
           </div>
         )}
       </Menu>
-      <Btn
-        label="Link"
-        active={s.link}
-        onClick={() => {
-          if (s.link) return c().unsetLink().run()
-          const url = prompt('Link address')
-          if (url) c().setLink({ href: /^https?:\/\//.test(url) ? url : `https://${url}` }).run()
-        }}
-      >
-        <Link2 size={15} />
-      </Btn>
+      <Menu label="Link (Ctrl+click a link to open it)" button={<Link2 size={15} />}>
+        {(close) => <LinkInput editor={editor} onDone={close} />}
+      </Menu>
       <span className="tb-sep" />
       <Btn label="Bullet list" active={s.bullet} onClick={() => c().toggleBulletList().run()}>
         <List size={15} />

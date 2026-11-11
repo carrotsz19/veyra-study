@@ -33,7 +33,7 @@ export function TaskRow({ task, showSubject = true, onOpen }: { task: Rec<'task'
   const { s: settings } = useSettings()
   const late = settings.highlightOverdue && isOverdue(task.data.due, task.data.done)
   return (
-    <div className={`ig-row tap ${task.data.done ? 'task-done' : ''}`} onClick={onOpen} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpen()}>
+    <div className={`ig-row tap ${task.data.done ? 'task-done' : ''}`} onClick={onOpen} role="button" tabIndex={0} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onOpen() } }}>
       <button
         className="tick"
         role="checkbox"

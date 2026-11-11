@@ -34,3 +34,8 @@ export function defaultDueDate(kind: 'none' | 'today' | 'tomorrow' | 'week'): st
   d.setDate(d.getDate() + (kind === 'tomorrow' ? 1 : kind === 'week' ? 7 : 0))
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
+/** Subjects in the order you set (Settings → Subjects), then oldest first. */
+export function sortSubjects<T extends { createdAt: number; data: { order?: number } }>(list: T[]): T[] {
+  return [...list].sort((a, b) => (a.data.order ?? Infinity) - (b.data.order ?? Infinity) || a.createdAt - b.createdAt)
+}

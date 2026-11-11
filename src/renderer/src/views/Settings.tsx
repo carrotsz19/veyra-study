@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
   ArrowDown, ArrowUp, CalendarDays, Check, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, NotebookPen,
-  LayoutGrid, Palette, Play, RotateCcw, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
+  LayoutGrid, Palette, Play, Plus, RotateCcw, Shapes, Trash2, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
 } from 'lucide-react'
 import { ACCENTS, DEFAULT_SETTINGS, NAV_LABELS, defaultLayout, type AppSettings, type NavId } from '@shared/settings'
 import { useNav } from '../nav'
@@ -10,18 +10,23 @@ import { playSound } from '../components/timer'
 import { useToast } from '../components/ui'
 import { NOTE_COVERS } from '../components/notes/NoteEditor'
 import { AccountSection, GoogleSection } from './Connections'
+import { db, useRecords } from '../data/store'
+import { sortSubjects } from '../lib/subjects'
+import { SubjectDialog } from '../components/editors'
+import type { Rec } from '@shared/types'
 
 /* =====================================================================
    Settings: categories on the left, one category at a time on the
    right, and a search that finds any option across all of them.
 ===================================================================== */
 
-type SectionId = 'general' | 'appearance' | 'sidebar' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data'
+type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data'
 
 const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; keys?: (keyof AppSettings)[] }[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal, hint: 'Your name, start screen, week and time', keys: ['name', 'greeting', 'startScreen', 'weekStart', 'timeFormat'] },
   { id: 'appearance', label: 'Appearance', icon: Palette, hint: 'Theme, colour, font, size and spacing', keys: ['theme', 'accent', 'font', 'zoom', 'density', 'corners', 'reduceMotion'] },
   { id: 'sidebar', label: 'Sidebar', icon: LayoutPanelLeft, hint: 'What the sidebar shows, and in what order', keys: ['nav', 'showCounts', 'showSubjectsInSidebar', 'showTimerCard'] },
+  { id: 'subjects', label: 'Subjects', icon: Shapes, hint: 'Order, colours, archived and deleted subjects' },
   { id: 'today', label: 'Today', icon: Home, hint: 'Your Today page’s widgets', keys: ['todayLayout', 'upcomingCount'] },
   { id: 'tasks', label: 'Tasks', icon: ListTodo, hint: 'Defaults for new tasks, and how lists sort', keys: ['defaultPriority', 'defaultDue', 'taskSort', 'showDoneInLists', 'highlightOverdue'] },
   { id: 'notes', label: 'Notes', icon: NotebookPen, hint: 'How new notes start and how pages look', keys: ['noteTemplate', 'noteFont', 'noteCover', 'noteWidth', 'noteSize', 'spellcheck', 'showWordCount', 'noteToolbar', 'noteBubble', 'noteSort'] },
@@ -184,7 +189,7 @@ function Appearance() {
         <Row label="Accent colour" stack keywords="color tint highlight custom">
         <div className="accent-row" role="radiogroup" aria-label="Accent colour">
           {Object.entries(ACCENTS).map(([k, a]) => (
-            <button key={k} className="accent-swatch" role="radio" aria-checked={s.accent === k} title={a.name} aria-label={a.name} style={{ background: a.light }} onClick={() => set({ accent: k })}>
+            <button key={k} className="accent-swatch" role="radio" aria-checked={s.accent === k} title={a.name} aria-label={a.name} style={{ background: document.documentElement.classList.contains('dark') ? a.dark : a.light }} onClick={() => set({ accent: k })}>
               {s.accent === k && <Check size={14} strokeWidth={3} />}
             </button>
           ))}
@@ -328,7 +333,7 @@ function Tasks() {
         <Row label="Sort by" keywords="order">
           <Select label="Sort tasks by" value={s.taskSort} onChange={(taskSort) => set({ taskSort })} options={[['due', 'Due date'], ['priority', 'Priority'], ['created', 'Newest first'], ['title', 'Name']]} />
         </Row>
-        <Row label="Show finished tasks" hint="In subject lists and on the Tasks screen’s “All” filter." keywords="completed done">
+        <Row label="Show finished tasks in subjects" hint="Whether a subject’s task list starts with finished tasks showing." keywords="completed done">
           <Toggle label="Show finished tasks" on={s.showDoneInLists} onChange={(showDoneInLists) => set({ showDoneInLists })} />
         </Row>
         <Row label="Highlight overdue tasks" hint="Late tasks get a red label." keywords="late">
@@ -466,6 +471,112 @@ function Calendar({ go }: { go: (id: SectionId) => void }) {
   )
 }
 
+function Subjects() {
+  const { items: subjects } = useRecords('subject')
+  const { items: tasks } = useRecords('task')
+  const { items: notes } = useRecords('note')
+  const toast = useToast()
+  const [editing, setEditing] = useState<Rec<'subject'> | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [confirm, setConfirm] = useState<string | null>(null)
+  const active = sortSubjects(subjects.filter((x) => !x.data.archived))
+  const archived = sortSubjects(subjects.filter((x) => x.data.archived))
+
+  const reorder = (list: Rec<'subject'>[], i: number, d: -1 | 1) => {
+    const next = [...list]
+    const j = i + d
+    if (j < 0 || j >= next.length) return
+    ;[next[i], next[j]] = [next[j], next[i]]
+    next.forEach((x, n) => x.data.order !== n && db.put('subject', { ...x.data, order: n }, x.id))
+  }
+  const counts = (id: string) => {
+    const t = tasks.filter((x) => x.data.subjectId === id).length
+    const n = notes.filter((x) => x.data.subjectId === id).length
+    return `${t} task${t === 1 ? '' : 's'} · ${n} note${n === 1 ? '' : 's'}`
+  }
+  const remove = async (x: Rec<'subject'>) => {
+    // The subject goes; its tasks and notes stay, without a subject.
+    const ownTasks = tasks.filter((t) => t.data.subjectId === x.id)
+    const ownNotes = notes.filter((n) => n.data.subjectId === x.id)
+    for (const t of ownTasks) await db.put('task', { ...t.data, subjectId: null }, t.id)
+    for (const n of ownNotes) await db.put('note', { ...n.data, subjectId: null }, n.id)
+    await db.remove('subject', x.id)
+    setConfirm(null)
+    toast(`Deleted ${x.data.name}`, {
+      label: 'Undo',
+      run: async () => {
+        await db.put('subject', x.data, x.id)
+        for (const t of ownTasks) await db.put('task', t.data, t.id)
+        for (const n of ownNotes) await db.put('note', n.data, n.id)
+      }
+    })
+  }
+
+  const row = (x: Rec<'subject'>, i: number, list: Rec<'subject'>[]) => (
+    <Row key={x.id} label={x.data.name} hint={counts(x.id)} keywords="subject course class colour order archive delete">
+      <div className="row" style={{ gap: 4 }}>
+        <span style={{ width: 12, height: 12, borderRadius: 9, background: x.data.color, marginRight: 6 }} />
+        {!x.data.archived && (
+          <>
+            <button className="iconbtn plain" aria-label={`Move ${x.data.name} up`} disabled={i === 0} onClick={() => reorder(list, i, -1)}>
+              <ArrowUp size={15} />
+            </button>
+            <button className="iconbtn plain" aria-label={`Move ${x.data.name} down`} disabled={i === list.length - 1} onClick={() => reorder(list, i, 1)}>
+              <ArrowDown size={15} />
+            </button>
+          </>
+        )}
+        <button className="btn ghost sm" onClick={() => setEditing(x)}>
+          Edit
+        </button>
+        {x.data.archived ? (
+          <button className="btn sec sm" onClick={() => db.put('subject', { ...x.data, archived: false }, x.id)}>
+            Unarchive
+          </button>
+        ) : (
+          <button className="btn ghost sm" onClick={() => db.put('subject', { ...x.data, archived: true }, x.id)}>
+            Archive
+          </button>
+        )}
+        {confirm === x.id ? (
+          <button className="btn dan sm" onClick={() => remove(x)}>
+            Delete?
+          </button>
+        ) : (
+          <button className="iconbtn plain" aria-label={`Delete ${x.data.name}`} title="Delete subject" onClick={() => setConfirm(x.id)}>
+            <Trash2 size={15} />
+          </button>
+        )}
+      </div>
+    </Row>
+  )
+
+  return (
+    <>
+      <Group title="Your subjects" footer="The order here is the order in the sidebar. Deleting a subject keeps its tasks and notes, without a subject.">
+        {active.map((x, i) => row(x, i, active))}
+        {!active.length && (
+          <Row label="No subjects yet" keywords="subject">
+            <span />
+          </Row>
+        )}
+        <Row label="Add a subject" keywords="new subject course">
+          <button className="btn sm" onClick={() => setAdding(true)}>
+            <Plus size={14} /> New subject
+          </button>
+        </Row>
+      </Group>
+      {archived.length > 0 && (
+        <Group title="Archived" footer="Archived subjects are hidden from the sidebar and Today, with their tasks. Unarchive to bring them back.">
+          {archived.map((x, i) => row(x, i, archived))}
+        </Group>
+      )}
+      {editing && <SubjectDialog subject={editing} onClose={() => setEditing(null)} />}
+      {adding && <SubjectDialog onClose={() => setAdding(false)} />}
+    </>
+  )
+}
+
 function DataPrivacy() {
   const { reset } = useSettings()
   const toast = useToast()
@@ -486,6 +597,24 @@ function DataPrivacy() {
             }}
           >
             Export…
+          </button>
+        </Row>
+        <Row label="Import from a backup" hint="Adds everything from an exported file. Items already here are updated; nothing is deleted." keywords="restore backup import load">
+          <button
+            className="btn sec sm"
+            onClick={async () => {
+              try {
+                const r = await window.veyra.app.importData()
+                if (r.imported) {
+                  toast(`Imported ${r.imported} items`)
+                  setTimeout(() => location.reload(), 900)
+                }
+              } catch (e) {
+                toast(String((e as Error).message).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+              }
+            }}
+          >
+            Import…
           </button>
         </Row>
         <Row label="Open the data folder" keywords="files location">
@@ -540,6 +669,8 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
       return <Notes />
     case 'timer':
       return <FocusTimer />
+    case 'subjects':
+      return <Subjects />
     case 'calendar':
       return <Calendar go={go} />
     case 'account':
@@ -552,7 +683,13 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
 }
 
 /** Sections that search covers (account and connections are cards, not rows). */
-const SEARCHABLE: SectionId[] = ['general', 'appearance', 'sidebar', 'today', 'tasks', 'notes', 'timer', 'calendar', 'data']
+/** Pages that are cards rather than rows: search shows a shortcut to them. */
+const JUMPS: { id: SectionId; words: string }[] = [
+  { id: 'account', words: 'account sign in sign out log out veyra username email password profile photo' },
+  { id: 'connections', words: 'connected calendars google calendar ical ics link sync outlook icloud events connect' }
+]
+
+const SEARCHABLE: SectionId[] = ['general', 'appearance', 'sidebar', 'subjects', 'today', 'tasks', 'notes', 'timer', 'calendar', 'data']
 
 export function Settings({ initial }: { initial?: string }) {
   const { reset, s } = useSettings()
@@ -586,9 +723,9 @@ export function Settings({ initial }: { initial?: string }) {
           )}
         </div>
         <nav>
-          {SECTIONS.map((x, i) => (
+          {SECTIONS.map((x) => (
             <div key={x.id}>
-              {(i === 8 || i === 10) && <div className="set-nav-sep" />}
+              {(x.id === 'account' || x.id === 'data') && <div className="set-nav-sep" />}
               <button className="set-nav-item" aria-current={!q && section === x.id} onClick={() => go(x.id)}>
                 <span className="set-nav-icon">
                   <x.icon size={15} />
@@ -606,6 +743,21 @@ export function Settings({ initial }: { initial?: string }) {
             <div className="set-head">
               <h2 className="set-title">Results for “{q}”</h2>
             </div>
+            {JUMPS.filter((j) => matches(q.trim(), j.words)).map((j) => {
+              const x = SECTIONS.find((y) => y.id === j.id)!
+              return (
+                <button key={j.id} className="set-jump" onClick={() => go(j.id)}>
+                  <span className="set-nav-icon">
+                    <x.icon size={15} />
+                  </span>
+                  <span className="grow">
+                    <b>{x.label}</b>
+                    <span className="set-hint">{x.hint}</span>
+                  </span>
+                  <span className="tert">→</span>
+                </button>
+              )
+            })}
             {SEARCHABLE.map((id) => {
               const x = SECTIONS.find((y) => y.id === id)!
               return (

@@ -5,6 +5,7 @@ import { phaseLabel } from './components/timer'
 import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Monitor, Moon, NotebookPen, Plus, Settings as SettingsIcon, Sun, Timer } from 'lucide-react'
 import { useRecords } from './data/store'
 import { clock, isOverdue } from './lib/dates'
+import { sortSubjects } from './lib/subjects'
 import { NavCtx, type Route } from './nav'
 import { ToastProvider, useToast } from './components/ui'
 import { AccountGate, Avatar, useAccount } from './components/account'
@@ -29,8 +30,10 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const [adding, setAdding] = useState(false)
   const user = useAccount().state.user
 
-  const open = tasks.filter((t) => !t.data.done).length
-  const overdue = tasks.filter((t) => isOverdue(t.data.due, t.data.done)).length
+  const archivedSubjects = new Set(subjects.filter((x) => x.data.archived).map((x) => x.id))
+  const live = tasks.filter((t) => !t.data.subjectId || !archivedSubjects.has(t.data.subjectId))
+  const open = live.filter((t) => !t.data.done).length
+  const overdue = live.filter((t) => isOverdue(t.data.due, t.data.done)).length
   const items: Record<NavId, [string, typeof Home, string?]> = {
     today: ['Today', Home, overdue ? `${overdue} late` : undefined],
     tasks: ['Tasks', ListTodo, open ? String(open) : undefined],
@@ -68,7 +71,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
         </button>
       </div>
       <nav aria-label="Subjects">
-        {subjects
+        {sortSubjects(subjects)
           .filter((s) => !s.data.archived)
           .map((s) => (
             <button key={s.id} className="navbtn" aria-current={route.name === 'subject' && route.id === s.id} onClick={() => go({ name: 'subject', id: s.id })}>

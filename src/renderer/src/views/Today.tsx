@@ -8,15 +8,16 @@ import type { Rec } from '@shared/types'
 import { defaultLayout, type WidgetId, type WidgetSize, type WidgetSlot } from '@shared/settings'
 import { db, useRecords } from '../data/store'
 import { clock, dayKey, duration, isOverdue, todayKey } from '../lib/dates'
-import { defaultDueDate, progress } from '../lib/subjects'
+import { defaultDueDate, progress, sortSubjects } from '../lib/subjects'
 import { Bar, Empty, useToast } from '../components/ui'
 import { TaskList } from '../components/TaskList'
 import { TaskDialog } from '../components/editors'
 import { phaseLabel, useTimer } from '../components/timer'
 import { useNav } from '../nav'
 import { eventDays, useGoogleEvents } from '../data/google'
-import { useSettings, useTimeFormat } from '../data/settings'
+import { useSettings } from '../data/settings'
 import { useAccount } from '../components/account'
+import { EventDialog, useEventTime } from '../components/EventDialog'
 import type { GoogleEvent } from '@shared/types'
 
 /* =====================================================================
@@ -88,6 +89,16 @@ function useNarrow(): boolean {
 }
 const GOAL_C = 2 * Math.PI * 23
 
+/** Today's date key, which moves on at midnight even if the app stays open. */
+function useToday(): string {
+  const [key, setKey] = useState(todayKey)
+  useEffect(() => {
+    const id = setInterval(() => setKey((k) => (k === todayKey() ? k : todayKey())), 30_000)
+    return () => clearInterval(id)
+  }, [])
+  return key
+}
+
 function greeting(): string {
   const h = new Date().getHours()
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
@@ -95,17 +106,20 @@ function greeting(): string {
 
 /** Everything the widgets read, worked out once per render. */
 function useTodayData() {
-  const { items: tasks } = useRecords('task')
+  const { items: allTasks } = useRecords('task')
   const { items: subjects } = useRecords('subject')
   const { items: sessions } = useRecords('session')
   const { items: notes } = useRecords('note')
   const { s } = useSettings()
-  const today = todayKey()
-  const [dayStart] = useState(() => startOfDay(new Date()))
+  const today = useToday()
+  const dayStart = useMemo(() => new Date(today + 'T00:00:00'), [today])
   const { events } = useGoogleEvents(dayStart, addDays(dayStart, 1))
 
   return useMemo(() => {
     const startMs = dayStart.getTime()
+    // Tasks from archived subjects stay out of Today.
+    const archived = new Set(subjects.filter((x) => x.data.archived).map((x) => x.id))
+    const tasks = allTasks.filter((t) => !t.data.subjectId || !archived.has(t.data.subjectId))
     const due = tasks.filter((t) => (!t.data.done && t.data.due && t.data.due <= today) || (t.data.done && (t.data.completedAt ?? 0) >= startMs))
     const upcoming = tasks
       .filter((t) => !t.data.done && t.data.due && t.data.due > today)
@@ -117,7 +131,7 @@ function useTodayData() {
     for (let d = perDay.has(today) ? new Date() : subDays(new Date(), 1); perDay.has(dayKey(d)); d = subDays(d, 1)) streak++
     return {
       tasks,
-      subjects: subjects.filter((x) => !x.data.archived),
+      subjects: sortSubjects(subjects.filter((x) => !x.data.archived)),
       notes: notes.filter((n) => !n.data.archived).sort((a, b) => b.updatedAt - a.updatedAt),
       due,
       upcoming,
@@ -129,7 +143,7 @@ function useTodayData() {
       events: events.filter((e) => eventDays(e).includes(today)),
       goal: s.dailyGoalMin * 60
     }
-  }, [tasks, subjects, sessions, notes, events, s.upcomingCount, s.dailyGoalMin, today, dayStart])
+  }, [allTasks, subjects, sessions, notes, events, s.upcomingCount, s.dailyGoalMin, today, dayStart])
 }
 type TodayData = ReturnType<typeof useTodayData>
 
@@ -182,22 +196,24 @@ function UpcomingWidget({ d }: { d: TodayData }) {
 }
 
 function ScheduleWidget({ d }: { d: TodayData }) {
-  const fmtTime = useTimeFormat()
+  const range = useEventTime()
   const { go } = useNav()
+  const [open, setOpen] = useState<GoogleEvent | null>(null)
   return (
     <Card title="Today’s schedule" flush>
       {d.events.length ? (
         <div className="ig plain">
           {d.events.map((e: GoogleEvent) => (
-            <div key={e.id} className="ig-row">
+            <button key={e.id} className="ig-row tap" onClick={() => setOpen(e)}>
               <span style={{ width: 4, alignSelf: 'stretch', borderRadius: 4, background: e.color, marginLeft: 2 }} />
-              <div className="grow">
-                <div className="ig-title trunc">{e.title}</div>
-                <div className="ig-sub trunc">
-                  {e.allDay ? 'All day' : fmtTime(new Date(e.start))} · {e.calendar}
-                </div>
-              </div>
-            </div>
+              <span className="grow" style={{ minWidth: 0 }}>
+                <span className="ig-title trunc" style={{ display: 'block' }}>{e.title}</span>
+                <span className="ig-sub trunc" style={{ display: 'block' }}>
+                  {range(e)}
+                  {e.location ? ` · ${e.location}` : ` · ${e.calendar}`}
+                </span>
+              </span>
+            </button>
           ))}
         </div>
       ) : (
@@ -214,6 +230,7 @@ function ScheduleWidget({ d }: { d: TodayData }) {
           </button>
         </p>
       )}
+      {open && <EventDialog event={open} onClose={() => setOpen(null)} />}
     </Card>
   )
 }

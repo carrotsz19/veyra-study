@@ -34,9 +34,13 @@ const appApi = {
   /** Interface size, as the browser zoom (keeps popups and menus where they belong). */
   setZoom: (f: number) => webFrame.setZoomFactor(Math.min(1.4, Math.max(0.8, f))),
   exportData: () => ipcRenderer.invoke('data:export'),
+  importData: () => ipcRenderer.invoke('data:import'),
   openDataFolder: () => ipcRenderer.invoke('data:openFolder'),
   exportNotes: (files: { name: string; text: string }[]) => ipcRenderer.invoke('notes:export', files),
   version: () => ipcRenderer.invoke('app:version')
 }
 
-contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })
+/** Saves right away, blocking: only for the moment the window closes. */
+const saveNow = (kind: string, data: unknown, id: string) => ipcRenderer.sendSync('db:putSync', kind, data, id)
+
+contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, open: (url: string) => ipcRenderer.invoke('app:open', url) })

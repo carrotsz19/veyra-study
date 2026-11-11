@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { startOfWeek } from 'date-fns'
 import { ListTodo, Pencil, Play, Plus } from 'lucide-react'
-import { useRecords } from '../data/store'
+import { db, useRecords } from '../data/store'
 import { duration, isOverdue } from '../lib/dates'
 import { progress } from '../lib/subjects'
 import { Bar, Empty, Seg } from '../components/ui'
@@ -38,6 +38,14 @@ export function SubjectView({ id }: { id: string }) {
 
   return (
     <div className="inner view" key={id}>
+      {subject.data.archived && (
+        <div className="banner row" style={{ justifyContent: 'space-between' }}>
+          <span>This subject is archived, so it’s hidden from the sidebar and Today.</span>
+          <button className="btn sm" onClick={() => db.put('subject', { ...subject.data, archived: false }, subject.id)}>
+            Unarchive
+          </button>
+        </div>
+      )}
       <div className="topbar">
         <div className="row" style={{ gap: 12 }}>
           <span style={{ width: 14, height: 14, borderRadius: 9, background: subject.data.color }} />
@@ -50,8 +58,7 @@ export function SubjectView({ id }: { id: string }) {
           <button
             className="btn sec"
             onClick={() => {
-              timer.setSubject(id)
-              if (!timer.running) timer.start()
+              timer.study(id)
               go({ name: 'timer' })
             }}
           >
