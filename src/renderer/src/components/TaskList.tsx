@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Flag } from 'lucide-react'
+import { Bell, Check, Flag } from 'lucide-react'
 import type { Rec } from '@shared/types'
 import { db, useRecords } from '../data/store'
 import { dueLabel, isOverdue } from '../lib/dates'
@@ -61,6 +61,11 @@ export function TaskRow({ task, showSubject = true, onOpen }: { task: Rec<'task'
           </div>
         ) : null}
       </div>
+      {task.data.remindAt && !task.data.done && new Date(task.data.remindAt).getTime() > Date.now() && (
+        <span title={`Reminder ${new Date(task.data.remindAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`}>
+          <Bell size={13} className="dim" aria-label="Has a reminder" />
+        </span>
+      )}
       {task.data.priority === 'high' && !task.data.done && <Flag size={14} color="var(--bad)" aria-label="High priority" />}
       {task.data.due && !task.data.done && <span className={`pill ${late ? 'bad' : dueLabel(task.data.due) === 'Today' ? 'accent' : ''}`}>{dueLabel(task.data.due)}</span>}
     </div>

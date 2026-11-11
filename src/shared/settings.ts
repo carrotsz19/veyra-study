@@ -55,6 +55,16 @@ export interface AppSettings {
   taskSort: TaskSort
   showDoneInLists: boolean
   highlightOverdue: boolean
+  /** Reminders: a notification at a task's own reminder time, a morning summary, an evening heads-up. */
+  remindersOn: boolean
+  remindMorning: boolean
+  /** "HH:MM" */
+  morningTime: string
+  remindEvening: boolean
+  eveningTime: string
+  /** Closing the window keeps Veyra in the tray (so reminders still come). */
+  keepInTray: boolean
+  startWithWindows: boolean
   /* notes */
   noteTemplate: NoteTemplate
   noteFont: NoteFont
@@ -137,6 +147,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   taskSort: 'due',
   showDoneInLists: true,
   highlightOverdue: true,
+  remindersOn: true,
+  remindMorning: true,
+  morningTime: '08:00',
+  remindEvening: true,
+  eveningTime: '19:00',
+  keepInTray: true,
+  startWithWindows: false,
   noteTemplate: 'page',
   noteFont: 'sans',
   noteCover: 'none',

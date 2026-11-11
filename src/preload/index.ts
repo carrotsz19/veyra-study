@@ -46,7 +46,14 @@ const appApi = {
   version: () => ipcRenderer.invoke('app:version'),
   /** Windows 11 can show acrylic or mica behind the app. */
   materialSupported: ipcRenderer.sendSync('app:materialSupported') as boolean,
-  setMaterial: (material: string, theme: string) => ipcRenderer.invoke('app:setMaterial', material, theme)
+  setMaterial: (material: string, theme: string) => ipcRenderer.invoke('app:setMaterial', material, theme),
+  setStartup: (on: boolean) => ipcRenderer.invoke('app:setStartup', on),
+  /** The tray or a reminder asks to show a screen. */
+  onNav: (cb: (screen: string) => void) => {
+    const h = (_: unknown, screen: string) => cb(screen)
+    ipcRenderer.on('app:nav', h)
+    return () => void ipcRenderer.removeListener('app:nav', h)
+  }
 }
 
 const aiApi = {

@@ -177,6 +177,8 @@ function Shell() {
   useEffect(() => (signedIn ? prefetchGroups() : undefined), [signedIn])
   // Notes back up to Google Drive (when it's connected and backup is on).
   useEffect(() => startDriveBackup(), [])
+  // The tray menu or a reminder asks for a screen.
+  useEffect(() => window.veyra.app.onNav((screen) => ROUTES.includes(screen) && go({ name: screen } as Route)), [])
 
   useEffect(() => {
     if (!ready || route) return

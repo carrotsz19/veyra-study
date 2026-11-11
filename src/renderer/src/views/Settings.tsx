@@ -29,7 +29,7 @@ const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; 
   { id: 'sidebar', label: 'Sidebar', icon: LayoutPanelLeft, hint: 'What the sidebar shows, and in what order', keys: ['nav', 'showCounts', 'showSubjectsInSidebar', 'showTimerCard'] },
   { id: 'subjects', label: 'Subjects', icon: Shapes, hint: 'Order, colours, archived and deleted subjects' },
   { id: 'today', label: 'Today', icon: Home, hint: 'Your Today page’s widgets', keys: ['todayLayout', 'upcomingCount'] },
-  { id: 'tasks', label: 'Tasks', icon: ListTodo, hint: 'Defaults for new tasks, and how lists sort', keys: ['defaultPriority', 'defaultDue', 'taskSort', 'showDoneInLists', 'highlightOverdue'] },
+  { id: 'tasks', label: 'Tasks', icon: ListTodo, hint: 'Defaults for new tasks, how lists sort, and reminders', keys: ['defaultPriority', 'defaultDue', 'taskSort', 'showDoneInLists', 'highlightOverdue', 'remindersOn', 'remindMorning', 'morningTime', 'remindEvening', 'eveningTime', 'keepInTray', 'startWithWindows'] },
   { id: 'notes', label: 'Notes', icon: NotebookPen, hint: 'How new notes start and how pages look', keys: ['noteTemplate', 'noteFont', 'noteCover', 'noteWidth', 'noteSize', 'spellcheck', 'showWordCount', 'noteToolbar', 'noteBubble', 'noteSort'] },
   { id: 'timer', label: 'Focus timer', icon: Timer, hint: 'Lengths, long breaks, sounds and your daily goal', keys: ['focusMin', 'breakMin', 'longBreakMin', 'longBreakEvery', 'autoStartBreaks', 'autoStartFocus', 'sound', 'volume', 'notify', 'dailyGoalMin'] },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays, hint: 'What appears on the calendar', keys: ['calendarShowTasks', 'calendarShowDone', 'calendarShowEvents'] },
@@ -345,6 +345,33 @@ function Tasks() {
         </Row>
         <Row label="Highlight overdue tasks" hint="Late tasks get a red label." keywords="late">
           <Toggle label="Highlight overdue" on={s.highlightOverdue} onChange={(highlightOverdue) => set({ highlightOverdue })} />
+        </Row>
+      </Group>
+      <Group title="Reminders">
+        <Row label="Reminders" hint="Windows notifications for your tasks. Set a reminder on any task in its editor." keywords="notification alert remind">
+          <Toggle label="Reminders" on={s.remindersOn} onChange={(remindersOn) => set({ remindersOn })} />
+        </Row>
+        {s.remindersOn && (
+          <>
+            <Row label="Morning summary" hint="What’s due today and anything overdue." keywords="daily digest morning">
+              <div className="row" style={{ gap: 8 }}>
+                <input className="set-input" type="time" style={{ width: 120 }} value={s.morningTime} disabled={!s.remindMorning} onChange={(e) => e.target.value && set({ morningTime: e.target.value })} aria-label="Morning summary time" />
+                <Toggle label="Morning summary" on={s.remindMorning} onChange={(remindMorning) => set({ remindMorning })} />
+              </div>
+            </Row>
+            <Row label="Evening heads-up" hint="What’s due tomorrow, so nothing sneaks up on you." keywords="tomorrow evening">
+              <div className="row" style={{ gap: 8 }}>
+                <input className="set-input" type="time" style={{ width: 120 }} value={s.eveningTime} disabled={!s.remindEvening} onChange={(e) => e.target.value && set({ eveningTime: e.target.value })} aria-label="Evening heads-up time" />
+                <Toggle label="Evening heads-up" on={s.remindEvening} onChange={(remindEvening) => set({ remindEvening })} />
+              </div>
+            </Row>
+          </>
+        )}
+        <Row label="Keep running in the tray" hint="Closing the window leaves Veyra in the system tray, so reminders still come. Quit from the tray icon." keywords="background tray minimize close">
+          <Toggle label="Keep running in the tray" on={s.keepInTray} onChange={(keepInTray) => set({ keepInTray })} />
+        </Row>
+        <Row label="Start with Windows" hint="Opens quietly in the tray when you sign in to Windows. (Works in the installed app.)" keywords="startup login boot launch">
+          <Toggle label="Start with Windows" on={s.startWithWindows} onChange={(startWithWindows) => set({ startWithWindows })} />
         </Row>
       </Group>
     </>

@@ -1,4 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron'
+import iconPath from '../../resources/icon.png?asset'
+import trayPath from '../../resources/tray@2x.png?asset'
+import { Reminders } from './reminders'
+import { withDefaults } from '../shared/settings'
 import { release } from 'node:os'
 import { dirname, join } from 'node:path'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -16,6 +20,33 @@ import { Sync } from './sync'
 
 // Dev checks: run on a separate profile (sign-in, settings and data).
 if (process.env['VEYRA_USERDATA']) app.setPath('userData', process.env['VEYRA_USERDATA'])
+
+// One Veyra at a time: opening it again shows the one already running (in the tray, say).
+if (!app.requestSingleInstanceLock()) app.quit()
+app.on('second-instance', () => showWindow())
+// Packaged builds have a Start menu shortcut with this id, which Windows needs for notifications.
+if (app.isPackaged && process.platform === 'win32') app.setAppUserModelId('app.veyra.study')
+
+let mainWin: BrowserWindow | null = null
+let tray: Tray | null = null
+let quitting = false
+app.on('before-quit', () => (quitting = true))
+/** Settings, read in the main process (tray and reminders). */
+const appSettings = () => {
+  try {
+    return withDefaults((store?.list('settings')[0]?.data as object) ?? {})
+  } catch {
+    return withDefaults({})
+  }
+}
+function showWindow(screen?: string): void {
+  if (!mainWin || mainWin.isDestroyed()) createWindow()
+  const w = mainWin!
+  if (w.isMinimized()) w.restore()
+  w.show()
+  w.focus()
+  if (screen) w.webContents.send('app:nav', screen)
+}
 
 // Attachments are shown through veyra-file:// (registered before the app is ready).
 registerFileScheme()
@@ -109,6 +140,7 @@ function applyMaterial(win: BrowserWindow, material: Material): void {
 
 function createWindow(): void {
   const win = new BrowserWindow({
+    icon: iconPath,
     width: 1280,
     height: 820,
     minWidth: 900,
@@ -129,7 +161,19 @@ function createWindow(): void {
     }
   })
 
-  win.once('ready-to-show', () => win.show())
+  mainWin = win
+  // Started with Windows: wait in the tray until asked for.
+  const hidden = process.argv.includes('--hidden') && !process.env['VEYRA_SCREENSHOT']
+  win.once('ready-to-show', () => !hidden && win.show())
+  // Closing keeps Veyra in the tray (Settings → Tasks → Reminders), so reminders still come.
+  win.on('close', (e) => {
+    if (quitting || process.env['VEYRA_SCREENSHOT'] || !tray || !appSettings().keepInTray) return
+    e.preventDefault()
+    win.hide()
+  })
+  win.on('closed', () => {
+    if (mainWin === win) mainWin = null
+  })
 
   // Dev check: VEYRA_SCREENSHOT=path.png saves what the window shows, then quits.
   const shot = process.env['VEYRA_SCREENSHOT']
@@ -363,7 +407,29 @@ app.whenReady().then(() => {
     if (/^https:\/\//.test(url)) shell.openExternal(url)
   })
 
+  ipcMain.handle('app:setStartup', (_e, on: boolean) => {
+    // Only a packaged Veyra registers itself (a dev build would register Electron).
+    if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!on, args: ['--hidden'] })
+    return app.isPackaged
+  })
+
   createWindow()
+  if (!process.env['VEYRA_SCREENSHOT']) {
+    tray = new Tray(nativeImage.createFromPath(trayPath).resize({ width: 16, height: 16 }))
+    tray.setToolTip('Veyra Study')
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: 'Open Veyra Study', click: () => showWindow() },
+        { label: 'Today', click: () => showWindow('today') },
+        { label: 'Tasks', click: () => showWindow('tasks') },
+        { type: 'separator' },
+        { label: 'Quit Veyra Study', click: () => app.quit() }
+      ])
+    )
+    tray.on('click', () => showWindow())
+  }
+  const reminders = new Reminders(() => store, (screen) => showWindow(screen))
+  app.on('will-quit', () => reminders.dispose())
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

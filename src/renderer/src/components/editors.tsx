@@ -72,6 +72,29 @@ export function TaskDialog({
           </div>
         </div>
         <div className="field">
+          <label className="field-label" htmlFor="task-remind">
+            Remind me
+          </label>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            <input id="task-remind" type="datetime-local" style={{ width: 220 }} value={t.remindAt ?? ''} onChange={(e) => set({ remindAt: e.target.value || null })} />
+            {t.due && (
+              <>
+                <button type="button" className="btn ghost sm" onClick={() => set({ remindAt: `${shiftDay(t.due!, -1)}T19:00` })}>
+                  Day before, 7 pm
+                </button>
+                <button type="button" className="btn ghost sm" onClick={() => set({ remindAt: `${t.due}T08:00` })}>
+                  That morning
+                </button>
+              </>
+            )}
+            {t.remindAt && (
+              <button type="button" className="btn ghost sm" onClick={() => set({ remindAt: null })}>
+                No reminder
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="field">
           <label className="field-label">Priority</label>
           <Seg<Priority>
             value={t.priority}
@@ -164,4 +187,11 @@ export function SubjectDialog({ subject, onClose, onSaved }: { subject?: Rec<'su
       </form>
     </Dialog>
   )
+}
+
+/** A "YYYY-MM-DD" date moved by some days. */
+function shiftDay(day: string, by: number): string {
+  const d = new Date(day + 'T12:00:00')
+  d.setDate(d.getDate() + by)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }

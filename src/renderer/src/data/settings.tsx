@@ -72,6 +72,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   useApplyAppearance(local)
 
+  // Start with Windows (only once the saved setting is known).
+  useEffect(() => {
+    if (loaded) void window.veyra.app.setStartup(local.startWithWindows)
+  }, [loaded, local.startWithWindows])
   return <SettingsCtx.Provider value={{ ready: loaded, s: local, set, reset }}>{children}</SettingsCtx.Provider>
 }
 

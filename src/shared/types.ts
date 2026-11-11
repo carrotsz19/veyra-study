@@ -34,6 +34,8 @@ export interface Task {
   due: string | null
   priority: Priority
   details?: string
+  /** A reminder at this local time, "YYYY-MM-DDTHH:MM", or none. */
+  remindAt?: string | null
 }
 
 export type NoteTemplate = 'page' | 'cornell' | 'lined' | 'grid'
