@@ -1,5 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import { GraduationCap } from 'lucide-react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import '@fontsource/inter/400.css'
+import '@fontsource/inter/500.css'
+import '@fontsource/inter/600.css'
+import '@fontsource/inter/700.css'
+import '@fontsource/inter/800.css'
+import './auth.css'
 import type { AccountState } from '@shared/types'
 
 const api = window.veyra.account
@@ -36,35 +41,72 @@ export function AccountGate({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={{ state, apply }}>{children}</Ctx.Provider>
 }
 
-type Mode = 'start' | 'signin' | 'signup'
+type Mode = 'signin' | 'signup'
 
-export function Welcome({ notice, onDone, initial = 'start', onCancel }: { notice?: string; onDone: (s: AccountState) => void; initial?: Mode; onCancel?: () => void }) {
-  const [mode, setMode] = useState<Mode>(initial)
+/** The Veyra mark (live/index.html #v-mark): two offset chevrons, green under clay. */
+export function VeyraMark({ size = 32 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M15 16 L32 50 L49 16" fill="none" stroke="#6fae82" strokeWidth="8.5" strokeLinecap="round" strokeLinejoin="round" transform="translate(2.5 2.5)" />
+      <path d="M15 16 L32 50 L49 16" fill="none" stroke="#d9633e" strokeWidth="8.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/**
+ * Sign in / create account, mirroring Veyra home's auth screen
+ * (carrotsz19/veyra live/index.html #v-auth): the brand panel on the left
+ * on wide windows, and the card with the Log in / Create account switch.
+ */
+export function Welcome({
+  notice,
+  onDone,
+  initial = 'signin',
+  onCancel
+}: {
+  notice?: string
+  onDone: (s: AccountState) => void
+  initial?: Mode | 'start'
+  onCancel?: () => void
+}) {
+  const [mode, setMode] = useState<Mode>(initial === 'signup' ? 'signup' : 'signin')
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [accept, setAccept] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(notice && notice !== 'moved' ? notice : '')
-  const [legal, setLegal] = useState<{ terms: string; privacy: string; terms2: string; privacy2: string } | null>(null)
+  const [legal, setLegal] = useState<{ legal: string } | null>(null)
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  const up = mode === 'signup'
 
   useEffect(() => {
-    if (mode === 'signup' && !legal) api.legalUrls().then(setLegal)
-  }, [mode, legal])
+    api.legalUrls().then(setLegal)
+  }, [])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onCancel?.()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel])
+
+  const switchTo = (m: Mode) => {
+    setMode(m)
+    setErr('')
+  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (busy) return
     setErr('')
+    // Top to bottom, as the form reads (same checks and words as Veyra home).
     if (!username.trim() || !password) return setErr('Enter your username and password.')
-    if (mode === 'signup' && password.length < 8) return setErr('Use a password of at least 8 characters.')
-    if (mode === 'signup' && !accept) return setErr('Tick the box to agree to the Terms and Privacy Policy.')
+    if (up && (password.length < 8 || password.length > 200)) return setErr('Use a password of at least 8 characters.')
+    if (up && !accept) return setErr('Tick the box to agree to the Terms and Privacy Policy.')
     setBusy(true)
     try {
-      const s =
-        mode === 'signup'
-          ? await api.signUp({ username: username.trim(), email: email.trim(), password, acceptLegal: accept })
-          : await api.signIn(username.trim(), password)
+      const s = up
+        ? await api.signUp({ username: username.trim(), email: email.trim(), password, acceptLegal: accept })
+        : await api.signIn(username.trim(), password)
       setPassword('')
       onDone(s)
     } catch (ex) {
@@ -74,80 +116,138 @@ export function Welcome({ notice, onDone, initial = 'start', onCancel }: { notic
     }
   }
 
-  const link = (href: string | undefined, text: string) => (
-    <a
-      href={href}
-      onClick={(e) => {
-        e.preventDefault()
-        if (href) window.veyra.open(href)
-      }}
-    >
-      {text}
-    </a>
-  )
+  const open = (url?: string) => url && window.veyra.open(url)
+  const server = legal?.legal ? legal.legal.replace(/\/?\?page=legal$/, '/') : ''
 
   return (
-    <div className="welcome">
-      <div className="welcome-card view">
-        <div className="welcome-mark">
-          <GraduationCap size={28} />
-        </div>
-        <h1>{mode === 'signup' ? 'Create your Veyra account' : mode === 'signin' ? 'Sign in to Veyra' : 'Welcome to Veyra Study'}</h1>
-        <p className="dim welcome-lead">
-          {mode === 'start'
-            ? 'Tasks, notes, deadlines and focus time for your studies. Use your Veyra account, the same one as IronLog and Cashline.'
-            : mode === 'signin'
-              ? 'Use the username and password you use for IronLog or Cashline.'
-              : 'One account for every Veyra app.'}
-        </p>
-
-        {mode === 'start' ? (
-          <div className="stack" style={{ marginTop: 22 }}>
-            <button className="btn lg" style={{ width: '100%' }} onClick={() => setMode('signin')}>
-              Sign in
-            </button>
-            <button className="btn sec lg" style={{ width: '100%' }} onClick={() => setMode('signup')}>
-              Create an account
-            </button>
-            <button className="btn ghost" style={{ width: '100%', border: 0 }} onClick={() => api.continueAsGuest().then(onDone)}>
-              Use without an account
-            </button>
-            {err && <p className="welcome-err">{err}</p>}
+    <div className={`vauth ${onCancel ? 'overlay' : ''}`}>
+      <aside className="wide-brand" aria-hidden="true">
+        <span className="wb-mark">
+          <VeyraMark size={30} />
+          Veyra
+        </span>
+        <div>
+          <h2>Your studies, your training and your money, in one place.</h2>
+          <p>One Veyra account opens Veyra Study, IronLog and Cashline, on your phone and on this computer.</p>
+          <div className="wb-apps">
+            <span className="wb-app">
+              <i style={{ background: '#2f5f8a' }}>S</i>
+              <span>
+                <b>Veyra Study</b>
+                <small>Tasks, notes and focus</small>
+              </span>
+            </span>
+            <span className="wb-app">
+              <i style={{ background: '#d9633e' }}>I</i>
+              <span>
+                <b>IronLog</b>
+                <small>Workouts and progress</small>
+              </span>
+            </span>
+            <span className="wb-app">
+              <i style={{ background: '#4f8a60' }}>C</i>
+              <span>
+                <b>Cashline</b>
+                <small>Budgets, bills and goals</small>
+              </span>
+            </span>
           </div>
-        ) : (
-          <form onSubmit={submit} style={{ marginTop: 20 }} noValidate>
-            <div className="field-group">
-              <input aria-label="Username" placeholder="Username" autoComplete="username" autoFocus value={username} onChange={(e) => setUsername(e.target.value)} />
-              {mode === 'signup' && (
-                <input aria-label="Email (optional)" placeholder="Email (optional, for password resets)" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-              )}
-              <input aria-label="Password" placeholder="Password" type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={(e) => setPassword(e.target.value)} />
-            </div>
-            {mode === 'signup' && (
-              <label className="consent">
-                <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
-                <span>
-                  I agree to the Veyra Terms of Service and Privacy Policy for IronLog ({link(legal?.terms, 'Terms')}, {link(legal?.privacy, 'Privacy')}) and Cashline ({link(legal?.terms2, 'Terms')},{' '}
-                  {link(legal?.privacy2, 'Privacy')}). One Veyra account covers both.
-                </span>
-              </label>
-            )}
-            {err && <p className="welcome-err">{err}</p>}
-            <button className="btn lg" type="submit" style={{ width: '100%', marginTop: 16 }} disabled={busy}>
-              {busy ? (mode === 'signup' ? 'Creating your account…' : 'Signing in…') : mode === 'signup' ? 'Create account' : 'Sign in'}
+        </div>
+        <span className="wb-foot">Veyra</span>
+      </aside>
+
+      <section className="view" aria-labelledby="auth-title">
+        <div className="col">
+          {onCancel && (
+            <button type="button" className="close" aria-label="Close" onClick={onCancel}>
+              ×
             </button>
-            <div className="between sm" style={{ marginTop: 14 }}>
-              <button type="button" className="linkbtn" onClick={() => (onCancel && initial !== 'start' ? onCancel() : setMode('start'))}>
-                ← Back
-              </button>
-              <button type="button" className="linkbtn" onClick={() => { setErr(''); setMode(mode === 'signin' ? 'signup' : 'signin') }}>
-                {mode === 'signin' ? 'New here? Create an account' : 'Have an account? Sign in'}
-              </button>
+          )}
+          <div className="brand">
+            <VeyraMark />
+            Veyra
+          </div>
+          <div
+            className="seg"
+            role="tablist"
+            aria-label="Log in or create an account"
+            data-mode={mode}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                e.preventDefault()
+                switchTo(up ? 'signin' : 'signup')
+              }
+            }}
+          >
+            <span className="pillbg" aria-hidden="true" />
+            <button type="button" role="tab" aria-selected={!up} aria-controls="auth-form" onClick={() => switchTo('signin')}>
+              Log in
+            </button>
+            <button type="button" role="tab" aria-selected={up} aria-controls="auth-form" onClick={() => switchTo('signup')}>
+              Create account
+            </button>
+          </div>
+          <h1 className="title" id="auth-title" ref={titleRef}>
+            {up ? 'Create your Veyra account' : 'Welcome back'}
+          </h1>
+          <p className="lede">{up ? 'One account for Veyra Study, IronLog and Cashline.' : 'Log in to open Veyra Study.'}</p>
+          <form id="auth-form" onSubmit={submit} noValidate>
+            <div className="fields">
+              <div className="field">
+                <label className="sr-only" htmlFor="auth-user">Username</label>
+                <input id="auth-user" aria-label="Username" autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="Username" autoFocus value={username} onChange={(e) => setUsername(e.target.value)} />
+              </div>
+              {up && (
+                <div className="field">
+                  <label className="sr-only" htmlFor="auth-email">Email (optional)</label>
+                  <input id="auth-email" type="email" autoComplete="email" autoCapitalize="none" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <span className="opt" aria-hidden="true">Optional</span>
+                </div>
+              )}
+              <div className="field">
+                <label className="sr-only" htmlFor="auth-pass">Password</label>
+                <input id="auth-pass" aria-label="Password" type="password" autoComplete={up ? 'new-password' : 'current-password'} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              </div>
             </div>
-            {mode === 'signin' && <p className="xs tert" style={{ textAlign: 'center', marginTop: 14 }}>Forgot your password? Reset it from the IronLog or Cashline sign-in page.</p>}
           </form>
-        )}
-      </div>
+          {up && <p className="hint">At least 8 characters. Add an email to reset your password if you forget it, and to use IronLog&apos;s social features.</p>}
+          {up && (
+            <label className="check">
+              <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
+              <span>
+                I&apos;m 16 or over, and I agree to the{' '}
+                <a
+                  href={legal?.legal}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    open(legal?.legal)
+                  }}
+                >
+                  Terms of Service and Privacy Policy
+                </a>{' '}
+                for IronLog and Cashline. I understand IronLog isn&apos;t medical or fitness advice, and Cashline isn&apos;t financial advice.
+              </span>
+            </label>
+          )}
+          <p className="err" role="alert">
+            {err}
+          </p>
+          <div className="push-down" />
+          <button type="submit" form="auth-form" className="btn btn-primary" aria-disabled={busy || undefined}>
+            {busy ? (up ? 'Creating your account…' : 'Logging in…') : up ? 'Create account' : 'Log in'}
+          </button>
+          {!up && (
+            <button type="button" className="btn btn-plain" onClick={() => open(server)}>
+              Forgot password?
+            </button>
+          )}
+          {!onCancel && (
+            <button type="button" className="btn btn-plain dim" onClick={() => api.continueAsGuest().then(onDone)}>
+              Use Veyra Study without an account
+            </button>
+          )}
+        </div>
+      </section>
     </div>
   )
 }

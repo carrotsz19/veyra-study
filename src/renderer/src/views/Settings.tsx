@@ -13,15 +13,9 @@ function AccountSection() {
   const [busy, setBusy] = useState(false)
   const u = state.user
 
-  if (signingIn) {
-    return (
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <Welcome initial={signingIn} onDone={apply} onCancel={() => setSigningIn(null)} />
-      </div>
-    )
-  }
   return (
     <div className="card">
+      {signingIn && <Welcome initial={signingIn} onDone={apply} onCancel={() => setSigningIn(null)} />}
       {u ? (
         <div className="between">
           <div className="row" style={{ gap: 14 }}>

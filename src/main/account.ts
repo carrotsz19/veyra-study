@@ -179,13 +179,13 @@ export class Accounts {
     return this.state()
   }
 
-  async legalUrls(): Promise<{ terms: string; privacy: string; terms2: string; privacy2: string }> {
+  async legalUrls(): Promise<{ legal: string; terms: string; privacy: string; terms2: string; privacy2: string }> {
     try {
       const { v } = await call<any>('getLegalUrls', [])
-      return { terms: v.ironlog.terms, privacy: v.ironlog.privacy, terms2: v.cashline.terms, privacy2: v.cashline.privacy }
+      return { legal: v.legal || `${VEYRA_SERVER}/?page=legal`, terms: v.ironlog.terms, privacy: v.ironlog.privacy, terms2: v.cashline.terms, privacy2: v.cashline.privacy }
     } catch {
       const b = VEYRA_SERVER + '/'
-      return { terms: `${b}?page=terms&app=ironlog`, privacy: `${b}?page=privacy&app=ironlog`, terms2: `${b}?page=terms&app=cashline`, privacy2: `${b}?page=privacy&app=cashline` }
+      return { legal: `${b}?page=legal`, terms: `${b}?page=terms&app=ironlog`, privacy: `${b}?page=privacy&app=ironlog`, terms2: `${b}?page=terms&app=cashline`, privacy2: `${b}?page=privacy&app=cashline` }
     }
   }
 

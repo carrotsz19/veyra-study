@@ -106,7 +106,7 @@ export interface AccountApi {
   signUp(input: { username: string; email: string; password: string; acceptLegal: boolean }): Promise<AccountState>
   signOut(): Promise<AccountState>
   continueAsGuest(): Promise<AccountState>
-  legalUrls(): Promise<{ terms: string; privacy: string; terms2: string; privacy2: string }>
+  legalUrls(): Promise<{ legal: string; terms: string; privacy: string; terms2: string; privacy2: string }>
 }
 
 export interface GoogleEvent {

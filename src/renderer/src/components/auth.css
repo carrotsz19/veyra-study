@@ -1,0 +1,123 @@
+/* =====================================================================
+   SIGN IN — mirrors Veyra home's auth screen (carrotsz19/veyra
+   live/index.html: tokens, .col, .seg/.pillbg, .fields, .btn, and the
+   wide-window layout with .wide-brand). Scoped to .vauth so the rest of
+   the app keeps its own tokens.
+===================================================================== */
+.vauth {
+  --iron: #b3492b;
+  --bg: #f3f1ec; --surface: #fff; --surface-2: #ebe7de; --text: #1d1b16; --muted: #6f6a5e; --hairline: rgba(29, 27, 22, 0.12);
+  --danger: #c62828; --focus: #b3492b;
+  --r-control: 10px; --r-card: 14px; --h-button: 50px;
+  min-height: 100%; background: var(--bg); color: var(--text);
+  font: 15px/1.5 'Inter', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased;
+}
+html.dark .vauth {
+  --iron: #d9633e;
+  --bg: #15140f; --surface: #201f19; --surface-2: #2a2921; --text: #efebe2; --muted: #a29c8e; --hairline: rgba(239, 235, 226, 0.1);
+  --danger: #ff6b5e; --focus: #d9633e;
+}
+.vauth.overlay { position: fixed; inset: 0; z-index: 100; overflow-y: auto; animation: fadeIn 0.2s var(--ease-standard); }
+.vauth *, .vauth *::before, .vauth *::after { box-sizing: border-box; }
+
+.vauth .view { min-height: 100vh; display: flex; flex-direction: column; animation: viewIn var(--spring-spatial-ms) var(--spring-spatial) both; }
+.vauth .col {
+  position: relative; width: 100%; max-width: 440px; margin: 0 auto; padding: 20px 20px 24px;
+  display: flex; flex-direction: column; gap: 14px; flex: 1;
+}
+.vauth .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; letter-spacing: -0.02em; }
+.vauth .title { font-size: 28px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 6px 0 0; text-wrap: balance; }
+.vauth .lede { margin: 0; color: var(--muted); font-size: 15px; }
+.vauth .push-down { flex: 1; }
+.vauth form { margin: 0; }
+
+/* segmented Log in / Create account, with the sliding pill */
+.vauth .seg { display: flex; padding: 3px; border-radius: var(--r-control); background: var(--surface-2); position: relative; gap: 0; }
+.vauth .seg button {
+  all: unset; flex: 1; text-align: center; padding: 8px 0; border-radius: 8px; font-weight: 600; font-size: 14px;
+  color: var(--muted); cursor: pointer; position: relative; z-index: 1; transition: color 0.2s;
+}
+.vauth .seg button[aria-selected='true'] { color: var(--text); background: transparent; box-shadow: none; }
+.vauth .seg .pillbg {
+  position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); border-radius: 8px; background: var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); transition: transform var(--spring-snappy-ms) var(--spring-snappy);
+}
+.vauth .seg[data-mode='signup'] .pillbg { transform: translateX(100%); }
+.vauth .seg button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* grouped fields */
+.vauth .fields { background: var(--surface); border-radius: var(--r-card); overflow: hidden; }
+.vauth .field { position: relative; display: flex; align-items: center; }
+.vauth .field + .field { margin-top: 0; }
+.vauth .field + .field::before { content: ''; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--hairline); }
+.vauth .field input {
+  all: unset; box-sizing: border-box; flex: 1; min-width: 0; padding: 15px 16px; font-size: 16px; color: var(--text);
+}
+.vauth .field input::placeholder { color: var(--muted); }
+.vauth .field .opt { padding-right: 16px; font-size: 13px; color: var(--muted); }
+.vauth .field:focus-within { box-shadow: inset 3px 0 0 var(--focus); }
+.vauth .hint { font-size: 12.5px; color: var(--muted); margin: -6px 16px 0; }
+.vauth .err { min-height: 0; margin: 0; font-size: 13.5px; color: var(--danger); }
+.vauth .err:empty { display: none; }
+.vauth .check {
+  display: flex; gap: 12px; align-items: flex-start; font-size: 13.5px; line-height: 1.45; color: var(--muted); cursor: pointer;
+  padding: 2px 4px; margin: 0; text-transform: none; letter-spacing: 0; font-weight: 400;
+}
+.vauth .check input { width: 22px; height: 22px; margin: 0; flex: 0 0 auto; accent-color: var(--iron); }
+.vauth .check a { color: var(--text); }
+
+/* buttons (ui-standard §4) */
+.vauth .btn {
+  all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+  min-height: var(--h-button); border-radius: var(--r-card); font-weight: 700; font-size: 16px; cursor: pointer; text-align: center;
+  transition: transform var(--spring-snappy-ms) var(--spring-snappy), opacity 0.2s;
+}
+.vauth .btn:active { transform: scale(0.97); }
+.vauth .btn:focus-visible { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus); }
+.vauth .btn[aria-disabled='true'] { opacity: 0.5; pointer-events: none; }
+.vauth .btn-primary { background: var(--text); color: var(--bg); }
+.vauth .btn-plain { min-height: 44px; font-weight: 600; font-size: 15px; color: var(--text); }
+.vauth .btn-plain.dim { color: var(--muted); font-weight: 500; font-size: 14px; }
+.vauth .close {
+  all: unset; position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 99px; display: grid; place-items: center;
+  font-size: 22px; line-height: 1; color: var(--muted); cursor: pointer; z-index: 2;
+}
+.vauth .close:hover { background: var(--surface-2); color: var(--text); }
+
+/* wide windows: brand panel on the left, the step as a card on the right */
+.vauth .wide-brand { display: none; }
+@media (min-width: 960px) {
+  .vauth .wide-brand {
+    display: flex; flex-direction: column; justify-content: space-between; position: fixed; inset: 0 auto 0 0; width: 42vw; max-width: 620px;
+    padding: 48px 56px; z-index: 1; color: #fff; overflow: hidden;
+    background: radial-gradient(120% 80% at 0% 0%, rgba(217, 99, 62, 0.55), transparent 60%),
+      radial-gradient(120% 80% at 100% 100%, rgba(111, 174, 130, 0.45), transparent 60%), #1d1b16;
+  }
+  .vauth.overlay .wide-brand { position: absolute; }
+  .vauth .wide-brand .wb-mark { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+  .vauth .wide-brand h2 {
+    font-size: clamp(34px, 3.4vw, 52px); line-height: 1.04; letter-spacing: -0.04em; font-weight: 800; margin: 0 0 16px;
+    text-wrap: balance; text-transform: none; color: #fff;
+  }
+  .vauth .wide-brand p { margin: 0; color: rgba(255, 255, 255, 0.72); font-size: 16px; max-width: 30em; }
+  .vauth .wide-brand .wb-apps { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+  .vauth .wide-brand .wb-app {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 10px; border-radius: 16px;
+    background: rgba(255, 255, 255, 0.08); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+  }
+  .vauth .wide-brand .wb-app i { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-style: normal; font-weight: 800; }
+  .vauth .wide-brand .wb-app b { display: block; font-size: 14px; }
+  .vauth .wide-brand .wb-app small { display: block; font-size: 12px; color: rgba(255, 255, 255, 0.65); }
+  .vauth .wide-brand .wb-foot { font-size: 13px; color: rgba(255, 255, 255, 0.5); }
+  .vauth .view { padding-left: min(42vw, 620px); min-height: 100vh; justify-content: center; }
+  .vauth .view > .col {
+    flex: 0 0 auto; margin: 40px auto; padding: 36px 36px 28px; background: var(--surface); border-radius: 24px;
+    box-shadow: 0 0 0 1px var(--hairline), 0 30px 60px -30px rgba(0, 0, 0, 0.35);
+  }
+  .vauth .push-down { flex: 0 0 6px; }
+  /* Inside the card, the grouped fields sit on the page colour, so they still read as fields. */
+  .vauth .view > .col .fields { background: var(--bg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vauth .view { animation: none; }
+}
