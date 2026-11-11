@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
 import {
-  Archive, ArchiveRestore, CheckSquare, Copy, Download, FileText, FolderInput, HardDrive, NotebookPen, Pin, PinOff, Plus, Search, Square, Trash2, X
+  Archive, ArchiveRestore, CheckSquare, ChevronLeft, Copy, Download, FileText, FolderInput, HardDrive, NotebookPen, Pin, PinOff, Plus, Search, Square, Trash2, X
 } from 'lucide-react'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, onExternalChange, useRecords } from '../data/store'
@@ -10,6 +10,7 @@ import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../componen
 import { useSettings } from '../data/settings'
 import { SubjectSelect } from '../components/editors'
 import { useNav } from '../nav'
+import { usePhone } from '../lib/phone'
 import { cleanError, importFromDrive, useDrive } from '../data/drive'
 
 /** A new note, starting from the defaults in Settings → Notes. */
@@ -105,9 +106,9 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   const archivedCount = notes.filter((n) => n.data.archived).length
   const pickedNotes = notes.filter((n) => picked.has(n.id))
 
-  // Open the most recent note when nothing is picked yet.
+  // Open the most recent note when nothing is picked yet (on a computer; a phone shows the list first).
   useEffect(() => {
-    if (loaded && !selected && shown.length) setSelected(shown[0].id)
+    if (loaded && !selected && shown.length && !phone) setSelected(shown[0].id)
   }, [loaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Focus mode hides the sidebar and the list.
@@ -124,6 +125,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   }
 
   const { state: drive } = useDrive()
+  const phone = usePhone()
   // Another computer changed the open note: show its version (anything you were typing is saved first, and newer wins).
   // The list reloads a moment after the change arrives, so reopen the editor once the new version is here.
   const [remoteBump, setRemoteBump] = useState(0)
@@ -284,7 +286,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
           </div>
         </div>
       )}
-      <div className="notes-layout" style={subjectFilter ? { height: 680 } : undefined}>
+      <div className={`notes-layout ${phone && (current || selecting) ? 'phone-open' : ''}`} style={subjectFilter && !phone ? { height: 680 } : undefined}>
         {!focus && (
           <div className="notes-list">
             <div className="card row notes-search">
@@ -430,14 +432,21 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             </p>
           </div>
         ) : current ? (
+          <>
+          {phone && (
+            <button className="phone-back" onClick={() => setSelected(undefined)}>
+              <ChevronLeft size={18} /> Notes
+            </button>
+          )}
           <NoteEditor
             key={`${current.id}:${remoteBump}`}
             note={current}
             onDeleted={() => setSelected(undefined)}
             onOpen={(id) => setSelected(id)}
             focusMode={focus}
-            onToggleFocus={subjectFilter ? undefined : () => setFocus(!focus)}
+            onToggleFocus={subjectFilter || phone ? undefined : () => setFocus(!focus)}
           />
+          </>
         ) : (
           <div className="card note-empty">
             <Empty

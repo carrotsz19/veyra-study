@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
-  ArrowDown, ArrowUp, CalendarDays, Check, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, NotebookPen,
+  ArrowDown, ArrowUp, CalendarDays, Check, ChevronLeft, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, NotebookPen,
   LayoutGrid, Palette, Play, Plus, RotateCcw, Shapes, Sparkles, Trash2, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
 } from 'lucide-react'
 import { ACCENTS, DEFAULT_SETTINGS, NAV_LABELS, defaultLayout, type AppSettings, type NavId } from '@shared/settings'
@@ -8,6 +8,7 @@ import { useNav } from '../nav'
 import { useSettings } from '../data/settings'
 import { playSound } from '../components/timer'
 import { useToast } from '../components/ui'
+import { onAndroid, usePhone } from '../lib/phone'
 import { NOTE_COVERS } from '../components/notes/NoteEditor'
 import { AccountSection, AiAppsSection, DriveSection, GoogleSection } from './Connections'
 import { LocalAiSetup } from '../components/LocalAiSetup'
@@ -956,6 +957,9 @@ const JUMPS: { id: SectionId; words: string }[] = [
   { id: 'connections', words: 'connected calendars google calendar drive backup docs mcp claude gemini chatgpt codex ai apps connector ical ics link sync outlook icloud events connect' }
 ]
 
+/** Computer-only sections, hidden in the Android app. */
+const ANDROID_HIDDEN: SectionId[] = ['ai', 'connections', 'sidebar']
+
 const SEARCHABLE: SectionId[] = ['general', 'appearance', 'sidebar', 'subjects', 'ai', 'today', 'tasks', 'notes', 'timer', 'calendar', 'data']
 
 export function Settings({ initial }: { initial?: string }) {
@@ -971,13 +975,17 @@ export function Settings({ initial }: { initial?: string }) {
 
   const current = SECTIONS.find((x) => x.id === section)!
   const changed = (current.keys ?? []).some((k) => JSON.stringify(s[k]) !== JSON.stringify(DEFAULT_SETTINGS[k]))
+  const phone = usePhone()
+  // On a phone the list of sections comes first; a section opens full-screen.
+  const [phoneOpen, setPhoneOpen] = useState(false)
   const go = (id: SectionId) => {
     setQ('')
     setSection(id)
+    setPhoneOpen(true)
   }
 
   return (
-    <div className="settings view">
+    <div className={`settings view ${phone ? (phoneOpen || q ? 'phone-page' : 'phone-list') : ''}`}>
       <aside className="set-nav" aria-label="Settings sections">
         <h1>Settings</h1>
         <div className="set-search">
@@ -990,7 +998,7 @@ export function Settings({ initial }: { initial?: string }) {
           )}
         </div>
         <nav>
-          {SECTIONS.map((x) => (
+          {SECTIONS.filter((x) => !onAndroid() || !ANDROID_HIDDEN.includes(x.id)).map((x) => (
             <div key={x.id}>
               {(x.id === 'account' || x.id === 'data') && <div className="set-nav-sep" />}
               <button className="set-nav-item" aria-current={!q && section === x.id} onClick={() => go(x.id)}>
@@ -1005,6 +1013,17 @@ export function Settings({ initial }: { initial?: string }) {
       </aside>
 
       <main className="set-main">
+        {phone && (
+          <button
+            className="phone-back"
+            onClick={() => {
+              setQ('')
+              setPhoneOpen(false)
+            }}
+          >
+            <ChevronLeft size={18} /> Settings
+          </button>
+        )}
         {q ? (
           <QueryCtx.Provider value={q.trim()}>
             <div className="set-head">

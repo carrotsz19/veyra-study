@@ -23,6 +23,8 @@ import { Groups } from './views/Groups'
 import { prefetchGroups } from './data/groups'
 import { startDriveBackup } from './data/drive'
 import { VoiceSetupHost } from './components/notes/Voice'
+import { PhoneNav } from './components/PhoneNav'
+import { usePhone } from './lib/phone'
 
 function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const { items: subjects } = useRecords('subject')
@@ -174,6 +176,7 @@ function Shell() {
   const { ready, s } = useSettings()
   const [route, go] = useState<Route | null>(null)
   const signedIn = useAccount().state.mode === 'account'
+  const phone = usePhone()
   // Group work loads in the background, so the tab opens ready.
   useEffect(() => (signedIn ? prefetchGroups() : undefined), [signedIn])
   // Notes back up to Google Drive (when it's connected and backup is on).
@@ -209,8 +212,8 @@ function Shell() {
   return (
     <TimerProvider>
       <NavCtx.Provider value={{ route, go }}>
-        <div className="shell">
-          <Sidebar route={route} go={go} />
+        <div className={`shell ${phone ? 'phone-shell' : ''}`} data-route={route.name}>
+          {phone ? <PhoneNav route={route} go={go} /> : <Sidebar route={route} go={go} />}
           <VoiceSetupHost />
           <main className={`main ${route.name === 'settings' ? 'main-settings' : ''}`}>
             <Screen key={route.name + ('id' in route ? route.id : '')} route={route} />

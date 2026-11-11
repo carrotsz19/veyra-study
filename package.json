@@ -12,7 +12,10 @@
     "dist": "npm run build && electron-builder --win",
     "test": "node --test tests/group.test.mjs",
     "group-server": "node server/group-server.mjs",
-    "relay:setup": "node relay/setup.mjs"
+    "relay:setup": "node relay/setup.mjs",
+    "android:setup": "node tools/setup-android.mjs",
+    "android:build": "node tools/android-build.mjs",
+    "android:install": "node tools/android-build.mjs --install"
   },
   "build": {
     "appId": "app.veyra.study",
@@ -29,6 +32,12 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
+    "@aparajita/capacitor-secure-storage": "^8.0.1",
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/local-notifications": "^8.3.1",
     "@floating-ui/dom": "^1.8.0",
     "@fontsource/inter": "^5.3.0",
     "@tiptap/extension-details": "^3.33.1",
@@ -48,6 +57,7 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

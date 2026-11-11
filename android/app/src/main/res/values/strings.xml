@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Veyra Study</string>
+    <string name="title_activity_main">Veyra Study</string>
+    <string name="package_name">app.veyra.study</string>
+    <string name="custom_url_scheme">app.veyra.study</string>
+</resources>

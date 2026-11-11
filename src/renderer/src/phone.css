@@ -1,0 +1,126 @@
+/* ---------- phone layout (the Android app; screens 720px wide or less) ---------- */
+@media (max-width: 720px) {
+  /* The floating dock: 62px tall, 12px above the bottom (plus the gesture bar). */
+  :root { --dock-h: 62px; --dock-gap: calc(12px + env(safe-area-inset-bottom)); --tabbar: calc(var(--dock-h) + var(--dock-gap) + 8px); }
+  html, body { overscroll-behavior: none; }
+  body { -webkit-tap-highlight-color: transparent; }
+
+  .shell.phone-shell { display: block; height: 100dvh; }
+  /* Pages scroll under the floating dock, with room to read the last line. */
+  .phone-shell main.main {
+    height: 100dvh;
+    padding: calc(14px + env(safe-area-inset-top)) 16px calc(var(--tabbar) + 16px);
+    overflow-y: auto;
+  }
+  .phone-shell main.main.main-settings { padding: env(safe-area-inset-top) 0 0; }
+
+  /* One UI dock: a floating rounded bar, and a separate round compose button beside it. */
+  .phone-dock {
+    position: fixed; left: 12px; right: 12px; bottom: var(--dock-gap); z-index: 40;
+    display: flex; align-items: center; gap: 10px; pointer-events: none;
+  }
+  .phone-dock > * { pointer-events: auto; }
+  .phone-tabs {
+    flex: 1; height: var(--dock-h); padding: 6px; border-radius: 999px;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
+    background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+    backdrop-filter: blur(24px) saturate(1.6); -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+  .phone-tabs button {
+    border: 0; background: none; color: var(--dim); border-radius: 999px; padding: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    transition: background-color 0.2s, color 0.2s;
+  }
+  .phone-tabs button[aria-current='true'] { color: var(--accent); background: var(--accent-soft); }
+  .phone-tabs button:active { transform: scale(0.94); }
+  .phone-tab-icon { position: relative; display: inline-flex; }
+  .phone-tab-label { font-size: 10.5px; font-weight: 650; letter-spacing: -0.01em; }
+  .phone-tab-icon i {
+    position: absolute; top: -4px; right: -9px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 99px;
+    background: var(--bad); color: #fff; font-size: 10px; font-style: normal; font-weight: 700; display: grid; place-items: center;
+    box-shadow: 0 0 0 2px var(--bg-elevated);
+  }
+  .phone-compose {
+    width: var(--dock-h); height: var(--dock-h); border-radius: 999px; border: 0; flex-shrink: 0;
+    background: var(--accent); color: var(--on-tint); display: grid; place-items: center;
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 45%, transparent), 0 2px 6px rgba(0, 0, 0, 0.15);
+  }
+  .phone-compose:active { transform: scale(0.92); }
+
+  .phone-timer {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--dock-gap) + var(--dock-h) + 10px); z-index: 41;
+    display: flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 99px; border: 1px solid var(--line);
+    background: var(--bg-elevated); color: var(--ink); font-weight: 600; font-size: 13px; box-shadow: var(--elev-2);
+  }
+  .phone-timer.live { border-color: var(--accent); color: var(--accent); }
+  .phone-sheet-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.35); display: flex; align-items: flex-end; }
+  .phone-sheet {
+    width: 100%; max-height: 82dvh; overflow-y: auto; background: var(--bg-grouped); border-radius: 26px 26px 0 0;
+    padding: 10px 16px calc(20px + env(safe-area-inset-bottom)); animation: sheetUp 0.24s var(--ease-out);
+  }
+  .phone-sheet-grip { width: 36px; height: 4px; border-radius: 99px; background: var(--label-tertiary); opacity: 0.5; margin: 0 auto 10px; }
+  @keyframes sheetUp { from { transform: translateY(40px); opacity: 0; } }
+  .phone-back {
+    display: inline-flex; align-items: center; gap: 2px; border: 0; background: none; color: var(--accent);
+    font-weight: 650; font-size: 15px; padding: 6px 4px 10px 0; margin-left: -4px;
+  }
+
+  /* general */
+  /* The compose button makes these, so the page's own New task / New note buttons go. */
+  html .phone-shell:is([data-route='today'], [data-route='tasks'], [data-route='notes'], [data-route='calendar'], [data-route='subject']) .topbar .btn:not(.ghost):last-child { display: none; }
+  html h1 { font-size: 24px; }
+  html .topbar { flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  html .topbar > .row { flex-wrap: wrap; }
+  html .topbar .btn { min-height: 38px; }
+  html .g2, html .g3 { grid-template-columns: minmax(0, 1fr); }
+  html .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html .dialog { width: calc(100vw - 20px); max-width: none !important; max-height: 88dvh; overflow-y: auto; }
+  html .ig-row { min-height: 52px; }
+  html .tick { width: 24px; height: 24px; }
+  html input, html select, html textarea { font-size: 16px; } /* no zoom-in when typing */
+  html .search-box { flex: 1; }
+  html .tasks-filters { flex-wrap: wrap; }
+  html .tasks-filters > .row { width: 100%; }
+  html .tasks-filters > .row > div:last-child { flex: 1; width: auto !important; }
+  html .quick-meta { display: none; }
+
+  /* Today */
+  html .w-row { flex-direction: column; }
+  html .w-slot { flex: none !important; width: 100% !important; max-width: none !important; }
+
+  /* Notes: the list, or the open note */
+  html .notes-layout > * { width: 100% !important; max-width: none !important; min-width: 0; }
+  html .notes-layout { display: block; height: auto; }
+  html .notes-layout.phone-open > :first-child { display: none; }
+  html .notes-layout:not(.phone-open) > :last-child { display: none; }
+  html .note-toolbar { overflow-x: auto; flex-wrap: nowrap; position: sticky; top: 0; z-index: 5; }
+  html .note-page, html .note-main { padding-left: 0; padding-right: 0; }
+
+  /* Settings: the list of sections, or one section */
+  html .settings.phone-list .set-main, html .settings.phone-page .set-nav { display: none; }
+  html .settings { display: block !important; height: 100%; }
+  html .settings .set-nav { border-right: 0; height: 100%; padding: 18px 14px calc(20px + var(--tabbar)); background: transparent; }
+  html .settings .set-main { padding-bottom: calc(var(--tabbar) + 20px) !important; }
+  html .settings .set-main { height: 100%; padding: 12px 16px 40px; }
+  html .set-row { flex-wrap: wrap; gap: 10px; }
+  html .set-row .set-control { margin-left: auto; }
+
+  /* Calendar */
+  html .cal .cell { min-height: 58px; padding: 4px; }
+  html .cal .cell .chip { font-size: 0; height: 5px; min-height: 0; padding: 0; border-radius: 9px; overflow: hidden; }
+  html .cal .cell .more-chip { font-size: 10px; }
+
+  /* Group work */
+  html .grp-layout, html .grp-notes { grid-template-columns: minmax(0, 1fr); }
+  html .grp-list { position: static; }
+  html .grp-head .seg { width: 100%; overflow-x: auto; }
+  html .grp-chat { height: calc(100dvh - var(--tabbar) - 220px); }
+  html .grp-dl-form { grid-template-columns: 1fr 1fr; }
+  html .grp-dl-form input:first-child { grid-column: 1 / -1; }
+
+  /* the recorder floats above the tabs */
+  html .rec-bar { bottom: calc(var(--tabbar) + 12px); }
+  html #toast-root { bottom: calc(var(--tabbar) + 12px); right: 12px; left: 12px; align-items: center; }
+}
