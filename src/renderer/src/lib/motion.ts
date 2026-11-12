@@ -9,8 +9,8 @@ import { flushSync } from 'react-dom'
  * exit into each, the element leaves a copy of itself behind for a moment,
  * which plays its exit (the "leaving" class) and is then removed.
  *
- * Screen changes: the browser's view transitions crossfade one screen into
- * the next, or push and pop like iOS when a note opens on the phone.
+ * Screen changes: the new screen or page animates in on the live page, so it
+ * can be used (and interrupted) the moment it appears.
  */
 
 export const reducedMotion = (): boolean =>
@@ -47,24 +47,25 @@ export function useExit(ref: RefObject<HTMLElement | null>, ms = 240): void {
 }
 
 type Kind = 'fade' | 'push' | 'pop'
-const canTransition = typeof document !== 'undefined' && 'startViewTransition' in document
-if (canTransition) document.documentElement.classList.add('vt')
+let clear: ReturnType<typeof setTimeout> | undefined
 
-/** Runs a state change as an animated transition between the old and new screen. */
+/**
+ * A move to another screen or page. The change happens at once, on the live
+ * page (so you can tap anything straight away, and a new move simply takes
+ * over); CSS animates what appears: a screen rises in (fade), a phone page
+ * slides in from the right (push), or the page before slides back (pop).
+ */
 export function transition(update: () => void, kind: Kind = 'fade'): void {
-  if (!canTransition || reducedMotion() || document.visibilityState !== 'visible') {
+  const root = document.documentElement
+  if (reducedMotion()) {
     update()
     return
   }
-  const root = document.documentElement
-  root.dataset.vt = kind
-  try {
-    const t = (document as Document & { startViewTransition: (cb: () => void) => { finished: Promise<void> } }).startViewTransition(() => flushSync(update))
-    t.finished.finally(() => {
-      if (root.dataset.vt === kind) delete root.dataset.vt
-    })
-  } catch {
-    delete root.dataset.vt
-    update()
-  }
+  // Restart the animation even if the same kind of move is already playing.
+  delete root.dataset.nav
+  void root.offsetWidth
+  root.dataset.nav = kind
+  flushSync(update)
+  clearTimeout(clear)
+  clear = setTimeout(() => delete root.dataset.nav, 700)
 }

@@ -315,8 +315,6 @@ html.dark .seg button[aria-selected='true'] { background: var(--separator); }
 /* Menus and popovers spring out of where they open; dialogs rise in on the smooth spring. */
 :root :is(.popover, .tb-pop, .ctx-menu, .slash-menu) { animation: popIn var(--spring-snappy-ms) var(--spring-snappy); transform-origin: top left; }
 :root .popover { transform-origin: top right; }
-.view { animation: viewIn 0.32s var(--ease-out); }
-@keyframes viewIn { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
@@ -621,24 +619,29 @@ html.dark .seg.has-thumb::before { background: var(--separator); }
 @keyframes dialogOut { to { opacity: 0; transform: translateY(8px) scale(0.97); } }
 
 /* ---------- moving between screens (lib/motion.ts transition) ---------- */
-main.main { view-transition-name: screen; }
-html.vt .view { animation: none; }
-::view-transition-old(root), ::view-transition-new(root) { animation: none; }
-::view-transition-old(screen), ::view-transition-new(screen) { mix-blend-mode: normal; height: 100%; object-fit: cover; object-position: top; }
-html[data-vt='fade']::view-transition-old(screen) { animation: vtOut 0.14s var(--ease-standard) both; }
-html[data-vt='fade']::view-transition-new(screen) { animation: vtIn var(--spring-spatial-ms) var(--spring-spatial) both; }
-@keyframes vtOut { to { opacity: 0; } }
-@keyframes vtIn { from { opacity: 0; transform: translateY(10px); } }
-/* Phone: a page slides in from the right over the one before (push), and back out (pop). */
-html[data-vt='push']::view-transition-old(screen) { animation: pushOld var(--spring-spatial-ms) var(--spring-spatial) both; }
-html[data-vt='push']::view-transition-new(screen) { animation: pushNew var(--spring-spatial-ms) var(--spring-spatial) both; box-shadow: -10px 0 30px rgba(0, 0, 0, 0.12); }
-html[data-vt='pop']::view-transition-old(screen) { animation: popOld 0.32s var(--ease-sheet) both; z-index: 2; box-shadow: -10px 0 30px rgba(0, 0, 0, 0.12); }
-html[data-vt='pop']::view-transition-new(screen) { animation: popNew 0.32s var(--ease-sheet) both; }
-@keyframes pushOld { to { transform: translateX(-28%); opacity: 0.55; } }
-@keyframes pushNew { from { transform: translateX(100%); } }
-@keyframes popOld { to { transform: translateX(100%); } }
-@keyframes popNew { from { transform: translateX(-28%); opacity: 0.55; } }
-@media (prefers-reduced-motion: reduce) { ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } }
+/* A new screen rises in (every screen's .view does this as it mounts); all of it is live and clickable. */
+@keyframes viewIn { from { opacity: 0; transform: translateY(8px); } }
+.view { animation: viewIn var(--spring-spatial-ms) var(--spring-spatial); }
+/* Phone: a page slides in from the right over the list (push), and the list slides back (pop). */
+html[data-nav='push'] :is(.notes-layout.phone-open > .note-pane, .settings.phone-page .set-main, .grp-phone-open .grp-panel) {
+  animation: pagePush var(--spring-spatial-ms) var(--spring-spatial) both;
+}
+html[data-nav='pop'] :is(.notes-layout:not(.phone-open) > .notes-list, .settings.phone-list .set-nav, .grp:not(.grp-phone-open) .grp-list) {
+  animation: pagePop var(--spring-spatial-ms) var(--spring-spatial) both;
+}
+@keyframes pagePush { from { transform: translateX(100%); box-shadow: -12px 0 32px rgba(0, 0, 0, 0.14); } }
+@keyframes pagePop { from { transform: translateX(-30%); opacity: 0.5; } }
+
+/* ---------- the sidebar's (and phone tab bar's) selection slides to what you pick (lib/segments.ts) ---------- */
+.side nav.has-pill { position: relative; isolation: isolate; }
+.side nav.has-pill > .navbtn[aria-current='true'] { background: transparent; }
+.side nav.has-pill::before {
+  content: ''; position: absolute; z-index: -1; left: 0; right: 0; top: 0; height: var(--pill-h, 0);
+  transform: translateY(var(--pill-y, 0)); border-radius: var(--r-control); background: var(--accent-soft);
+  transition: transform var(--spring-snappy-ms) var(--spring-snappy), height var(--spring-snappy-ms) var(--spring-snappy), opacity 0.18s var(--ease-standard);
+}
+.side nav.pill-off::before { opacity: 0; }
+.side nav.pill-instant::before { transition: none; }
 
 /* ---------- swipe a task on the phone: right to tick off, left to delete ---------- */
 .swipe-wrap { position: relative; overflow: hidden; }
@@ -715,3 +718,13 @@ html[data-vt='pop']::view-transition-new(screen) { animation: popNew 0.32s var(-
 .tp-slot.typed { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
 .tp-slot.typed[disabled] { background: var(--panel-2); color: var(--dim); }
 .pop-sheet .tp-slot { padding: 11px 12px; font-size: 15px; }
+.phone-tabs.has-pill { position: relative; isolation: isolate; }
+.phone-tabs.has-pill > button[aria-current='true'] { background: transparent; }
+.phone-tabs.has-pill::before {
+  content: ''; position: absolute; z-index: -1; left: 0; top: 0; width: var(--pill-w, 0); height: var(--pill-h, 0);
+  transform: translate(var(--pill-x, 0), var(--pill-y, 0)); border-radius: 999px; background: var(--accent-soft);
+  transition: transform var(--spring-snappy-ms) var(--spring-snappy), width var(--spring-snappy-ms) var(--spring-snappy), opacity 0.18s var(--ease-standard);
+}
+html[data-dock='docked'] .phone-tabs.has-pill::before { border-radius: 16px; }
+.phone-tabs.pill-off::before { opacity: 0; }
+.phone-tabs.pill-instant::before { transition: none; }

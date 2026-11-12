@@ -4,6 +4,13 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 0.2.10
+
+- **Fixed: moving between screens could light up two items in the sidebar and make the window look washed out** for a moment.
+- **Animations never get in your way.** Moving between screens no longer freezes the window while it animates: the new screen rises in and can be clicked straight away, and clicking somewhere else mid-way simply goes there.
+- **The sidebar's highlight slides** to the screen or subject you pick, on a spring, and changes course if you pick something else before it arrives. The phone's tab bar does the same.
+- On phones, a note, a settings page or a group slides in from the right and back out, and stays usable while it moves.
+
 ## 0.2.9
 
 - **Fixed: updates on Windows could fail and leave Veyra unable to open.** Versions 0.2.6 to 0.2.8 accidentally included some Android files buried so deep that Windows couldn't move them during an update ("Failed to uninstall old application files" or "Veyra Study cannot be closed"), and since Veyra installs waiting updates as it starts, it could get stuck there. The files are gone, the installer now clears them out of older versions and closes any copy of Veyra still running in the tray, and if an update ever fails to install, Veyra opens as it was and says so in Settings → Software update instead of trying again every time.
