@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:" />
+<title>Veyra Study</title>
+<style>
+  /* The start-up window: checking for updates, then downloading one (styled like Subtitle Maker's downloads). */
+  :root {
+    --bg: #f3f1ec; --panel: #ffffff; --panel-2: #eceae5; --ink: #1b1a18; --dim: #6f6b63; --line: rgba(27, 26, 24, 0.08);
+    --accent: #b8502e; --accent-soft: #f6e3da; --ok: #3f7d55;
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+  }
+  :root.dark { --bg: #15140f; --panel: #1e1c17; --panel-2: #272420; --ink: #efece4; --dim: #a39e93; --line: rgba(236, 239, 231, 0.08); --accent: #e0714a; --accent-soft: #3a241b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.45 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; -webkit-user-select: none; user-select: none; cursor: default; overflow: hidden; }
+  body { display: flex; flex-direction: column; padding: 30px 32px 26px; -webkit-app-region: drag; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand b { font-size: 19px; font-weight: 750; letter-spacing: -0.02em; }
+  .brand small { display: block; color: var(--dim); font-size: 12px; }
+  .stage { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  h1 { font-size: 15px; font-weight: 650; margin: 0 0 10px; }
+  .bar { height: 5px; border-radius: 99px; background: var(--panel-2); overflow: hidden; --p: 0; }
+  .bar > i { display: block; height: 100%; width: 100%; border-radius: 99px; background: var(--accent); transform-origin: left; transform: scaleX(var(--p)); transition: transform 0.25s var(--ease); }
+  .bar.indeterminate > i { width: 35%; transform: translateX(-100%); animation: slide 1.3s var(--ease) infinite; }
+  @keyframes slide { to { transform: translateX(300%); } }
+  .grp { background: var(--panel); border-radius: 14px; padding: 12px 14px; display: flex; gap: 12px; align-items: center; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06); }
+  .tile { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; background: var(--accent-soft); color: var(--accent); }
+  .tile.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .grow { flex: 1; min-width: 0; }
+  .between { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .row-title { font-weight: 600; }
+  .mono { font-variant-numeric: tabular-nums; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: var(--dim); }
+  .sub { font-size: 12px; color: var(--dim); margin-top: 8px; min-height: 17px; }
+  .bar.thin { margin-top: 8px; }
+  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { .bar.indeterminate > i { animation-duration: 3s; } }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M15 16 L32 50 L49 16" fill="none" stroke="#6fae82" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round" transform="translate(2.5 2.5)" />
+      <path d="M15 16 L32 50 L49 16" fill="none" stroke="#d9633e" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+    <div><b>Veyra Study</b><small id="version"></small></div>
+  </div>
+
+  <div class="stage">
+    <!-- Checking for updates… -->
+    <div id="checking">
+      <h1 id="checking-title">Checking for updates…</h1>
+      <div class="bar indeterminate"><i></i></div>
+      <div class="sub" id="checking-sub"></div>
+    </div>
+
+    <!-- Downloading update… -->
+    <div id="downloading" hidden>
+      <h1 id="dl-title">Downloading update…</h1>
+      <div class="grp">
+        <div class="tile" id="dl-tile">
+          <svg id="ic-down" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12" /><path d="m6 11 6 6 6-6" /><path d="M5 20h14" /></svg>
+          <svg id="ic-tick" hidden width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17.5 19 7" /></svg>
+        </div>
+        <div class="grow">
+          <div class="between"><span class="row-title" id="dl-name">Veyra Study</span><span class="mono" id="dl-size"></span></div>
+          <div class="bar thin" id="dl-bar"><i></i></div>
+        </div>
+      </div>
+      <div class="sub" id="dl-sub"></div>
+    </div>
+  </div>
+
+<script>
+  // The main process calls set({...}) as things happen.
+  const $ = (id) => document.getElementById(id)
+  const mb = (b) => (b / 1048576).toFixed(b < 10485760 ? 1 : 0)
+  const time = (s) => (s < 60 ? `${Math.max(1, Math.round(s))} s` : `${Math.round(s / 60)} min`)
+  window.set = (s) => {
+    if (s.dark !== undefined) document.documentElement.classList.toggle('dark', !!s.dark)
+    if (s.version) $('version').textContent = `Version ${s.version}`
+    const checking = s.step === 'checking' || s.step === 'starting'
+    $('checking').hidden = !checking
+    $('downloading').hidden = checking
+    if (s.step === 'checking') $('checking-title').textContent = 'Checking for updates…'
+    if (s.step === 'starting') $('checking-title').textContent = s.note || 'Starting…'
+    $('checking-sub').textContent = s.step === 'starting' ? '' : s.note || ''
+    if (s.step === 'downloading' || s.step === 'installing') {
+      $('dl-name').textContent = `Veyra Study ${s.next || ''}`.trim()
+      const done = s.step === 'installing'
+      $('dl-title').textContent = done ? 'Installing update…' : 'Downloading update…'
+      $('ic-down').toggleAttribute('hidden', done) // (an svg has no .hidden property)
+      $('ic-tick').toggleAttribute('hidden', !done)
+      $('dl-tile').classList.toggle('ok', done)
+      const p = done ? 1 : s.total ? Math.min(1, s.done / s.total) : 0
+      $('dl-bar').style.setProperty('--p', p)
+      $('dl-size').textContent = done ? 'Downloaded' : s.total ? `${mb(s.done)} of ${mb(s.total)} MB` : ''
+      $('dl-sub').textContent = done
+        ? 'Veyra Study opens again by itself in a moment.'
+        : s.speed > 0 && s.total
+          ? `${mb(s.speed)} MB/s · about ${time((s.total - s.done) / s.speed)} left`
+          : ''
+    }
+  }
+</script>
+</body>
+</html>

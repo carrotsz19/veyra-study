@@ -1,7 +1,7 @@
 {
   "name": "veyra-study",
-  "version": "0.1.0",
-  "description": "Veyra: a study app for tasks, notes, deadlines and focus time",
+  "version": "0.2.0",
+  "description": "Veyra Study: tasks, notes, focus timer and group work.",
   "main": "out/main/index.js",
   "private": true,
   "scripts": {
@@ -9,33 +9,67 @@
     "build": "npm run typecheck && electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start": "electron-vite preview",
-    "dist": "npm run build && electron-builder --win",
+    "dist": "npm run build && electron-builder --win --publish never",
     "test": "node --test tests/group.test.mjs",
     "group-server": "node server/group-server.mjs",
     "relay:setup": "node relay/setup.mjs",
     "android:setup": "node tools/setup-android.mjs",
     "android:build": "node tools/android-build.mjs",
-    "android:install": "node tools/android-build.mjs --install"
+    "android:install": "node tools/android-build.mjs --install",
+    "release": "node tools/release.mjs"
   },
   "build": {
     "appId": "app.veyra.study",
-    "productName": "Veyra",
+    "productName": "Veyra Study",
     "files": [
-      "out/**/*"
+      "out/**/*",
+      "resources/**/*"
     ],
     "directories": {
       "output": "release"
     },
     "win": {
-      "target": "nsis"
-    }
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Veyra Study",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Veyra-Study-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "carrotsz19",
+        "repo": "veyra-study",
+        "releaseType": "release"
+      }
+    ]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
+    "electron-updater": "^6.8.11",
+    "ical.js": "^2.2.1"
+  },
+  "devDependencies": {
     "@aparajita/capacitor-secure-storage": "^8.0.1",
     "@capacitor-community/file-opener": "^8.0.1",
     "@capacitor/android": "^8.6.0",
     "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.6.0",
     "@capacitor/core": "^8.6.0",
     "@capacitor/filesystem": "^8.1.5",
     "@capacitor/local-notifications": "^8.3.1",
@@ -51,21 +85,17 @@
     "@tiptap/react": "^3.33.1",
     "@tiptap/starter-kit": "^3.33.1",
     "@tiptap/suggestion": "^3.33.1",
-    "date-fns": "^4.4.0",
-    "ical.js": "^2.2.1",
-    "lucide-react": "^1.72.0",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1"
-  },
-  "devDependencies": {
-    "@capacitor/cli": "^8.6.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.2.0",
+    "date-fns": "^4.4.0",
     "electron": "45.3.0",
     "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",
+    "lucide-react": "^1.72.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "typescript": "~5.9.3",
     "vite": "^7.0.0"
   },
@@ -73,5 +103,10 @@
     "electron@45.3.0": true,
     "esbuild@0.28.2": true,
     "electron-winstaller@5.4.0": true
+  },
+  "author": "carrotsz19",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/carrotsz19/veyra-study.git"
   }
 }

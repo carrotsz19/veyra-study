@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, sh
 import iconPath from '../../resources/icon.png?asset'
 import trayPath from '../../resources/tray@2x.png?asset'
 import { Reminders } from './reminders'
+import { updateAtStart } from './updater'
 import { withDefaults } from '../shared/settings'
 import { release } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -23,7 +24,10 @@ import { McpServer, addToClient, clientConfigPath, clientHasVeyra, mcpEntry } fr
 // Dev checks: VEYRA_FAKE_MIC=1 records a test tone instead of the real microphone.
 if (process.env['VEYRA_FAKE_MIC']) app.commandLine.appendSwitch('use-fake-device-for-media-stream')
 // Dev checks: run on a separate profile (sign-in, settings and data).
+// Otherwise always %APPDATA%eyra-study: the installed app is named "Veyra Study", and its data
+// must stay where the app has always kept it.
 if (process.env['VEYRA_USERDATA']) app.setPath('userData', process.env['VEYRA_USERDATA'])
+else app.setPath('userData', join(app.getPath('appData'), 'veyra-study'))
 
 // One Veyra at a time: opening it again shows the one already running (in the tray, say).
 if (!app.requestSingleInstanceLock()) app.quit()
@@ -212,7 +216,7 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   accounts = new Accounts((path) => openStore(path))
   // VEYRA_DB (dev checks) pins one database and skips accounts' choice.
   openStore(process.env['VEYRA_DB'] || accounts.currentDbPath())
@@ -429,6 +433,10 @@ app.whenReady().then(() => {
     return app.isPackaged
   })
 
+  // Check for an update first (the installed app); one being installed means this copy is closing.
+  nativeTheme.themeSource = windowPrefs().theme
+  // Anything going wrong in the check still opens the app.
+  if ((await updateAtStart().catch(() => 'open' as const)) === 'installing') return
   createWindow()
   if (!process.env['VEYRA_SCREENSHOT']) {
     tray = new Tray(nativeImage.createFromPath(trayPath).resize({ width: 16, height: 16 }))
