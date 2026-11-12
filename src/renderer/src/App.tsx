@@ -14,7 +14,7 @@ import { SubjectDialog } from './components/editors'
 import { Today } from './views/Today'
 import { Tasks } from './views/Tasks'
 import { Notes } from './views/Notes'
-import { Calendar } from './views/Calendar'
+import { Calendar, usePrefetchCalendar } from './views/Calendar'
 import { TimerView } from './views/TimerView'
 import { Stats } from './views/Stats'
 import { SubjectView } from './views/SubjectView'
@@ -43,6 +43,7 @@ function Sidebar({ route, go, onEnter, onLeave }: { route: Route; go: (r: Route)
   const { items: tasks } = useRecords('task')
   const timer = useTimer()
   const { s, set } = useSettings()
+  usePrefetchCalendar(s.weekStart, s.calendarShowEvents)
   const theme = s.theme
   const setTheme = (t: ThemeMode) => set({ theme: t })
   const [adding, setAdding] = useState(false)

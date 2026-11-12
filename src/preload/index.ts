@@ -33,6 +33,12 @@ const google = {
   disconnect: () => ipcRenderer.invoke('google:disconnect'),
   setOptions: (o: unknown) => ipcRenderer.invoke('google:options', o),
   events: (from: string, to: string) => ipcRenderer.invoke('google:events', from, to),
+  /** Events changed after a background refresh (ask again). */
+  onChanged: (cb: () => void) => {
+    const h = () => cb()
+    ipcRenderer.on('calendar:changed', h)
+    return () => void ipcRenderer.removeListener('calendar:changed', h)
+  },
   syncNow: () => ipcRenderer.invoke('google:sync')
 }
 

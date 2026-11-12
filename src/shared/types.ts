@@ -208,6 +208,8 @@ export interface GoogleApi {
   disconnect(): Promise<GoogleState>
   setOptions(o: { pushTasks?: boolean; shown?: string[] | null }): Promise<GoogleState>
   events(fromIso: string, toIso: string): Promise<{ events: GoogleEvent[]; error?: string }>
+  /** Desktop: events changed after a background refresh (ask again). */
+  onChanged?(cb: () => void): () => void
   syncNow(): Promise<{ pushed: number }>
 }
 

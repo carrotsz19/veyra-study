@@ -2,17 +2,58 @@ import { useEffect, useState } from 'react'
 import type { GoogleEvent } from '@shared/types'
 
 /** Google events overlapping [from, to); empty when not connected. */
-export function useGoogleEvents(from: Date, to: Date): { events: GoogleEvent[]; error?: string } {
-  const [out, setOut] = useState<{ events: GoogleEvent[]; error?: string }>({ events: [] })
+type Result = { events: GoogleEvent[]; error?: string }
+/** The last answer for each range: a calendar opens with it at once, then updates. */
+const seen = new Map<string, Result>()
+const asking = new Map<string, Promise<Result>>()
+const listeners = new Set<() => void>()
+function ask(a: string, b: string): Promise<Result> {
+  const key = a + '|' + b
+  const now = asking.get(key)
+  if (now) return now
+  const p = window.veyra.google
+    .events(a, b)
+    .then((r: Result) => {
+      seen.set(key, r)
+      // Keep memory small: the most recent 24 ranges.
+      if (seen.size > 24) seen.delete(seen.keys().next().value!)
+      return r
+    })
+    .finally(() => asking.delete(key))
+  asking.set(key, p)
+  return p
+}
+/** Fetches a range ahead of time (the months either side), so moving there is instant. */
+export function prefetchEvents(from: Date, to: Date): void {
   const a = from.toISOString()
   const b = to.toISOString()
+  if (!seen.has(a + '|' + b)) void ask(a, b).catch(() => {})
+}
+window.veyra?.google?.onChanged?.(() => {
+  seen.clear()
+  listeners.forEach((l) => l())
+})
+
+export function useGoogleEvents(from: Date, to: Date): Result {
+  const a = from.toISOString()
+  const b = to.toISOString()
+  const [out, setOut] = useState<Result>(() => seen.get(a + '|' + b) ?? { events: [] })
+  const [bump, setBump] = useState(0)
+  useEffect(() => {
+    const l = () => setBump((n) => n + 1)
+    listeners.add(l)
+    return () => void listeners.delete(l)
+  }, [])
   useEffect(() => {
     let live = true
-    window.veyra.google.events(a, b).then((r) => live && setOut(r))
+    // Show what we have for this range straight away (no empty month while it loads).
+    const have = seen.get(a + '|' + b)
+    if (have) setOut(have)
+    ask(a, b).then((r) => live && setOut(r)).catch(() => {})
     return () => {
       live = false
     }
-  }, [a, b])
+  }, [a, b, bump])
   return out
 }
 

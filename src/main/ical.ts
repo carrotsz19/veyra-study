@@ -15,10 +15,19 @@ interface Stored extends IcalFeed {
   url: string
 }
 
+/** Occurrences are worked out once per download, for this window around today. */
+const SPAN_BACK = 400 * 86_400_000
+const SPAN_AHEAD = 760 * 86_400_000
+
 export class IcalFeeds {
   private feeds: Stored[] = []
   private cache = new Map<string, { at: number; text: string }>()
+  /** Every occurrence in the window, per feed (and per download of it): a month is then just a filter. */
+  private expanded = new Map<string, { text: string; from: number; to: number; list: { event: GoogleEvent; startMs: number; endMs: number }[] }>()
+  private refreshing = new Set<string>()
   private disposed = false
+  /** Runs when a background refresh brought something new (the calendar then asks again). */
+  onChange?: () => void
 
   constructor(private file: string) {
     try {
@@ -70,6 +79,27 @@ export class IcalFeeds {
   private async fetchText(url: string, strict = false): Promise<string> {
     const hit = this.cache.get(url)
     if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.text
+    // A bit old: answer with it now, and fetch a fresh copy in the background.
+    if (hit && !strict) {
+      this.refresh(url)
+      return hit.text
+    }
+    return this.download(url, strict)
+  }
+
+  private refresh(url: string): void {
+    if (this.refreshing.has(url)) return
+    this.refreshing.add(url)
+    const before = this.cache.get(url)?.text
+    void this.download(url, false)
+      .then((text) => {
+        if (text !== before && !this.disposed) this.onChange?.()
+      })
+      .catch(() => {})
+      .finally(() => this.refreshing.delete(url))
+  }
+
+  private async download(url: string, strict: boolean): Promise<string> {
     let res: Response
     try {
       res = await fetch(url, { headers: { Accept: 'text/calendar' }, signal: AbortSignal.timeout(20000) })
@@ -89,18 +119,41 @@ export class IcalFeeds {
   async events(fromIso: string, toIso: string): Promise<{ events: GoogleEvent[]; error?: string }> {
     const from = new Date(fromIso).getTime()
     const to = new Date(toIso).getTime()
-    const out: GoogleEvent[] = []
     let error: string | undefined
-    for (const feed of this.feeds) {
-      try {
-        out.push(...this.expand(await this.fetchText(feed.url), feed, from, to))
-        feed.error = undefined
-      } catch (e) {
-        feed.error = e instanceof IcalError ? e.message : 'Couldn’t read this calendar.'
-        error = `${feed.name}: ${feed.error}`
-      }
+    // All links at once, not one after another.
+    const lists = await Promise.all(
+      this.feeds.map(async (feed) => {
+        try {
+          const all = this.occurrences(await this.fetchText(feed.url), feed, from, to)
+          feed.error = undefined
+          return all.filter((e) => e.endMs > from && e.startMs < to).map((e) => e.event)
+        } catch (e) {
+          feed.error = e instanceof IcalError ? e.message : 'Couldn’t read this calendar.'
+          error = `${feed.name}: ${feed.error}`
+          return []
+        }
+      })
+    )
+    return { events: lists.flat(), error }
+  }
+
+  /** Every occurrence of a feed in the window around today (worked out again only when the feed changes). */
+  private occurrences(text: string, feed: Stored, from: number, to: number): { event: GoogleEvent; startMs: number; endMs: number }[] {
+    const now = Date.now()
+    const key = `${feed.id}|${feed.color}|${feed.name}`
+    let hit = this.expanded.get(key)
+    if (!hit || hit.text !== text || from < hit.from || to > hit.to) {
+      const a = Math.min(from, now - SPAN_BACK)
+      const b = Math.max(to, now + SPAN_AHEAD)
+      const list = this.expand(text, feed, a, b).map((event) => ({
+        event,
+        startMs: event.allDay ? new Date(event.start + 'T00:00:00').getTime() : new Date(event.start).getTime(),
+        endMs: event.allDay ? new Date(event.end + 'T00:00:00').getTime() : new Date(event.end).getTime()
+      }))
+      hit = { text, from: a, to: b, list }
+      this.expanded.set(key, hit)
     }
-    return { events: out, error }
+    return hit.list
   }
 
   private expand(text: string, feed: Stored, from: number, to: number): GoogleEvent[] {

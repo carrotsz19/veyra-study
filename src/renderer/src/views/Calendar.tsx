@@ -5,11 +5,25 @@ import type { Rec } from '@shared/types'
 import { useRecords } from '../data/store'
 import { dayKey, todayKey } from '../lib/dates'
 import { TaskDialog } from '../components/editors'
-import { eventDays, useGoogleEvents } from '../data/google'
+import { eventDays, prefetchEvents, useGoogleEvents } from '../data/google'
 import type { GoogleEvent } from '@shared/types'
 import { useSettings, useTimeFormat } from '../data/settings'
 import { EventDialog } from '../components/EventDialog'
 import { DayCard } from '../components/DayCard'
+
+/** The days a month view shows: whole weeks around the month (end exclusive). */
+export function monthRange(month: Date, weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6): [Date, Date] {
+  return [startOfWeek(startOfMonth(month), { weekStartsOn }), addDays(endOfWeek(endOfMonth(month), { weekStartsOn }), 1)]
+}
+
+/** Fetches this month's events early (at start-up), so the calendar opens with them. */
+export function usePrefetchCalendar(weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6, on: boolean): void {
+  useEffect(() => {
+    if (!on) return
+    const t = setTimeout(() => prefetchEvents(...monthRange(new Date(), weekStartsOn)), 1500)
+    return () => clearTimeout(t)
+  }, [weekStartsOn, on])
+}
 
 export function Calendar() {
   const { items: tasks } = useRecords('task')
@@ -26,6 +40,14 @@ export function Calendar() {
   for (let d = start; d <= end; d = addDays(d, 1)) days.push(d)
 
   const { events, error } = useGoogleEvents(start, addDays(end, 1))
+  // The months either side, ready before you go there.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      prefetchEvents(...monthRange(addMonths(month, 1), s.weekStart))
+      prefetchEvents(...monthRange(addMonths(month, -1), s.weekStart))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [month, s.weekStart])
   const eventsByDay = new Map<string, GoogleEvent[]>()
   if (s.calendarShowEvents) events.forEach((e) => eventDays(e).forEach((k) => eventsByDay.set(k, [...(eventsByDay.get(k) ?? []), e])))
   const [openEvent, setOpenEvent] = useState<GoogleEvent | null>(null)

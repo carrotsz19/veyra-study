@@ -55,6 +55,9 @@ export class GoogleCalendar {
   private cfg: Config | null = null
   private calendars: { id: string; summary: string; color: string; selected: boolean; primary: boolean; owner: boolean; description: string }[] = []
   private cache = new Map<string, { at: number; events: GoogleEvent[] }>()
+  private refreshing = new Set<string>()
+  /** Runs when a background refresh brought something new (the calendar then asks again). */
+  onChange?: () => void
   private pushTimer: ReturnType<typeof setTimeout> | null = null
   private pushing = false
 
@@ -231,6 +234,24 @@ export class GoogleCalendar {
     const key = fromIso + toIso
     const hit = this.cache.get(key)
     if (hit && Date.now() - hit.at < 2 * 60 * 1000) return { events: hit.events }
+    // Older than that: show it now, and fetch a fresh copy in the background.
+    if (hit && !this.refreshing.has(key)) {
+      this.refreshing.add(key)
+      const before = JSON.stringify(hit.events)
+      void this.fetchEvents(fromIso, toIso, key)
+        .then((r) => {
+          if (!r.error && JSON.stringify(r.events) !== before) this.onChange?.()
+        })
+        .finally(() => this.refreshing.delete(key))
+      return { events: hit.events }
+    }
+    if (hit) return { events: hit.events }
+    return this.fetchEvents(fromIso, toIso, key)
+  }
+
+  private async fetchEvents(fromIso: string, toIso: string, key: string): Promise<{ events: GoogleEvent[]; error?: string }> {
+    if (!this.cfg?.refreshToken) return { events: [], error: this.cfg?.error }
+    const hit = this.cache.get(key)
     try {
       if (!this.calendars.length) await this.loadCalendars()
       const shown = this.cfg.shown
