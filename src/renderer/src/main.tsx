@@ -11,6 +11,14 @@ import { APP_NAME } from '@shared/channel'
 // The name in the taskbar and Alt+Tab: Veyra Study, or Veyra Study Dev for a test build.
 document.title = APP_NAME
 
+// Full screen: Veyra's own acrylic (the blurred wallpaper), since Windows' flickers there.
+window.veyra?.app?.onBackdrop?.((url) => {
+  const root = document.documentElement
+  root.classList.toggle('fs-glass', !!url)
+  if (url) root.style.setProperty('--fs-wall', `url("${url}")`)
+  else root.style.removeProperty('--fs-wall')
+})
+
 // Apply the saved theme before anything renders (the sign-in screen has no sidebar).
 {
   let theme: string | null = new URLSearchParams(location.search).get('theme')

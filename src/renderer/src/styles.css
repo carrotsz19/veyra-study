@@ -1032,3 +1032,13 @@ html.dark .shell.side-hidden aside.side, html.dark.material .shell.side-hidden a
 .wb-update.ready { background: var(--tint); color: #fff; }
 @keyframes wbUpdateIn { from { opacity: 0; transform: scale(0.8); } }
 @media (prefers-reduced-motion: reduce) { .wb-update { animation: none; } }
+
+/* Full screen: Windows' acrylic flickers there, so the same look is painted here: the wallpaper,
+   blurred and saturated like acrylic, under its light or dark tint (main.tsx, win:backdrop). */
+html.material.fs-glass body::before,
+html.material.fs-glass body::after { content: ''; position: fixed; pointer-events: none; z-index: -1; }
+html.material.fs-glass body::before { inset: -160px; background: var(--fs-wall) center / cover no-repeat; filter: blur(80px) saturate(1.6); }
+html.material.fs-glass body::after { inset: 0; background: rgba(243, 242, 239, 0.62); }
+html.material.fs-glass.dark body::after { background: rgba(30, 28, 24, 0.66); }
+html.material.fs-glass[data-material='mica'] body::after { background: rgba(243, 242, 239, 0.78); }
+html.material.fs-glass.dark[data-material='mica'] body::after { background: rgba(30, 28, 24, 0.8); }

@@ -60,6 +60,12 @@ const appApi = {
   relaunch: () => ipcRenderer.invoke('app:relaunch'),
   /** Whether the window is active and maximised (for the title bar's buttons). */
   winState: () => ipcRenderer.sendSync('win:state') as { focused: boolean; maximized: boolean },
+  /** Full screen: the blurred wallpaper Veyra paints in place of acrylic (null: none). */
+  onBackdrop: (cb: (url: string | null) => void) => {
+    const h = (_: unknown, url: string | null) => cb(url)
+    ipcRenderer.on('win:backdrop', h)
+    return () => void ipcRenderer.removeListener('win:backdrop', h)
+  },
   onWinState: (cb: (s: { focused: boolean; maximized: boolean }) => void) => {
     const h = (_: unknown, s: { focused: boolean; maximized: boolean }) => cb(s)
     ipcRenderer.on('win:state', h)

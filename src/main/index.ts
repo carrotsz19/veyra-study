@@ -202,6 +202,26 @@ function refreshTitleBar(): void {
 }
 nativeTheme.on('updated', refreshTitleBar)
 
+/**
+ * Full screen can't use real acrylic (Windows makes it flicker), so Veyra paints it itself:
+ * the desktop wallpaper, small and blurred by the page, under the usual tint. Null: none found.
+ */
+function wallpaper(): string | null {
+  try {
+    const img = nativeImage.createFromBuffer(readFileSync(join(app.getPath('appData'), 'Microsoft', 'Windows', 'Themes', 'TranscodedWallpaper')))
+    if (img.isEmpty()) return null
+    return img.resize({ width: 640, quality: 'good' }).toJPEG(80).toString('base64')
+  } catch {
+    return null
+  }
+}
+function sendBackdrop(win: BrowserWindow): void {
+  if (win.isDestroyed()) return
+  const on = materialSupported && barMaterial !== 'solid' && win.isFullScreen()
+  const b64 = on ? wallpaper() : null
+  win.webContents.send('win:backdrop', b64 ? `data:image/jpeg;base64,${b64}` : null)
+}
+
 function applyMaterial(win: BrowserWindow, material: Material): void {
   barMaterial = material
   if (!materialSupported) return
@@ -248,8 +268,8 @@ function createWindow(): void {
   // Full screen: solid background (acrylic flickers there); back to the chosen glass on leaving.
   // Coming back to Veyra: look for an update too (at most every 5 minutes).
   win.on('focus', () => void lookForUpdate())
-  win.on('enter-full-screen', () => applyMaterial(win, barMaterial))
-  win.on('leave-full-screen', () => applyMaterial(win, barMaterial))
+  win.on('enter-full-screen', () => (applyMaterial(win, barMaterial), sendBackdrop(win)))
+  win.on('leave-full-screen', () => (applyMaterial(win, barMaterial), sendBackdrop(win)))
   // Veyra Study Dev: a violet dot on its taskbar icon, so it's never mistaken for the real app.
   if (IS_DEV && process.platform === 'win32') win.once('ready-to-show', () => win.setOverlayIcon(nativeImage.createFromPath(devBadgePath), 'Veyra Study Dev (test build)'))
   // Started with Windows: wait in the tray until asked for.
@@ -456,6 +476,7 @@ app.whenReady().then(async () => {
     savePrefs({ material: m, theme: nativeTheme.themeSource })
     for (const w of BrowserWindow.getAllWindows()) applyMaterial(w, m)
     barMaterial = m
+    if (mainWin && !mainWin.isDestroyed() && mainWin.isFullScreen()) sendBackdrop(mainWin)
     refreshTitleBar()
   })
   ipcMain.on('app:titleBar', (e) => (e.returnValue = ownTitleBar ? TITLE_BAR_H : 0))
