@@ -25,6 +25,7 @@ import { startDriveBackup } from './data/drive'
 import { VoiceSetupHost } from './components/notes/Voice'
 import { PhoneNav } from './components/PhoneNav'
 import { Palette } from './components/Palette'
+import { TitleBar } from './components/TitleBar'
 import { emptyOldTrash } from './lib/notes'
 import { onAndroid, usePhone } from './lib/phone'
 import { startSegments } from './lib/segments'
@@ -60,12 +61,15 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
 
   return (
     <aside className="side">
-      <div className="brand">
-        <div className="mark">
-          <GraduationCap size={18} />
+      {/* The name is in the title bar on Windows; elsewhere it heads the sidebar. */}
+      {!window.veyra.app.titleBar && (
+        <div className="brand">
+          <div className="mark">
+            <GraduationCap size={18} />
+          </div>
+          <b>Veyra Study</b>
         </div>
-        <b>Veyra Study</b>
-      </div>
+      )}
       <button className="side-search" onClick={() => window.dispatchEvent(new Event('veyra:palette'))} title="Search everything and run commands">
         <Search size={15} />
         <span className="grow">Search</span>
@@ -236,6 +240,7 @@ function Shell() {
   const [route, go] = useState<Route | null>(null)
   const signedIn = useAccount().state.mode === 'account'
   const phone = usePhone()
+  const titleBar = !phone && (window.veyra.app.titleBar ?? 0) > 0 ? window.veyra.app.titleBar! : 0
   // Moving to another screen crossfades it in (the same screen again just updates).
   const current = useRef(route)
   current.current = route
@@ -281,7 +286,8 @@ function Shell() {
   return (
     <TimerProvider>
       <NavCtx.Provider value={{ route, go: navigate }}>
-        <div className={`shell ${phone ? 'phone-shell' : ''}`} data-route={route.name}>
+        <div className={`shell ${phone ? 'phone-shell' : titleBar ? 'has-titlebar' : ''}`} data-route={route.name} style={titleBar ? ({ '--titlebar': `${titleBar}px` } as React.CSSProperties) : undefined}>
+          {titleBar && <TitleBar />}
           {phone ? <PhoneNav route={route} go={navigate} /> : <Sidebar route={route} go={navigate} />}
           <UpdatedNotice />
           <VoiceSetupHost />

@@ -43,13 +43,19 @@ export const db = {
   info: () => backend.info()
 }
 
+// The last list read of each kind, so a screen opens with its data already there
+// (instead of an empty list for a moment, then everything popping in).
+const cache = new Map<Kind, Rec[]>()
+for (const k of ['task', 'note', 'subject', 'session'] as Kind[]) void backend.list(k).then((rows) => cache.set(k, rows))
+
 /** Live list of one kind of record; re-reads whenever that kind changes. */
 export function useRecords<K extends Kind>(kind: K): { items: Rec<K>[]; loaded: boolean } {
-  const [items, setItems] = useState<Rec<K>[]>([])
-  const [loaded, setLoaded] = useState(false)
+  const [items, setItems] = useState<Rec<K>[]>(() => (cache.get(kind) as Rec<K>[] | undefined) ?? [])
+  const [loaded, setLoaded] = useState(() => cache.has(kind))
 
   const load = useCallback(() => {
     backend.list(kind).then((rows) => {
+      cache.set(kind, rows)
       setItems(rows)
       setLoaded(true)
     })

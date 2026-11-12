@@ -619,9 +619,7 @@ html.dark .seg.has-thumb::before { background: var(--separator); }
 @keyframes dialogOut { to { opacity: 0; transform: translateY(8px) scale(0.97); } }
 
 /* ---------- moving between screens (lib/motion.ts transition) ---------- */
-/* A new screen rises in (every screen's .view does this as it mounts); all of it is live and clickable. */
-@keyframes viewIn { from { opacity: 0; transform: translateY(8px); } }
-.view { animation: viewIn var(--spring-spatial-ms) var(--spring-spatial); }
+/* Screens switch at once, with no fade: a fade-in shows the bare background for a moment, a flash every time. */
 /* Phone: a page slides in from the right over the list (push), and the list slides back (pop). */
 html[data-nav='push'] :is(.notes-layout.phone-open > .note-pane, .settings.phone-page .set-main, .grp-phone-open .grp-panel) {
   animation: pagePush var(--spring-spatial-ms) var(--spring-spatial) both;
@@ -630,7 +628,7 @@ html[data-nav='pop'] :is(.notes-layout:not(.phone-open) > .notes-list, .settings
   animation: pagePop var(--spring-spatial-ms) var(--spring-spatial) both;
 }
 @keyframes pagePush { from { transform: translateX(100%); box-shadow: -12px 0 32px rgba(0, 0, 0, 0.14); } }
-@keyframes pagePop { from { transform: translateX(-30%); opacity: 0.5; } }
+@keyframes pagePop { from { transform: translateX(-30%); } }
 
 /* ---------- the sidebar's (and phone tab bar's) selection slides to what you pick (lib/segments.ts) ---------- */
 .side nav.has-pill { position: relative; isolation: isolate; }
@@ -728,3 +726,50 @@ html[data-nav='pop'] :is(.notes-layout:not(.phone-open) > .notes-list, .settings
 html[data-dock='docked'] .phone-tabs.has-pill::before { border-radius: 16px; }
 .phone-tabs.pill-off::before { opacity: 0; }
 .phone-tabs.pill-instant::before { transition: none; }
+
+/* ---------- Veyra's own title bar on Windows (components/TitleBar.tsx) ---------- */
+.shell.has-titlebar { grid-template-rows: var(--titlebar) minmax(0, 1fr); }
+.titlebar {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 2px; height: var(--titlebar); min-width: 0;
+  /* Room on the right for Windows' own minimise / maximise / close. */
+  padding: 0 calc(100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px)) 0 14px;
+  background: var(--bg); -webkit-app-region: drag; user-select: none; position: relative; z-index: 50;
+}
+html.material .titlebar { background: transparent; }
+.titlebar button, .wb-menu { -webkit-app-region: no-drag; }
+.wb-brand { display: flex; align-items: center; gap: 8px; padding-right: 12px; margin-right: 4px; position: relative; }
+.wb-brand::after { content: ''; position: absolute; right: 0; top: 50%; height: 16px; margin-top: -8px; width: 1px; background: var(--line); }
+.wb-mark {
+  width: 22px; height: 22px; border-radius: 7px; display: inline-grid; place-items: center;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent)); color: var(--on-tint);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.wb-brand b { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+.wb-menus { display: flex; align-items: center; gap: 1px; }
+.wb-menu-wrap { position: relative; }
+.wb-menu-btn {
+  border: 0; background: transparent; color: var(--dim); font-size: 12.5px; font-weight: 550; padding: 5px 9px;
+  border-radius: 7px; min-height: 26px; transition: background-color 0.12s, color 0.12s;
+}
+.wb-menu-btn:hover, .wb-menu-btn.open { background: var(--fill-tertiary); color: var(--ink); }
+.wb-drag { flex: 1; align-self: stretch; }
+.wb-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 150; min-width: 236px; padding: 5px;
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  backdrop-filter: blur(28px) saturate(1.6); -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--elev-3);
+  transform-origin: top left; animation: selIn var(--spring-snappy-ms) var(--spring-snappy);
+}
+.wb-menu-item {
+  display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: transparent; color: var(--ink);
+  padding: 6px 10px 6px 4px; border-radius: 7px; font-size: 13px; text-align: left;
+}
+.wb-menu-item.active { background: var(--accent); color: var(--on-tint); }
+.wb-menu-item.active .wb-keys, .wb-menu-item.active .wb-check { color: inherit; }
+.wb-check { width: 18px; display: inline-flex; justify-content: center; color: var(--accent); flex-shrink: 0; }
+.wb-keys { font-size: 11.5px; color: var(--label-tertiary); font-variant-numeric: tabular-nums; padding-left: 18px; }
+.wb-menu-sep { height: 1px; background: var(--line); margin: 5px 8px; }
+/* With the name in the title bar, the sidebar starts with the search box. */
+.has-titlebar aside.side { padding-top: 10px; }
+.has-titlebar .side-search { margin-top: 0; }
+html.material .has-titlebar main.main { border-top-left-radius: 12px; }

@@ -150,7 +150,33 @@ function windowPrefs(): { material: Material; theme: 'system' | 'light' | 'dark'
     return { material: 'acrylic', theme: 'system' }
   }
 }
+/*
+ * Veyra draws its own title bar (the app's name and menus); Windows keeps
+ * drawing just the minimise / maximise / close buttons (so Snap layouts still
+ * work), in colours that match the theme, on glass or on the solid colour.
+ */
+const ownTitleBar = process.platform === 'win32'
+const TITLE_BAR_H = 40
+let barMaterial: Material = 'acrylic'
+function overlay(): Electron.TitleBarOverlayOptions {
+  const dark = nativeTheme.shouldUseDarkColors
+  const glass = materialSupported && barMaterial !== 'solid'
+  return { color: glass ? '#00000000' : dark ? '#15140f' : '#f3f1ec', symbolColor: dark ? '#e9e5dc' : '#2c2a26', height: TITLE_BAR_H }
+}
+function refreshTitleBar(): void {
+  if (!ownTitleBar) return
+  for (const w of BrowserWindow.getAllWindows()) {
+    try {
+      w.setTitleBarOverlay(overlay())
+    } catch {
+      /* a window without the overlay (the update splash) */
+    }
+  }
+}
+nativeTheme.on('updated', refreshTitleBar)
+
 function applyMaterial(win: BrowserWindow, material: Material): void {
+  barMaterial = material
   if (!materialSupported) return
   win.setBackgroundMaterial(material === 'solid' ? 'none' : material)
   win.setBackgroundColor(material === 'solid' ? (nativeTheme.shouldUseDarkColors ? '#15140f' : '#f7f7f5') : '#00000000')
@@ -172,6 +198,10 @@ function createWindow(): void {
       return materialSupported && p.material !== 'solid' ? { backgroundColor: '#00000000', backgroundMaterial: p.material } : { backgroundColor: nativeTheme.shouldUseDarkColors ? '#15140f' : '#f7f7f5' }
     })(),
     autoHideMenuBar: true,
+    ...(ownTitleBar ? (() => {
+      barMaterial = windowPrefs().material
+      return { titleBarStyle: 'hidden' as const, titleBarOverlay: overlay() }
+    })() : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -379,6 +409,25 @@ app.whenReady().then(async () => {
       /* not fatal */
     }
     for (const w of BrowserWindow.getAllWindows()) applyMaterial(w, m)
+    barMaterial = m
+    refreshTitleBar()
+  })
+  ipcMain.on('app:titleBar', (e) => (e.returnValue = ownTitleBar ? TITLE_BAR_H : 0))
+  // The title bar's menus: editing, the window, quitting.
+  ipcMain.handle('win:cmd', (e, cmd: string) => {
+    const wc = e.sender
+    const win = BrowserWindow.fromWebContents(wc)
+    switch (cmd) {
+      case 'undo': return wc.undo()
+      case 'redo': return wc.redo()
+      case 'cut': return wc.cut()
+      case 'copy': return wc.copy()
+      case 'paste': return wc.paste()
+      case 'selectAll': return wc.selectAll()
+      case 'fullscreen': return win?.setFullScreen(!win.isFullScreen())
+      case 'close': return win?.close()
+      case 'quit': return app.quit()
+    }
   })
   ipcMain.handle('update:state', (e) => updateState(e.sender))
   ipcMain.handle('update:check', () => checkNow())

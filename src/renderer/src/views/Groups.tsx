@@ -211,12 +211,15 @@ export function Groups() {
                 key={g.id}
                 className="ig-row tap"
                 aria-current={!phone && open?.id === g.id}
-                onClick={() =>
-                  transition(() => {
-                    setOpenId(g.id)
-                    setPhoneOpen(true)
-                  }, phone ? 'push' : 'fade')
-                }
+                onClick={() => {
+                  // On a computer the group just switches; on a phone its page slides in.
+                  if (phone)
+                    transition(() => {
+                      setOpenId(g.id)
+                      setPhoneOpen(true)
+                    }, 'push')
+                  else setOpenId(g.id)
+                }}
               >
                 <span className="grp-swatch" style={{ background: g.color }}>
                   {g.name.slice(0, 1).toUpperCase()}

@@ -167,9 +167,9 @@ export function prefetchGroups(): () => void {
       /* storage unavailable */
     }
     if (open) void itemStore(open).load()
+    // Then every other group, so switching between them never shows "Loading…".
     void loadGroups().then(() => {
-      const first = groupsCache.groups?.find((g) => g.id === open) ?? groupsCache.groups?.[0]
-      if (first && first.id !== open) void itemStore(first.id).load()
+      for (const g of groupsCache.groups ?? []) if (!itemStore(g.id).loaded) void itemStore(g.id).load()
     })
   }
   const off = api.onStatus((s) => s.state === 'online' && run())

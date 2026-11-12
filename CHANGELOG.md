@@ -7,7 +7,9 @@ without one.
 ## 0.2.10
 
 - **Fixed: moving between screens could light up two items in the sidebar and make the window look washed out** for a moment.
-- **Animations never get in your way.** Moving between screens no longer freezes the window while it animates: the new screen rises in and can be clicked straight away, and clicking somewhere else mid-way simply goes there.
+- **A title bar of Veyra's own on Windows:** the Veyra mark and name, then File, Edit, View and Help menus (new task or note, import and export, undo and copy, every screen with Ctrl+1 to Ctrl+7, light or dark, bigger or smaller text, full screen, what's new, updates), with Windows' own minimise, maximise and close at the right. The name no longer appears twice.
+- **No more flashing.** Screens switch at once instead of fading in from blank, lists keep what they showed last time instead of starting empty, and switching between groups is instant (every group loads in the background).
+- **Animations never get in your way.** Nothing freezes while it moves, and clicking somewhere else mid-way simply goes there.
 - **The sidebar's highlight slides** to the screen or subject you pick, on a spring, and changes course if you pick something else before it arrives. The phone's tab bar does the same.
 - On phones, a note, a settings page or a group slides in from the right and back out, and stays usable while it moves.
 

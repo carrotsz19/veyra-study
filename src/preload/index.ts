@@ -48,6 +48,10 @@ const appApi = {
   materialSupported: ipcRenderer.sendSync('app:materialSupported') as boolean,
   setMaterial: (material: string, theme: string) => ipcRenderer.invoke('app:setMaterial', material, theme),
   setStartup: (on: boolean) => ipcRenderer.invoke('app:setStartup', on),
+  /** Height of Veyra's own title bar (0 where Windows' is used). */
+  titleBar: ipcRenderer.sendSync('app:titleBar') as number,
+  /** The title bar's menu commands. */
+  win: (cmd: 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'fullscreen' | 'close' | 'quit') => ipcRenderer.invoke('win:cmd', cmd),
   /** The tray or a reminder asks to show a screen. */
   onNav: (cb: (screen: string) => void) => {
     const h = (_: unknown, screen: string) => cb(screen)
