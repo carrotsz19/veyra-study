@@ -43,6 +43,7 @@ console.log(`Publishing Veyra Study ${version}…`)
 run('npm', ['run', 'build'])
 // Make the release first: electron-builder uploads its files in parallel, and when the release
 // doesn't exist yet two uploads each try to create it and one fails.
-run('gh', ['release', 'create', `v${version}`, '--target', git('rev-parse', 'HEAD'), '--title', `Veyra Study ${version}`, '--notes', `Install: download Veyra-Study-Setup-${version}.exe below and run it. Installed copies update themselves.`], { ...process.env, GH_TOKEN: token })
+// Run directly (not through the shell, which would split the notes at every space).
+execFileSync('gh', ['release', 'create', `v${version}`, '--target', git('rev-parse', 'HEAD'), '--title', `Veyra Study ${version}`, '--notes', `Install: download Veyra-Study-Setup-${version}.exe below and run it. Installed copies update themselves.`], { stdio: 'inherit', env: { ...process.env, GH_TOKEN: token } })
 run('npx', ['electron-builder', '--win', '--publish', 'always'], { ...process.env, GH_TOKEN: token })
 console.log(`\nDone: https://github.com/carrotsz19/veyra-study/releases/tag/v${version}`)
