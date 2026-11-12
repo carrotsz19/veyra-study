@@ -773,3 +773,23 @@ html.material .titlebar { background: transparent; }
 .has-titlebar aside.side { padding-top: 10px; }
 .has-titlebar .side-search { margin-top: 0; }
 html.material .has-titlebar main.main { border-top-left-radius: 12px; }
+
+/* ---------- acrylic for floating menus: see-through, blurred and a touch more vivid ---------- */
+:root {
+  --glass-bg: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  --glass-filter: blur(32px) saturate(1.9);
+  --glass-edge: color-mix(in srgb, var(--ink) 10%, transparent);
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+html.dark {
+  --glass-bg: color-mix(in srgb, var(--bg-elevated) 62%, transparent);
+  --glass-edge: rgba(255, 255, 255, 0.1);
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+:root :is(.wb-menu, .sel-menu, .pop-panel, .tb-pop, .ctx-menu, .slash-menu, .popover),
+html.material :is(.wb-menu, .sel-menu, .pop-panel, .tb-pop, .ctx-menu, .slash-menu, .popover) {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-filter); -webkit-backdrop-filter: var(--glass-filter);
+  border-color: var(--glass-edge);
+  box-shadow: var(--glass-shine), var(--elev-3);
+}

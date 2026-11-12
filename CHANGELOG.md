@@ -4,6 +4,10 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 0.2.11
+
+- **Menus are acrylic.** The title bar menus, drop-downs, date and time pickers, and right-click and toolbar menus are now see-through and blurred, like Windows 11 menus, in light and dark.
+
 ## 0.2.10
 
 - **Fixed: moving between screens could light up two items in the sidebar and make the window look washed out** for a moment.
