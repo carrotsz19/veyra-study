@@ -434,6 +434,8 @@ export type DrivePicked = { kind: 'doc'; name: string; html: string } | { kind: 
 /* ---------- personal sync across your devices ---------- */
 export interface SyncStatus {
   enabled: boolean
+  /** Sends this device's changes. Off (Veyra Study Dev): only receives what other devices changed. */
+  sending: boolean
   state: 'idle' | 'syncing' | 'error'
   lastSync?: number
   error: string
@@ -443,6 +445,7 @@ export interface SyncApi {
   status(): Promise<SyncStatus>
   now(): Promise<SyncStatus>
   setEnabled(on: boolean): Promise<SyncStatus>
+  setSending(on: boolean): Promise<SyncStatus>
   onStatus(cb: (s: SyncStatus) => void): () => void
 }
 

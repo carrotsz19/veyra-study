@@ -6,6 +6,7 @@ import type { GoogleState, McpState, SyncStatus } from '@shared/types'
 import { useSettings } from '../data/settings'
 import { Avatar, useAccount, Welcome } from '../components/account'
 import { useToast } from '../components/ui'
+import { IS_DEV } from '@shared/channel'
 
 const clean = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
@@ -438,10 +439,26 @@ function SyncRow() {
         </span>
         <input type="checkbox" className="switch" checked={s.enabled} onChange={async (e) => setS(await window.veyra.sync.setEnabled(e.target.checked))} />
       </label>
+      {/* Veyra Study Dev: keep test builds from changing your real data, while still seeing it. */}
+      {IS_DEV && s.enabled && (
+        <label className="toggle-row" style={{ marginTop: 12 }}>
+          <span>
+            <b>
+              Send this device's changes <span className="dev-pill">DEV</span>
+            </b>
+            <span className="sm dim">
+              {s.sending
+                ? 'On: what you change here goes to your other devices, as in the real app.'
+                : 'Off: this device still gets every change from your other devices, but sends none of its own. What you change here stays here, even if you turn this back on.'}
+            </span>
+          </span>
+          <input type="checkbox" className="switch" checked={s.sending} onChange={async (e) => setS(await window.veyra.sync.setSending(e.target.checked))} />
+        </label>
+      )}
       {s.enabled && (
         <div className="between" style={{ marginTop: 8 }}>
           <span className={`sm ${s.state === 'error' ? '' : 'dim'}`} style={s.state === 'error' ? { color: 'var(--bad)' } : undefined}>
-            {s.state === 'syncing' ? 'Syncing…' : s.state === 'error' ? s.error : s.lastSync ? `Synced ${formatDistanceToNowStrict(s.lastSync, { addSuffix: true })}` : 'Not synced yet'}
+            {s.state === 'syncing' ? 'Syncing…' : s.state === 'error' ? s.error : s.lastSync ? `${s.sending ? 'Synced' : 'Received changes'} ${formatDistanceToNowStrict(s.lastSync, { addSuffix: true })}` : 'Not synced yet'}
           </span>
           <button
             className="btn sec sm"

@@ -6,6 +6,11 @@
  * Each run pulls what other devices changed since the last cursor, keeps the
  * newer copy of each record, then pushes this device's own changes. Settings
  * stay per device. Attached files aren't copied (only the notes pointing at them).
+ *
+ * Receive only (an option in Veyra Study Dev): this device still gets every
+ * change from your other devices, but sends none of its own. What changes here
+ * while it's on stays here for good: turning sending back on doesn't send it
+ * later, so a test build can't spill its changes into your real data.
  */
 import type { Kind, Rec, SyncStatus } from './types'
 import { GroupError, type GroupCore } from './group-core'
@@ -25,7 +30,7 @@ export class SyncCore {
   private running = false
   private again = false
   private disposed = false
-  private status: SyncStatus = { enabled: true, state: 'idle', error: '' }
+  private status: SyncStatus = { enabled: true, sending: true, state: 'idle', error: '' }
   private ready: Promise<void>
 
   constructor(
@@ -37,8 +42,8 @@ export class SyncCore {
     private emit: (status: SyncStatus) => void
   ) {
     this.ready = (async () => {
-      const [on, last] = await Promise.all([store.meta('sync_enabled'), store.meta('sync_last')])
-      this.status = { enabled: on !== '0', state: 'idle', lastSync: Number(last || 0) || undefined, error: '' }
+      const [on, send, last] = await Promise.all([store.meta('sync_enabled'), store.meta('sync_send'), store.meta('sync_last')])
+      this.status = { enabled: on !== '0', sending: send !== '0', state: 'idle', lastSync: Number(last || 0) || undefined, error: '' }
     })()
     group.onRemoteChange = () => this.schedule(300)
   }
@@ -68,6 +73,15 @@ export class SyncCore {
     await this.store.setMeta('sync_enabled', on ? '1' : '0')
     this.set({ enabled: on, state: 'idle', error: '' })
     if (on) this.schedule(0)
+    return this.status
+  }
+
+  /** Receive only (off), or send this device's changes too (on). */
+  async setSending(on: boolean): Promise<SyncStatus> {
+    await this.ready
+    await this.store.setMeta('sync_send', on ? '1' : '0')
+    this.set({ sending: on, error: '' })
+    this.schedule(0)
     return this.status
   }
 
@@ -134,6 +148,11 @@ export class SyncCore {
       const through = Number((await this.store.meta('sync_pushed')) || 0)
       const changes = await this.store.localChangesSince(through, 500)
       if (!changes.length) return
+      // Receive only: mark these as dealt with without sending them, so they never go out.
+      if (!this.status.sending) {
+        await this.store.setMeta('sync_pushed', String(changes[changes.length - 1].updatedAt))
+        continue
+      }
       // Keep each request under the server's size limit.
       const batch: Rec[] = []
       let size = 0

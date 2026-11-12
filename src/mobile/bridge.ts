@@ -123,6 +123,7 @@ const sync: Veyra['sync'] = {
   status: () => online.sync.state(),
   now: () => online.sync.run(),
   setEnabled: (on) => online.sync.setEnabled(on),
+  setSending: (on) => online.sync.setSending(on),
   onStatus: online.onSyncStatus
 }
 const voice: Veyra['voice'] = {

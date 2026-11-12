@@ -288,10 +288,11 @@ app.whenReady().then(async () => {
   ipcMain.handle('voice:transcribe', (e, id: string, wav: Uint8Array, model, language: string) => friendly(() => (whisper.useSubtitleMaker = appSettings().voiceUseSubtitleMaker, whisper).transcribe(String(id), wav, model === 'small' ? 'small' : 'base', String(language), e.sender)))
   ipcMain.handle('voice:cancel', (_e, id: string) => whisper.cancel(String(id)))
   ipcMain.handle('voice:save', (_e, name: string, mime: string, bytes: Uint8Array) => friendly(async () => files.fromDownload(String(name), String(mime), bytes)))
-  const noSync = { enabled: false, state: 'idle', error: '' }
+  const noSync = { enabled: false, sending: true, state: 'idle', error: '' }
   ipcMain.handle('sync:status', () => sync?.state() ?? noSync)
   ipcMain.handle('sync:now', () => sync?.run() ?? noSync)
   ipcMain.handle('sync:set', (_e, on: boolean) => sync?.setEnabled(!!on) ?? noSync)
+  ipcMain.handle('sync:sending', (_e, on: boolean) => sync?.setSending(!!on) ?? noSync)
   const gdrive = (): GoogleDrive => {
     if (!drive) throw new DriveError('Google Drive isn’t ready yet.')
     return drive
