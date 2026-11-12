@@ -1046,11 +1046,11 @@ html.material.fs-glass.dark[data-material='mica'] body::after { background: rgba
 /* ---------- subject folders in the sidebar (components/SubjectNav.tsx) ---------- */
 .side-folder-head { color: var(--ink); }
 .side-folder-head .side-folder-chev { margin: 0 -4px 0 -4px; opacity: 0.55; transition: transform 0.28s var(--spring-snappy); }
-.side-folder.open .side-folder-chev { transform: rotate(90deg); }
+.side-folder.open > .side-folder-head .side-folder-chev { transform: rotate(90deg); }
 .side-folder-head.has-current { color: var(--accent); }
 /* Folding: the grid row animates from 0fr to 1fr, so the height follows the content. */
 .side-folder-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.32s var(--spring-snappy); }
-.side-folder.open .side-folder-body { grid-template-rows: 1fr; }
+.side-folder.open > .side-folder-body { grid-template-rows: 1fr; }
 .side-folder-body > div { overflow: hidden; min-height: 0; }
 .navbtn.nested { padding-left: calc(12px + var(--depth, 1) * 16px); }
 .side-icons .side-folder-chev { display: none; }
@@ -1063,3 +1063,73 @@ html.material.fs-glass.dark[data-material='mica'] body::after { background: rgba
 .navbtn.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .menu-row:disabled { opacity: 0.4; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .side-folder-body, .side-folder-chev { transition: none !important; } }
+
+/* ---------- calendar: one day as a card (components/DayCard.tsx) ---------- */
+.day-scrim { background: rgba(0, 0, 0, 0.32); }
+.day-card {
+  width: min(460px, 100%); height: min(640px, calc(100vh - 80px)); display: flex; flex-direction: column;
+  background: var(--dc-bg); border-radius: 28px; overflow: hidden; box-shadow: var(--elev-3);
+  --dc-bg: #fbfaf8; --dc-head: #f1efea; --dc-field: #efede8;
+  animation: dayIn 0.45s var(--spring-spatial);
+}
+@keyframes dayIn { 0% { opacity: 0; transform: scale(0.35); } 35% { opacity: 1; } }
+.scrim.leaving .day-card { animation: dayOut 0.22s var(--ease-sheet, ease-in) forwards; }
+@keyframes dayOut { to { opacity: 0; transform: scale(0.92); } }
+.dc-head { display: flex; align-items: center; gap: 14px; padding: 22px 22px 18px; background: var(--dc-head); }
+html.dark .day-card { --dc-bg: #22201c; --dc-head: #2b2924; --dc-field: #34312b; }
+.dc-badge {
+  width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; flex: none;
+  background: var(--ink); color: var(--panel); font-size: 25px; font-weight: 800; letter-spacing: -0.03em;
+}
+.dc-badge.today { background: var(--accent); color: #fff; }
+.dc-weekday { display: flex; flex-direction: column; font-size: 20px; font-weight: 700; flex: 1; min-width: 0; line-height: 1.15; }
+.dc-date { font-size: 12.5px; font-weight: 500; color: var(--dim); margin-top: 2px; }
+.dc-nav { display: flex; gap: 2px; }
+.dc-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 14px 12px; touch-action: pan-y; }
+.dc-body { transition: transform 0.3s var(--spring-snappy), opacity 0.3s; }
+.dc-body.slide-next { animation: dcFromRight 0.38s var(--spring-snappy); }
+.dc-body.slide-prev { animation: dcFromLeft 0.38s var(--spring-snappy); }
+@keyframes dcFromRight { from { opacity: 0; transform: translateX(48px); } }
+@keyframes dcFromLeft { from { opacity: 0; transform: translateX(-48px); } }
+.dc-row {
+  display: flex; align-items: flex-start; gap: 12px; width: 100%; border: 0; background: transparent; color: var(--ink);
+  text-align: left; padding: 12px 8px; border-radius: 12px; font: inherit;
+}
+button.dc-row:hover, .dc-row.task:hover { background: var(--fill-tertiary); }
+.dc-time { width: 58px; flex: none; font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; padding-top: 2px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.dc-bar { width: 3.5px; align-self: stretch; border-radius: 4px; flex: none; min-height: 22px; }
+.dc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; padding: 0; }
+.dc-title { font-size: 16px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.dc-sub { font-size: 13px; color: var(--dim); display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.dc-row.task.done .dc-title { text-decoration: line-through; color: var(--dim); }
+.dc-check {
+  width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--c); background: transparent; color: #fff;
+  display: grid; place-items: center; padding: 0; transition: background-color 0.15s, transform 0.15s;
+}
+.dc-check.on { background: var(--c); }
+.dc-check:active { transform: scale(0.88); }
+.dc-allday {
+  display: flex; align-items: center; gap: 8px; width: 100%; border: 0; border-radius: 10px; margin: 4px 0;
+  padding: 8px 12px; font: inherit; font-weight: 600; font-size: 14px; text-align: left;
+  background: color-mix(in srgb, var(--ev) 18%, transparent); color: var(--ink);
+}
+.dc-sep { font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--dim); padding: 14px 8px 2px; }
+.dc-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--dim); padding: 70px 0; font-size: 14px; }
+.dc-empty-icon { font-size: 30px; opacity: 0.5; }
+.dc-add {
+  display: flex; align-items: center; margin: 8px 22px 22px; height: 56px; border-radius: 99px;
+  background: var(--dc-field); padding-left: 22px; overflow: hidden; flex: none;
+}
+.dc-add input { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 16px; color: var(--ink); outline: none; padding: 0; height: 100%; box-shadow: none; }
+.dc-plus {
+  width: 56px; height: 56px; border-radius: 99px; border: 0; flex: none; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); transition: background-color 0.15s, transform 0.15s;
+}
+.dc-plus:hover { background: var(--accent); color: #fff; }
+.dc-plus:active { transform: scale(0.92); }
+@media (prefers-reduced-motion: reduce) { .day-card, .dc-body { animation: none !important; } }
+/* Phone: a tall card, like the calendar app's. */
+@media (max-width: 640px) {
+  .day-scrim { padding: 14px; }
+  .day-card { height: min(80vh, 720px); border-radius: 30px; }
+}

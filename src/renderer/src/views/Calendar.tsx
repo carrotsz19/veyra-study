@@ -8,15 +8,14 @@ import { TaskDialog } from '../components/editors'
 import { eventDays, useGoogleEvents } from '../data/google'
 import type { GoogleEvent } from '@shared/types'
 import { useSettings, useTimeFormat } from '../data/settings'
-import { EventDialog, useEventTime } from '../components/EventDialog'
-import { Dialog } from '../components/ui'
-import { Plus } from 'lucide-react'
+import { EventDialog } from '../components/EventDialog'
+import { DayCard } from '../components/DayCard'
 
 export function Calendar() {
   const { items: tasks } = useRecords('task')
   const { items: subjects } = useRecords('subject')
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
-  const [newOn, setNewOn] = useState<string | null>(null)
+  const [newOn, setNewOn] = useState<{ due: string; title?: string } | null>(null)
   const [editing, setEditing] = useState<Rec<'task'> | null>(null)
   const { s } = useSettings()
   const fmtTime = useTimeFormat()
@@ -30,8 +29,8 @@ export function Calendar() {
   const eventsByDay = new Map<string, GoogleEvent[]>()
   if (s.calendarShowEvents) events.forEach((e) => eventDays(e).forEach((k) => eventsByDay.set(k, [...(eventsByDay.get(k) ?? []), e])))
   const [openEvent, setOpenEvent] = useState<GoogleEvent | null>(null)
-  const [openDay, setOpenDay] = useState<string | null>(null)
-  const range = useEventTime()
+  const [openDay, setOpenDay] = useState<{ day: string; from: DOMRect | null } | null>(null)
+  const showDay = (day: string, el?: Element | null) => setOpenDay({ day, from: el?.getBoundingClientRect() ?? null })
 
   const byDay = new Map<string, Rec<'task'>[]>()
   tasks.forEach((t) => s.calendarShowTasks && (s.calendarShowDone || !t.data.done) && t.data.due && byDay.set(t.data.due, [...(byDay.get(t.data.due) ?? []), t]))
@@ -96,17 +95,16 @@ export function Calendar() {
             <div
               key={key}
               className={`cell ${isSameMonth(d, month) ? '' : 'out'} ${key === today ? 'today' : ''}`}
-              onClick={() => setNewOn(key)}
+              onClick={(e) => showDay(key, e.currentTarget)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
-                  if (list.length || dayEvents.length) setOpenDay(key)
-                  else setNewOn(key)
+                  showDay(key, e.currentTarget)
                 }
               }}
               role="button"
               tabIndex={0}
-              aria-label={`${format(d, 'd MMMM')}: ${list.length} tasks, ${dayEvents.length} events. Press Enter to see the day.`}
+              aria-label={`${format(d, 'd MMMM')}: ${list.length} tasks, ${dayEvents.length} events. Open the day.`}
             >
               <span className="d">{format(d, 'd')}</span>
               {shownEvents.map((e) => (
@@ -145,7 +143,7 @@ export function Calendar() {
                   className="more-chip"
                   onClick={(e) => {
                     e.stopPropagation()
-                    setOpenDay(key)
+                    showDay(key, e.currentTarget.closest('.cell'))
                   }}
                 >
                   +{hidden} more
@@ -158,44 +156,21 @@ export function Calendar() {
       {error && <p className="sm cal-hint" style={{ color: 'var(--bad)' }}>{error}</p>}
       {openEvent && <EventDialog event={openEvent} onClose={() => setOpenEvent(null)} />}
       {openDay && (
-        <Dialog title={format(new Date(openDay + 'T00:00:00'), 'EEEE d MMMM')} onClose={() => setOpenDay(null)}>
-          {(eventsByDay.get(openDay) ?? []).length > 0 && (
-            <>
-              <h2>Events</h2>
-              <div className="ig plain day-list">
-                {(eventsByDay.get(openDay) ?? []).map((e) => (
-                  <button key={e.id} className="ig-row tap" onClick={() => { setOpenDay(null); setOpenEvent(e) }}>
-                    <span style={{ width: 4, alignSelf: 'stretch', borderRadius: 4, background: e.color }} />
-                    <span className="grow" style={{ minWidth: 0 }}>
-                      <span className="ig-title trunc" style={{ display: 'block' }}>{e.title}</span>
-                      <span className="ig-sub">{range(e)} · {e.calendar}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          {(byDay.get(openDay) ?? []).length > 0 && (
-            <>
-              <h2 style={{ marginTop: 14 }}>Tasks due</h2>
-              <div className="ig plain day-list">
-                {(byDay.get(openDay) ?? []).map((t) => (
-                  <button key={t.id} className={`ig-row tap ${t.data.done ? 'task-done' : ''}`} onClick={() => { setOpenDay(null); setEditing(t) }}>
-                    <span style={{ width: 4, alignSelf: 'stretch', borderRadius: 4, background: color(t) }} />
-                    <span className="ig-title grow trunc">{t.data.title}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          <div className="actions">
-            <button className="btn" onClick={() => { setNewOn(openDay); setOpenDay(null) }}>
-              <Plus size={15} /> Add a task due this day
-            </button>
-          </div>
-        </Dialog>
+        <DayCard
+          day={openDay.day}
+          from={openDay.from}
+          events={eventsByDay.get(openDay.day) ?? []}
+          tasks={tasks.filter((t) => t.data.due === openDay.day && (s.calendarShowDone || !t.data.done))}
+          color={color}
+          subjectName={(t) => subjects.find((x) => x.id === t.data.subjectId)?.data.name}
+          onDay={(day) => setOpenDay({ day, from: null })}
+          onEvent={setOpenEvent}
+          onTask={setEditing}
+          onNewTask={(title) => setNewOn({ due: openDay.day, title })}
+          onClose={() => setOpenDay(null)}
+        />
       )}
-      {newOn && <TaskDialog defaults={{ due: newOn }} onClose={() => setNewOn(null)} />}
+      {newOn && <TaskDialog defaults={{ due: newOn.due, ...(newOn.title ? { title: newOn.title } : {}) }} onClose={() => setNewOn(null)} />}
       {editing && <TaskDialog task={editing} onClose={() => setEditing(null)} />}
     </div>
   )
