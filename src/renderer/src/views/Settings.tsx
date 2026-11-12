@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
-  ArrowDown, ArrowUp, CalendarDays, Check, ChevronLeft, Download, ExternalLink, RefreshCw, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, NotebookPen,
+  ArrowDown, ArrowUp, CalendarDays, Smartphone, Minus as MinusIcon, Plus as PlusIcon, Check, ChevronLeft, Download, ExternalLink, RefreshCw, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, NotebookPen,
   LayoutGrid, Palette, Play, Plus, RotateCcw, Shapes, Sparkles, Trash2, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
 } from 'lucide-react'
 import { ACCENTS, DEFAULT_SETTINGS, NAV_LABELS, defaultLayout, type AppSettings, type NavId } from '@shared/settings'
@@ -24,11 +24,12 @@ import type { AiProvider, AiState, Rec, UpdateState } from '@shared/types'
    right, and a search that finds any option across all of them.
 ===================================================================== */
 
-type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data' | 'updates'
+type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data' | 'updates' | 'phone'
 
 const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; keys?: (keyof AppSettings)[] }[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal, hint: 'Your name, start screen, week and time', keys: ['name', 'greeting', 'startScreen', 'weekStart', 'timeFormat'] },
   { id: 'appearance', label: 'Appearance', icon: Palette, hint: 'Theme, colour, font, size and spacing', keys: ['theme', 'accent', 'font', 'zoom', 'density', 'corners', 'reduceMotion', 'material'] },
+  { id: 'phone', label: 'Phone', icon: Smartphone, hint: 'The navigation bar, large titles, pure black, vibration and more', keys: ['phoneTabs', 'phoneTabLabels', 'phoneCompose', 'phoneDock', 'phoneHideNavTyping', 'phoneTimerPill', 'phoneLargeTitles', 'pureBlack', 'haptics', 'keepAwakeFocus', 'phoneNoteBar'] },
   { id: 'sidebar', label: 'Sidebar', icon: LayoutPanelLeft, hint: 'What the sidebar shows, and in what order', keys: ['nav', 'showCounts', 'showSubjectsInSidebar', 'showTimerCard'] },
   { id: 'subjects', label: 'Subjects', icon: Shapes, hint: 'Order, colours, archived and deleted subjects' },
   { id: 'today', label: 'Today', icon: Home, hint: 'Your Today page’s widgets', keys: ['todayLayout', 'upcomingCount'] },
@@ -245,6 +246,91 @@ function Appearance() {
           </div>
         </div>
       </Group>}
+    </>
+  )
+}
+
+/* ---------- Phone (the Android app) ---------- */
+const SCREEN_LABELS: Record<NavId, string> = { today: 'Today', tasks: 'Tasks', notes: 'Notes', calendar: 'Calendar', groups: 'Group work', timer: 'Focus timer', stats: 'Stats' }
+function PhoneSection() {
+  const { s, set } = useSettings()
+  const tabs = s.phoneTabs
+  const rest = (Object.keys(SCREEN_LABELS) as NavId[]).filter((id) => !tabs.includes(id))
+  const move = (i: number, d: -1 | 1) => {
+    const next = [...tabs]
+    const j = i + d
+    if (j < 0 || j >= next.length) return
+    ;[next[i], next[j]] = [next[j], next[i]]
+    set({ phoneTabs: next })
+  }
+  return (
+    <>
+      <Group title="Navigation bar" footer="Up to four screens sit in the bar; everything else is under More.">
+        {tabs.map((id, i) => (
+          <Row key={id} label={SCREEN_LABELS[id]} keywords="tabs bar navigation dock order screens">
+            <div className="row" style={{ gap: 4 }}>
+              <button className="iconbtn plain" aria-label={`Move ${SCREEN_LABELS[id]} left`} disabled={i === 0} onClick={() => move(i, -1)}>
+                <ArrowUp size={15} />
+              </button>
+              <button className="iconbtn plain" aria-label={`Move ${SCREEN_LABELS[id]} right`} disabled={i === tabs.length - 1} onClick={() => move(i, 1)}>
+                <ArrowDown size={15} />
+              </button>
+              <button className="iconbtn plain" aria-label={`Move ${SCREEN_LABELS[id]} to More`} disabled={tabs.length <= 2} onClick={() => set({ phoneTabs: tabs.filter((x) => x !== id) })}>
+                <MinusIcon size={15} />
+              </button>
+            </div>
+          </Row>
+        ))}
+        {rest.map((id) => (
+          <Row key={id} label={SCREEN_LABELS[id]} hint="Under More" keywords="tabs bar navigation dock screens">
+            <button className="btn ghost sm" disabled={tabs.length >= 4} onClick={() => set({ phoneTabs: [...tabs, id] })}>
+              <PlusIcon size={14} /> Add to bar
+            </button>
+          </Row>
+        ))}
+      </Group>
+
+      <Group title="Bar and button">
+        <Row label="Bar style" stack keywords="dock floating docked bottom one ui">
+          <Choice label="Bar style" value={s.phoneDock} onChange={(phoneDock) => set({ phoneDock })} options={[['floating', 'Floating'], ['docked', 'Docked']]} />
+        </Row>
+        <Row label="Names under icons" stack keywords="labels text tabs">
+          <Choice label="Names under icons" value={s.phoneTabLabels} onChange={(phoneTabLabels) => set({ phoneTabLabels })} options={[['always', 'Always'], ['selected', 'Current only'], ['never', 'Never']]} />
+        </Row>
+        <Row label="Round button" hint="Beside the bar. Auto makes a note on Notes and a task everywhere else." stack keywords="compose new fab plus button">
+          <Choice label="Round button" value={s.phoneCompose} onChange={(phoneCompose) => set({ phoneCompose })} options={[['smart', 'Auto'], ['task', 'Task'], ['note', 'Note'], ['off', 'Off']]} />
+        </Row>
+        <Row label="Hide the bar while typing" hint="So what you're writing sits right above the keyboard." keywords="keyboard">
+          <Toggle label="Hide the bar while typing" on={s.phoneHideNavTyping} onChange={(phoneHideNavTyping) => set({ phoneHideNavTyping })} />
+        </Row>
+        <Row label="Running timer above the bar" hint="A small pill with the time left, on every screen." keywords="focus pomodoro">
+          <Toggle label="Running timer above the bar" on={s.phoneTimerPill} onChange={(phoneTimerPill) => set({ phoneTimerPill })} />
+        </Row>
+      </Group>
+
+      <Group title="Look">
+        <Row label="Large titles" hint="Bigger page titles with room above them, so the top of the screen is easier to reach one-handed." keywords="one ui header reach one handed">
+          <Toggle label="Large titles" on={s.phoneLargeTitles} onChange={(phoneLargeTitles) => set({ phoneLargeTitles })} />
+        </Row>
+        <Row label="Pure black in dark mode" hint="True black backgrounds. Saves battery on OLED screens." keywords="amoled oled black dark battery">
+          <Toggle label="Pure black in dark mode" on={s.pureBlack} onChange={(pureBlack) => set({ pureBlack })} />
+        </Row>
+      </Group>
+
+      <Group title="Feel">
+        <Row label="Vibration on taps" hint="A light tap when you tick a task, switch screens or press a button." keywords="haptic haptics vibrate feedback">
+          <Toggle label="Vibration on taps" on={s.haptics} onChange={(haptics) => set({ haptics })} />
+        </Row>
+        <Row label="Keep the screen on while focusing" hint="While a focus block runs and Veyra is open." keywords="wake awake screen timeout pomodoro">
+          <Toggle label="Keep the screen on while focusing" on={s.keepAwakeFocus} onChange={(keepAwakeFocus) => set({ keepAwakeFocus })} />
+        </Row>
+      </Group>
+
+      <Group title="Notes">
+        <Row label="Formatting bar" stack keywords="toolbar note editor top bottom">
+          <Choice label="Formatting bar" value={s.phoneNoteBar} onChange={(phoneNoteBar) => set({ phoneNoteBar })} options={[['bottom', 'At the bottom'], ['top', 'At the top']]} />
+        </Row>
+      </Group>
     </>
   )
 }
@@ -941,6 +1027,8 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
       return <Appearance />
     case 'sidebar':
       return <Sidebar />
+    case 'phone':
+      return <PhoneSection />
     case 'today':
       return <Today />
     case 'tasks':
@@ -982,8 +1070,11 @@ const JUMPS: { id: SectionId; words: string }[] = [
 
 /** Computer-only sections, hidden in the Android app. */
 const ANDROID_HIDDEN: SectionId[] = ['ai', 'connections', 'sidebar']
+const DESKTOP_HIDDEN: SectionId[] = ['phone']
+/** Whether a section belongs on this device. */
+const here = (id: SectionId) => !(onAndroid() ? ANDROID_HIDDEN : DESKTOP_HIDDEN).includes(id)
 
-const SEARCHABLE: SectionId[] = ['general', 'appearance', 'sidebar', 'subjects', 'ai', 'today', 'tasks', 'notes', 'timer', 'calendar', 'data']
+const SEARCHABLE: SectionId[] = ['general', 'appearance', 'phone', 'sidebar', 'subjects', 'ai', 'today', 'tasks', 'notes', 'timer', 'calendar', 'data']
 
 export function Settings({ initial }: { initial?: string }) {
   const { reset, s } = useSettings()
@@ -1021,7 +1112,7 @@ export function Settings({ initial }: { initial?: string }) {
           )}
         </div>
         <nav>
-          {SECTIONS.filter((x) => !onAndroid() || !ANDROID_HIDDEN.includes(x.id)).map((x) => (
+          {SECTIONS.filter((x) => here(x.id)).map((x) => (
             <div key={x.id}>
               {(x.id === 'account' || x.id === 'data') && <div className="set-nav-sep" />}
               <button className="set-nav-item" aria-current={!q && section === x.id} onClick={() => go(x.id)}>
@@ -1052,7 +1143,7 @@ export function Settings({ initial }: { initial?: string }) {
             <div className="set-head">
               <h2 className="set-title">Results for “{q}”</h2>
             </div>
-            {JUMPS.filter((j) => matches(q.trim(), j.words) && !(onAndroid() && ANDROID_HIDDEN.includes(j.id))).map((j) => {
+            {JUMPS.filter((j) => matches(q.trim(), j.words) && here(j.id)).map((j) => {
               const x = SECTIONS.find((y) => y.id === j.id)!
               return (
                 <button key={j.id} className="set-jump" onClick={() => go(j.id)}>
@@ -1067,7 +1158,7 @@ export function Settings({ initial }: { initial?: string }) {
                 </button>
               )
             })}
-            {SEARCHABLE.filter((id) => !(onAndroid() && ANDROID_HIDDEN.includes(id))).map((id) => {
+            {SEARCHABLE.filter((id) => here(id)).map((id) => {
               const x = SECTIONS.find((y) => y.id === id)!
               return (
                 <section key={id} className="set-result" data-section={id}>
@@ -1197,11 +1288,11 @@ function SoftwareUpdate() {
 
       <Group title="Automatic updates" footer={android ? 'Android asks you to confirm each install. The first time, it also asks you to let Veyra Study install apps.' : undefined}>
         <Row
-          label={android ? 'Look for updates when Veyra opens' : 'Check for updates when Veyra starts'}
+          label={android ? 'Look for updates when Veyra opens' : 'Update automatically'}
           hint={
             android
               ? 'Checks GitHub every few hours and tells you when a new version is out. Off: check here whenever you like.'
-              : 'A small window checks GitHub before the app opens and installs a new version if there is one. Off: check here whenever you like.'
+              : 'Checks when Veyra starts and every few hours while it runs (even in the tray), downloads new versions quietly, and installs them when you restart or close the window. Off: check here whenever you like.'
           }
           keywords="automatic update startup check version"
         >

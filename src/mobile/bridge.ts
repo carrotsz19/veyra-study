@@ -12,6 +12,10 @@ import * as reminders from './reminders'
 import * as phoneFiles from './files'
 import * as exports from './exports'
 import * as updates from './updates'
+import { Haptics, ImpactStyle } from '@capacitor/haptics'
+import { registerPlugin } from '@capacitor/core'
+/** The app's own bit of Android code (android/.../ScreenPlugin.java). */
+const Screen = registerPlugin<{ keepOn(o: { on: boolean }): Promise<void> }>('Screen')
 import { withDefaults } from '@shared/settings'
 
 type Veyra = Window['veyra']
@@ -163,7 +167,21 @@ const appApi: Veyra['app'] = {
   setMaterial: async () => {},
   setStartup: async () => false,
   onNav: (cb) => reminders.onNav(cb),
-  timerAlarm: (at, title, body) => reminders.timerAlarm(at, title, body)
+  timerAlarm: (at, title, body) => reminders.timerAlarm(at, title, body),
+  keepAwake: async (on) => {
+    try {
+      await Screen.keepOn({ on })
+    } catch {
+      /* older app without the plugin */
+    }
+  },
+  haptic: async (kind) => {
+    try {
+      await Haptics.impact({ style: kind === 'medium' ? ImpactStyle.Medium : ImpactStyle.Light })
+    } catch {
+      /* no vibration motor */
+    }
+  }
 }
 
 export async function installBridge(): Promise<void> {

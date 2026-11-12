@@ -15,6 +15,8 @@
  */
 import { app, BrowserWindow, nativeTheme, type WebContents } from 'electron'
 import type { UpdateState } from '../shared/types'
+import { existsSync, unlinkSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import splashPath from '../../resources/splash.html?asset'
 
@@ -49,9 +51,9 @@ export async function updateAtStart(checkAtStart = true): Promise<StartResult> {
   }
 
   // Started with Windows (quietly, into the tray): no window; fetch any update now, install it when Veyra quits.
-  if (process.argv.includes('--hidden')) {
-    autoUpdater.autoDownload = true
-    void autoUpdater.checkForUpdates().catch(() => {})
+  // (Also after an update installed while the window was closed.)
+  if (process.argv.includes('--hidden') || existsSync(HIDDEN_FLAG())) {
+    void lookForUpdate(true).catch(() => {})
     return 'open'
   }
 
@@ -188,4 +190,58 @@ export function installNow(): void {
   if (state.status !== 'ready') return
   if (process.env['VEYRA_UPDATE_DRYRUN']) return
   setImmediate(() => autoUpdater.quitAndInstall(true, true))
+}
+
+/* ---------- staying up to date while Veyra keeps running ---------- */
+/*
+ * Closing the window keeps Veyra in the tray, so the start-up check alone
+ * could leave it on an old version for days. So: look now and then (and when
+ * the window is opened again), download quietly, offer "Restart" — and if the
+ * window is simply closed with an update ready, install it then and come back
+ * quietly in the tray.
+ */
+let lastLook = 0
+let allowed: () => boolean = () => true
+const HIDDEN_FLAG = () => join(app.getPath('userData'), 'relaunch-hidden')
+
+/** Look for an update (at most every half hour) and download it if there is one. */
+export async function lookForUpdate(force = false): Promise<void> {
+  if (!canUpdate() || !allowed()) return
+  if (!force && Date.now() - lastLook < 30 * 60_000) return
+  if (state.status === 'checking' || state.status === 'downloading' || state.status === 'ready') return
+  lastLook = Date.now()
+  configure()
+  const s = await checkNow()
+  if (s.status === 'available') await downloadNow()
+}
+
+/** Every few hours while running. `on` says whether automatic updates are switched on. */
+export function keepUpToDate(on: () => boolean): void {
+  allowed = on
+  if (!canUpdate()) return
+  lastLook = Date.now() // the start-up check just happened
+  setInterval(() => void lookForUpdate(), 3 * 3600_000).unref?.()
+}
+
+/** Installs a downloaded update now; `hidden` brings Veyra back in the tray. False if there's none. */
+export function installReady(hidden: boolean): boolean {
+  if (state.status !== 'ready' || process.env['VEYRA_UPDATE_DRYRUN']) return false
+  try {
+    if (hidden) writeFileSync(HIDDEN_FLAG(), '1')
+  } catch {
+    /* comes back with its window instead */
+  }
+  setImmediate(() => autoUpdater.quitAndInstall(true, true))
+  return true
+}
+
+/** True once after an update installed while the window was closed (start in the tray). */
+export function takeHiddenFlag(): boolean {
+  try {
+    if (!existsSync(HIDDEN_FLAG())) return false
+    unlinkSync(HIDDEN_FLAG())
+    return true
+  } catch {
+    return false
+  }
 }

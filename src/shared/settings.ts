@@ -104,6 +104,28 @@ export interface AppSettings {
   calendarShowEvents: boolean
   calendarShowDone: boolean
   calendarShowTasks: boolean
+  /* phone (the Android app) */
+  /** The four screens in the navigation bar, in order; the rest are under More. */
+  phoneTabs: NavId[]
+  /** Names under the bar's icons: always, only the current one, or never. */
+  phoneTabLabels: 'always' | 'selected' | 'never'
+  /** The round button beside the bar: what fits the screen, always a task, always a note, or none. */
+  phoneCompose: 'smart' | 'task' | 'note' | 'off'
+  /** A floating rounded bar, or one docked along the bottom edge. */
+  phoneDock: 'floating' | 'docked'
+  phoneHideNavTyping: boolean
+  /** The running focus timer as a small pill above the bar. */
+  phoneTimerPill: boolean
+  /** One UI-style large titles, with room above them so the top is easier to reach one-handed. */
+  phoneLargeTitles: boolean
+  /** Where a note's formatting bar sits. */
+  phoneNoteBar: 'bottom' | 'top'
+  /** A light tap of vibration when you tick a task, switch tabs or press buttons. */
+  haptics: boolean
+  /** Keep the screen on while a focus block runs. */
+  keepAwakeFocus: boolean
+  /** Dark mode in true black (saves battery on OLED screens). */
+  pureBlack: boolean
 }
 
 export const ACCENTS: Record<string, { name: string; light: string; dark: string }> = {
@@ -194,7 +216,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dailyGoalMin: 120,
   calendarShowEvents: true,
   calendarShowDone: true,
-  calendarShowTasks: true
+  calendarShowTasks: true,
+  phoneTabs: ['today', 'tasks', 'notes', 'calendar'],
+  phoneTabLabels: 'always',
+  phoneCompose: 'smart',
+  phoneDock: 'floating',
+  phoneHideNavTyping: true,
+  phoneTimerPill: true,
+  phoneLargeTitles: false,
+  phoneNoteBar: 'bottom',
+  haptics: true,
+  keepAwakeFocus: true,
+  pureBlack: false
 }
 
 /** Defaults filled in for anything missing (older saves, new options). */
@@ -211,6 +244,10 @@ export function withDefaults(s: Partial<AppSettings> | null | undefined): AppSet
   // Today's layout: the saved one, or the default built from the older on/off switches.
   const layout = (s?.todayLayout ?? []).filter((w, i, all) => WIDGETS.includes(w.id) && all.findIndex((x) => x.id === w.id) === i)
   out.todayLayout = layout.length ? layout : defaultLayout(out)
+  // The phone bar: two to four different screens (the default four if fewer are saved).
+  const ids = DEFAULT_SETTINGS.nav.map((n) => n.id)
+  const tabs = (Array.isArray(s?.phoneTabs) ? s.phoneTabs : []).filter((t, i, all) => ids.includes(t) && all.indexOf(t) === i).slice(0, 4)
+  out.phoneTabs = tabs.length >= 2 ? tabs : [...DEFAULT_SETTINGS.phoneTabs]
   return out
 }
 

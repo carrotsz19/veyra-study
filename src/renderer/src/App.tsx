@@ -24,7 +24,7 @@ import { prefetchGroups } from './data/groups'
 import { startDriveBackup } from './data/drive'
 import { VoiceSetupHost } from './components/notes/Voice'
 import { PhoneNav } from './components/PhoneNav'
-import { usePhone } from './lib/phone'
+import { onAndroid, usePhone } from './lib/phone'
 
 function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const { items: subjects } = useRecords('subject')
@@ -177,19 +177,27 @@ function UpdatedNotice() {
       /* storage unavailable */
     }
   }, [toast, go])
-  // A newer version turned up (the phone checks quietly at start): say so once.
+  // A newer version turned up: say so once. The phone downloads when you say so; the computer
+  // downloads by itself and offers to restart (closing the window installs it too).
   useEffect(
     () =>
       window.veyra.update.onState((u) => {
-        if (u.status !== 'available' || !u.latest || told.has(u.latest)) return
-        told.add(u.latest)
-        toast(`Veyra Study ${u.latest} is available`, {
-          label: 'Update',
-          run: () => {
-            sessionStorage.setItem('veyra.settingsSection', 'updates')
-            go({ name: 'settings' })
-          }
-        })
+        if (!u.latest) return
+        const key = `${u.status}:${u.latest}`
+        if (told.has(key)) return
+        if (u.status === 'available' && onAndroid()) {
+          told.add(key)
+          toast(`Veyra Study ${u.latest} is available`, {
+            label: 'Update',
+            run: () => {
+              sessionStorage.setItem('veyra.settingsSection', 'updates')
+              go({ name: 'settings' })
+            }
+          })
+        } else if (u.status === 'ready' && !onAndroid()) {
+          told.add(key)
+          toast(`Veyra Study ${u.latest} is ready to install`, { label: 'Restart', run: () => void window.veyra.update.install() })
+        }
       }),
     [toast, go]
   )

@@ -211,3 +211,40 @@
   html .rec-bar { bottom: calc(var(--tabbar) + 12px); }
   html #toast-root { bottom: calc(var(--tabbar) + 12px); right: 12px; left: 12px; align-items: center; }
 }
+
+/* ---------- Settings → Phone ---------- */
+/* Pure black dark mode (OLED) */
+html.dark.pure-black {
+  --bg-grouped: #000;
+  --bg-elevated: #121212;
+  --fill-secondary: #1c1c1c;
+  --separator: #262626;
+}
+@media (max-width: 720px), (max-height: 540px) and (pointer: coarse) {
+  /* The bar docked along the bottom edge, One UI's classic style; the round button floats above it */
+  html[data-dock='docked'] { --dock-gap: 0px; --tabbar: calc(var(--dock-h) + env(safe-area-inset-bottom) + 80px); } /* room for the round button floating above the bar */
+  html[data-dock='docked'] .phone-dock { left: 0; right: 0; bottom: 0; max-width: none; }
+  html[data-dock='docked'] .phone-tabs {
+    border-radius: 0; border-width: 1px 0 0; box-shadow: none; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    height: calc(var(--dock-h) + env(safe-area-inset-bottom));
+  }
+  html[data-dock='docked'] .phone-tabs button { border-radius: 16px; }
+  html[data-dock='docked'] .phone-compose { position: absolute; right: 16px; bottom: calc(100% + 14px); width: 58px; height: 58px; border-radius: 20px; }
+  html[data-dock='docked'] .phone-timer { bottom: calc(var(--dock-h) + env(safe-area-inset-bottom) + 14px); }
+
+  /* Labels under the bar's icons */
+  html[data-tab-labels='never'] .phone-tab-label { display: none; }
+  html[data-tab-labels='selected'] .phone-tabs button:not([aria-current='true']) .phone-tab-label { display: none; }
+  html[data-tab-labels='never'] .phone-tab-icon svg, html[data-tab-labels='selected'] .phone-tabs button:not([aria-current='true']) .phone-tab-icon svg { width: 23px; height: 23px; }
+
+  /* Large titles, with room above them so the top of the screen is in reach one-handed */
+  html[data-large-titles='true'] .view > .topbar:first-child, html[data-large-titles='true'] .np-head, html[data-large-titles='true'] .settings .set-nav > h1 { padding-top: 11vh; }
+  html[data-large-titles='true'] h1, html[data-large-titles='true'] .np-title { font-size: 34px; letter-spacing: -0.03em; }
+  html[data-large-titles='true'] .grp-phone-open > .topbar, html[data-large-titles='true'] .main-calendar .topbar { padding-top: 0; }
+  html[data-large-titles='true'] .main-calendar h1 { font-size: 26px; }
+
+  /* A note's formatting bar at the top instead of the bottom */
+  html[data-note-bar='top'] .notes-layout .note-toolbar {
+    order: 0; border-top: 0; border-bottom: 1px solid var(--line); padding-bottom: 6px; min-height: 48px;
+  }
+}

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BarChart3, CalendarDays, Home, ListTodo, MoreHorizontal, NotebookPen, PenLine, Plus, Settings as SettingsIcon, Timer, Users, X } from 'lucide-react'
 import type { Route } from '../nav'
+import type { NavId } from '@shared/settings'
 import { useRecords } from '../data/store'
 import { useSettings } from '../data/settings'
 import { useTimer, phaseLabel } from './timer'
@@ -15,6 +16,17 @@ import { newNote } from '../views/Notes'
  * More, and a separate round compose button beside it that makes whatever
  * fits the screen you're on (a note on Notes, a task elsewhere).
  */
+/** Every screen the bar can hold: its name and icon. */
+const SCREENS: Record<NavId, [string, typeof Home]> = {
+  today: ['Today', Home],
+  tasks: ['Tasks', ListTodo],
+  notes: ['Notes', NotebookPen],
+  calendar: ['Calendar', CalendarDays],
+  groups: ['Groups', Users],
+  timer: ['Focus', Timer],
+  stats: ['Stats', BarChart3]
+}
+
 export function PhoneNav({ route, go }: { route: Route; go: (r: Route) => void }) {
   const [more, setMore] = useState(false)
   const [newTask, setNewTask] = useState(false)
@@ -24,12 +36,61 @@ export function PhoneNav({ route, go }: { route: Route; go: (r: Route) => void }
   const timer = useTimer()
   const user = useAccount().state.user
   const late = tasks.filter((t) => isOverdue(t.data.due, t.data.done)).length
-  const tabs: [Route['name'], string, typeof Home, string?][] = [
-    ['today', 'Today', Home, late ? String(late) : undefined],
-    ['tasks', 'Tasks', ListTodo],
-    ['notes', 'Notes', NotebookPen],
-    ['calendar', 'Calendar', CalendarDays]
-  ]
+  // The four screens you chose for the bar (Settings → Phone); the rest are under More.
+  const tabs: [Route['name'], string, typeof Home, string?][] = s.phoneTabs.map((id) => [id, SCREENS[id][0], SCREENS[id][1], id === 'today' && late ? String(late) : undefined])
+  const moreScreens = (Object.keys(SCREENS) as NavId[]).filter((id) => !s.phoneTabs.includes(id))
+  const hideTyping = useRef(s.phoneHideNavTyping)
+  hideTyping.current = s.phoneHideNavTyping
+
+  // The phone's look: bar style, labels, large titles, pure black, where a note's formatting bar sits.
+  useEffect(() => {
+    const d = document.documentElement.dataset
+    d.dock = s.phoneDock
+    d.tabLabels = s.phoneTabLabels
+    d.largeTitles = String(s.phoneLargeTitles)
+    d.noteBar = s.phoneNoteBar
+    document.documentElement.classList.toggle('pure-black', s.pureBlack)
+  }, [s.phoneDock, s.phoneTabLabels, s.phoneLargeTitles, s.phoneNoteBar, s.pureBlack])
+
+  // A light tap of vibration on the things you press most.
+  useEffect(() => {
+    if (!s.haptics || !window.veyra.app.haptic) return
+    const onTap = (e: Event) => {
+      const t = (e.target as HTMLElement | null)?.closest?.('.tick, .phone-tabs button, .phone-compose, .seg button, input.switch, .np-chip, .btn, .ig-row.tap, .np-row')
+      if (t) void window.veyra.app.haptic?.(t.matches('.tick, input.switch') ? 'medium' : 'light')
+    }
+    document.addEventListener('click', onTap, true)
+    return () => document.removeEventListener('click', onTap, true)
+  }, [s.haptics])
+
+  // Keep the screen on while a focus block runs.
+  const awake = s.keepAwakeFocus && timer.running && timer.phase === 'focus'
+  useEffect(() => {
+    if (!awake) return
+    // Android: the window's own keep-screen-on flag.
+    const native = window.veyra.app.keepAwake
+    if (native) {
+      void native(true)
+      return () => void native(false)
+    }
+    if (!('wakeLock' in navigator)) return
+    let lock: WakeLockSentinel | null = null
+    let live = true
+    const take = () => {
+      if (document.visibilityState !== 'visible') return
+      navigator.wakeLock.request('screen').then(
+        (l) => (live ? (lock = l) : void l.release()),
+        () => {}
+      )
+    }
+    take()
+    document.addEventListener('visibilitychange', take)
+    return () => {
+      live = false
+      document.removeEventListener('visibilitychange', take)
+      void lock?.release()
+    }
+  }, [awake])
   const inMore = !tabs.some(([n]) => n === route.name)
   // While the keyboard is up the dock steps aside (instead of riding up on top of the keyboard).
   useEffect(() => {
@@ -39,7 +100,7 @@ export function PhoneNav({ route, go }: { route: Route; go: (r: Route) => void }
       if (h > full) full = h
       // Rotating changes the full height too: only a big drop with a text field focused counts as the keyboard.
       const typing = !!document.activeElement?.closest('input, textarea, [contenteditable="true"]')
-      document.body.classList.toggle('kb-open', typing && h < full * 0.78)
+      document.body.classList.toggle('kb-open', hideTyping.current && typing && h < full * 0.78)
     }
     const onOrient = () => setTimeout(() => (full = window.innerHeight), 400)
     window.addEventListener('resize', onResize)
@@ -59,20 +120,21 @@ export function PhoneNav({ route, go }: { route: Route; go: (r: Route) => void }
   // What the compose button makes here.
   const subjectId = route.name === 'subject' ? route.id : null
   // It's on every screen, so the dock never changes width as you move around.
+  // (Settings → Phone can make it always a task, always a note, or turn it off.)
+  const noteBtn = { label: 'New note', icon: PenLine, run: () => void newNote(null, s).then((id) => go({ name: 'notes', noteId: id })) }
+  const taskBtn = { label: 'New task', icon: Plus, run: () => setNewTask(true) }
   const compose: { label: string; icon: typeof Plus; run: () => void } | null =
-    route.name === 'notes'
-      ? { label: 'New note', icon: PenLine, run: () => void newNote(null, s).then((id) => go({ name: 'notes', noteId: id })) }
-      : { label: 'New task', icon: Plus, run: () => setNewTask(true) }
+    s.phoneCompose === 'off' ? null : s.phoneCompose === 'note' ? noteBtn : s.phoneCompose === 'task' ? taskBtn : route.name === 'notes' ? noteBtn : taskBtn
 
   return (
     <>
-      {(timer.running || timer.remaining < timer.total) && route.name !== 'timer' && (
+      {s.phoneTimerPill && (timer.running || timer.remaining < timer.total) && route.name !== 'timer' && (
         <button className={`phone-timer ${timer.running ? 'live' : ''}`} onClick={() => go({ name: 'timer' })}>
           <Timer size={14} /> {phaseLabel(timer.phase)} <b className="num">{clock(timer.remaining)}</b>
         </button>
       )}
       <div className={`phone-dock ${compose ? '' : 'no-compose'}`}>
-        <nav className="phone-tabs" aria-label="Main">
+        <nav className="phone-tabs" aria-label="Main" style={{ gridTemplateColumns: `repeat(${tabs.length + 1}, minmax(0, 1fr))` }}>
           {tabs.map(([name, label, Icon, badge]) => (
             <button key={name} aria-current={route.name === name} onClick={() => pick({ name } as Route)}>
               <span className="phone-tab-icon">
@@ -111,9 +173,7 @@ export function PhoneNav({ route, go }: { route: Route; go: (r: Route) => void }
             <div className="ig" style={{ marginTop: 10 }}>
               {(
                 [
-                  ['groups', 'Group work', Users],
-                  ['timer', 'Focus timer', Timer],
-                  ['stats', 'Stats', BarChart3],
+                  ...moreScreens.map((id) => [id, id === 'timer' ? 'Focus timer' : SCREENS[id][0], SCREENS[id][1]]),
                   ['settings', user ? `Settings · @${user.username}` : 'Settings', SettingsIcon]
                 ] as [Route['name'], string, typeof Home][]
               ).map(([name, label, Icon]) => (

@@ -4,6 +4,11 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 0.2.6
+
+- **Updates arrive even if Veyra stays in the tray.** Closing the window keeps Veyra running, so it used to stay on an old version. Now it checks every few hours and whenever you open it, downloads new versions quietly, offers **Restart**, and installs the update when you close the window, coming back in the tray.
+- **Settings → Phone** (Android): choose the screens in the navigation bar and their order; names under icons always, for the current screen only, or never; a floating or docked bar; what the round button makes, or turn it off; hide the bar while typing; the running timer above the bar; large One UI titles; pure black dark mode; vibration on taps; keep the screen on while focusing; and the note formatting bar at the top or bottom.
+
 ## 0.2.5
 
 - **Group work on phones** is a list of your groups; tap one and it opens as its own page. The page stays still: only the tasks, messages or notes scroll, and the message box stays put above the navigation.

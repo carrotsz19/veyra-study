@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, sh
 import iconPath from '../../resources/icon.png?asset'
 import trayPath from '../../resources/tray@2x.png?asset'
 import { Reminders } from './reminders'
-import { checkNow, downloadNow, installNow, updateAtStart, updateState } from './updater'
+import { checkNow, downloadNow, installNow, installReady, keepUpToDate, lookForUpdate, takeHiddenFlag, updateAtStart, updateState } from './updater'
 import { withDefaults } from '../shared/settings'
 import { release } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -31,7 +31,11 @@ else app.setPath('userData', join(app.getPath('appData'), 'veyra-study'))
 
 // One Veyra at a time: opening it again shows the one already running (in the tray, say).
 if (!app.requestSingleInstanceLock()) app.quit()
-app.on('second-instance', () => showWindow())
+// Opening Veyra again (Start menu, taskbar): install a downloaded update first if there is one.
+app.on('second-instance', () => {
+  if (installReady(false)) return
+  showWindow()
+})
 // Packaged builds have a Start menu shortcut with this id, which Windows needs for notifications.
 if (app.isPackaged && process.platform === 'win32') app.setAppUserModelId('app.veyra.study')
 
@@ -56,6 +60,8 @@ function showWindow(screen?: string): void {
   w.show()
   w.focus()
   if (screen) w.webContents.send('app:nav', screen)
+  // Back from the tray: a good moment to look for an update (at most every half hour).
+  void lookForUpdate()
 }
 
 // Attachments are shown through veyra-file:// (registered before the app is ready).
@@ -175,13 +181,16 @@ function createWindow(): void {
 
   mainWin = win
   // Started with Windows: wait in the tray until asked for.
-  const hidden = process.argv.includes('--hidden') && !process.env['VEYRA_SCREENSHOT']
+  // (or an update was installed while the window was closed: come back the same way)
+  const hidden = (process.argv.includes('--hidden') || takeHiddenFlag()) && !process.env['VEYRA_SCREENSHOT']
   win.once('ready-to-show', () => !hidden && win.show())
   // Closing keeps Veyra in the tray (Settings → Tasks → Reminders), so reminders still come.
   win.on('close', (e) => {
     if (quitting || process.env['VEYRA_SCREENSHOT'] || !tray || !appSettings().keepInTray) return
     e.preventDefault()
     win.hide()
+    // An update is downloaded: install it now, while nobody is looking, and come back in the tray.
+    installReady(true)
   })
   win.on('closed', () => {
     if (mainWin === win) mainWin = null
@@ -445,6 +454,7 @@ app.whenReady().then(async () => {
   if ((await updateAtStart(appSettings().checkUpdatesAtStart).catch(() => 'open' as const)) === 'installing') return
   createWindow()
   startingUp = false
+  keepUpToDate(() => appSettings().checkUpdatesAtStart)
   if (!process.env['VEYRA_SCREENSHOT']) {
     tray = new Tray(nativeImage.createFromPath(trayPath).resize({ width: 16, height: 16 }))
     tray.setToolTip('Veyra Study')
