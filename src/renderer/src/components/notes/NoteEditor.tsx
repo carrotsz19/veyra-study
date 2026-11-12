@@ -26,6 +26,7 @@ import { noteToMarkdown } from './markdown'
 import { useSettings } from '../../data/settings'
 import { registerOpenNote, trashNotes } from '../../lib/notes'
 import { Select } from '../Select'
+import { Spelling } from './spelling'
 
 export const NOTE_COVERS: Record<string, string> = {
   clay: 'linear-gradient(120deg,#e9b9a4,#d9825f 55%,#b3492b)',
@@ -169,11 +170,13 @@ export function Area({
 }) {
   const { s } = useSettings()
   const useSlash = slash && s.noteToolbar !== 'bar'
+  // Computer: Veyra's own spell check (underlines and right-click fixes). Phone: the keyboard's.
+  const ownSpelling = s.spellcheck && !onAndroid()
   const editor = useEditor(
     {
-      extensions: noteExtensions(useSlash ? `${placeholder} Type / for blocks.` : placeholder, useSlash, attach),
+      extensions: [...noteExtensions(useSlash ? `${placeholder} Type / for blocks.` : placeholder, useSlash, attach), ...(ownSpelling ? [Spelling] : [])],
       content: (content as object) ?? '',
-      editorProps: { attributes: { class: `tiptap ${className ?? ''}`, spellcheck: s.spellcheck ? 'true' : 'false' } },
+      editorProps: { attributes: { class: `tiptap ${className ?? ''}`, spellcheck: s.spellcheck && !ownSpelling ? 'true' : 'false' } },
       onUpdate: ({ editor: e }) => onChange(e.getJSON(), e.getText()),
       onFocus: ({ editor: e }) => onActive?.(e),
       onCreate: ({ editor: e }) => onReady?.(e)

@@ -157,7 +157,7 @@ const appApi: Veyra['app'] = {
     if (r.imported) {
       online.sync.schedule()
       reminders.schedule()
-      emitExternal(['subject', 'task', 'note', 'session', 'settings'], [])
+      emitExternal(['subject', 'task', 'note', 'session', 'settings', 'folder'], [])
     }
     return r
   },

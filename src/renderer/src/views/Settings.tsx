@@ -20,6 +20,8 @@ import { LocalAiSetup } from '../components/LocalAiSetup'
 import { db, useRecords } from '../data/store'
 import { sortSubjects } from '../lib/subjects'
 import { SubjectDialog } from '../components/editors'
+import { FolderNameDialog } from '../components/FolderDialogs'
+import { deleteFolder, newFolder, renameFolder, useFolders } from '../lib/folders'
 import type { AiProvider, AiState, Rec, UpdateState } from '@shared/types'
 import { Select as Dropdown } from '../components/Select'
 import { TimeField } from '../components/DateTime'
@@ -657,6 +659,20 @@ function Subjects() {
   const [confirm, setConfirm] = useState<string | null>(null)
   const active = sortSubjects(subjects.filter((x) => !x.data.archived))
   const archived = sortSubjects(subjects.filter((x) => x.data.archived))
+  const folders = useFolders('subject')
+  const [folderDialog, setFolderDialog] = useState<{ mode: 'new' } | { mode: 'rename'; folder: Rec<'folder'> } | null>(null)
+  const folderName = (x: Rec<'subject'>) => folders.find((f) => f.id === x.data.folderId)?.data.name
+  const moveFolder = (i: number, d: -1 | 1) => {
+    const next = [...folders]
+    const j = i + d
+    if (j < 0 || j >= next.length) return
+    ;[next[i], next[j]] = [next[j], next[i]]
+    next.forEach((f, n) => f.data.order !== n && db.put('folder', { ...f.data, order: n }, f.id))
+  }
+  const dropFolder = async (f: Rec<'folder'>) => {
+    const undo = await deleteFolder(f)
+    toast(`Deleted the folder ${f.data.name}. Its subjects are still here.`, { label: 'Undo', run: () => void undo() })
+  }
 
   const reorder = (list: Rec<'subject'>[], i: number, d: -1 | 1) => {
     const next = [...list]
@@ -689,7 +705,7 @@ function Subjects() {
   }
 
   const row = (x: Rec<'subject'>, i: number, list: Rec<'subject'>[]) => (
-    <Row key={x.id} label={x.data.name} hint={counts(x.id)} keywords="subject course class colour order archive delete">
+    <Row key={x.id} label={x.data.name} hint={folderName(x) ? `${folderName(x)} · ${counts(x.id)}` : counts(x.id)} keywords="subject course class colour order archive delete folder">
       <div className="row" style={{ gap: 4 }}>
         <span style={{ width: 12, height: 12, borderRadius: 9, background: x.data.color, marginRight: 6 }} />
         {!x.data.archived && (
@@ -742,6 +758,40 @@ function Subjects() {
           </button>
         </Row>
       </Group>
+      <Group title="Folders" footer="Folders group subjects in the sidebar, and fold away when you click them. Put a subject in a folder from its Edit. Deleting a folder keeps its subjects.">
+        {folders.map((f, i) => (
+          <Row key={f.id} label={f.data.name} hint={`${active.filter((x) => x.data.folderId === f.id).length} subjects`} keywords="folder group subjects sidebar">
+            <div className="row" style={{ gap: 4 }}>
+              <button className="iconbtn plain" aria-label={`Move ${f.data.name} up`} disabled={i === 0} onClick={() => moveFolder(i, -1)}>
+                <ArrowUp size={15} />
+              </button>
+              <button className="iconbtn plain" aria-label={`Move ${f.data.name} down`} disabled={i === folders.length - 1} onClick={() => moveFolder(i, 1)}>
+                <ArrowDown size={15} />
+              </button>
+              <button className="btn ghost sm" onClick={() => setFolderDialog({ mode: 'rename', folder: f })}>
+                Rename
+              </button>
+              <button className="iconbtn plain" aria-label={`Delete ${f.data.name}`} title="Delete folder (keeps its subjects)" onClick={() => dropFolder(f)}>
+                <Trash2 size={15} />
+              </button>
+            </div>
+          </Row>
+        ))}
+        <Row label="Add a folder" keywords="new folder group">
+          <button className="btn sm sec" onClick={() => setFolderDialog({ mode: 'new' })}>
+            <Plus size={14} /> New folder
+          </button>
+        </Row>
+      </Group>
+      {folderDialog && (
+        <FolderNameDialog
+          title={folderDialog.mode === 'new' ? 'New folder' : 'Rename folder'}
+          action={folderDialog.mode === 'new' ? 'Create' : 'Rename'}
+          initial={folderDialog.mode === 'rename' ? folderDialog.folder.data.name : ''}
+          onClose={() => setFolderDialog(null)}
+          onSave={(name) => void (folderDialog.mode === 'new' ? newFolder('subject', name) : renameFolder(folderDialog.folder, name))}
+        />
+      )}
       {archived.length > 0 && (
         <Group title="Archived" footer="Archived subjects are hidden from the sidebar and Today, with their tasks. Unarchive to bring them back.">
           {archived.map((x, i) => row(x, i, archived))}

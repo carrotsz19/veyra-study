@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Archive, ArchiveRestore, ArrowUpDown, CheckSquare, ChevronLeft, Copy, Download, FileText, FolderInput, HardDrive, NotebookPen, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, X
+  Archive, ArchiveRestore, ArrowUpDown, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, FileText, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, HardDrive, MoreHorizontal, NotebookPen, Pencil, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, X
 } from 'lucide-react'
+import { deleteFolder, newFolder, renameFolder, useFolders } from '../lib/folders'
+import { FolderNameDialog, FolderPickDialog } from '../components/FolderDialogs'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, onExternalChange, useRecords } from '../data/store'
 import { Dialog, Empty, useToast } from '../components/ui'
@@ -16,10 +18,10 @@ import { cleanError, importFromDrive, useDrive } from '../data/drive'
 import { TRASH_DAYS, daysLeft, deleteForever, emptyOldTrash, restoreNotes, scoreNote, searchTerms, snippet, trashNotes } from '../lib/notes'
 
 /** A new note, starting from the defaults in Settings → Notes. */
-export async function newNote(subjectId: string | null, d?: { noteTemplate: NoteTemplate; noteFont: NoteFont; noteCover: string }): Promise<string> {
+export async function newNote(subjectId: string | null, d?: { noteTemplate: NoteTemplate; noteFont: NoteFont; noteCover: string }, folderId?: string | null): Promise<string> {
   const covers = Object.keys(NOTE_COVERS)
   const cover = !d || d.noteCover === 'none' ? null : d.noteCover === 'random' ? covers[Math.floor(Math.random() * covers.length)] : d.noteCover
-  const rec = await db.put('note', { title: '', subjectId, content: null, excerpt: '', template: d?.noteTemplate, font: d?.noteFont, cover })
+  const rec = await db.put('note', { title: '', subjectId, folderId: folderId ?? null, content: null, excerpt: '', template: d?.noteTemplate, font: d?.noteFont, cover })
   return rec.id
 }
 
@@ -91,15 +93,32 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   const [moving, setMoving] = useState(false)
   const [focus, setFocus] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+  // Folders: the open one (none: the top level, with the folders listed first).
+  const folders = useFolders('note')
+  const [folderId, setFolderId] = useState<string | null>(null)
+  const folder = folders.find((f) => f.id === folderId) ?? null
+  const [folderDialog, setFolderDialog] = useState<{ mode: 'new' } | { mode: 'rename'; folder: Rec<'folder'> } | null>(null)
+  const [moveTo, setMoveTo] = useState<Rec<'note'>[] | null>(null)
+  const [folderCtx, setFolderCtx] = useState<{ x: number; y: number; folder: Rec<'folder'> } | null>(null)
+  const [dropOn, setDropOn] = useState<string | null>(null)
 
   useEffect(() => setSelected(noteId), [noteId])
 
   const query = q.trim().toLowerCase()
   const terms = useMemo(() => searchTerms(query), [query])
   const inView = view === 'trash' ? trash : notes.filter((n) => (view === 'archived' ? !!n.data.archived : !n.data.archived))
+  // The folder a note is in (none if it was in one that's gone).
+  const folderOf = (n: Rec<'note'>) => (n.data.folderId && folders.some((f) => f.id === n.data.folderId) ? n.data.folderId : null)
+  // Searching or filtering looks through every folder; otherwise you're in one folder (or the top level).
+  const filtering = !!terms.length || !!tag || (!!subjectId && subjectId !== subjectFilter)
+  const browsing = view === 'notes' && !filtering
+  const folderCount = (id: string) => inView.filter((n) => folderOf(n) === id && (!subjectId || n.data.subjectId === subjectId)).length
+  // On a subject's page, only the folders that hold its notes.
+  const folderRows = browsing && !folder ? folders.filter((f) => !subjectFilter || folderCount(f.id) > 0) : []
   const allTags = useMemo(() => [...new Set(inView.flatMap((n) => n.data.tags ?? []))].sort(), [inView])
   const shown = inView
     .filter((n) => !subjectId || n.data.subjectId === subjectId)
+    .filter((n) => !browsing || folderOf(n) === (folder?.id ?? null))
     .filter((n) => !tag || (n.data.tags ?? []).includes(tag))
     // Search looks through every word of every note (title, text, Cornell cues and summary, tags).
     .filter((n) => !terms.length || scoreNote(n, terms) > 0)
@@ -133,7 +152,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   }, [focus])
 
   const create = async () => {
-    const id = await newNote(subjectId, settings)
+    const id = await newNote(subjectId, settings, browsing ? folder?.id : null)
     if (view !== 'notes') setView('notes')
     setSelected(id)
     if (!subjectFilter) go({ name: 'notes', noteId: id })
@@ -215,6 +234,44 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     setForever(null)
   }
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+  /* ---------- folders ---------- */
+  const moveToFolder = (list: Rec<'note'>[], id: string | null, name: string) => {
+    const changing = list.filter((n) => folderOf(n) !== id)
+    if (!changing.length) return
+    patchMany(changing, { folderId: id }, id ? `Moved ${plural(changing.length, 'note')} to ${name}` : `Took ${plural(changing.length, 'note')} out of the folder`)
+  }
+  const removeFolder = async (f: Rec<'folder'>) => {
+    if (folderId === f.id) openFolder(null)
+    const undo = await deleteFolder(f)
+    toast(`Deleted the folder ${f.data.name}. Its notes are still here.`, { label: 'Undo', run: () => void undo() })
+  }
+  const openFolder = (id: string | null) => {
+    const go = () => {
+      setFolderId(id)
+      clearPick()
+    }
+    // On a phone a folder slides in like a page.
+    if (phone) transition(go, id ? 'push' : 'pop')
+    else go()
+  }
+  // Dragging notes onto a folder (desktop): the picked notes if the dragged one is picked, else just it.
+  const dragNotes = useRef<Rec<'note'>[]>([])
+  const dropProps = (id: string | null, name: string) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!dragNotes.current.length) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      setDropOn(id ?? 'root')
+    },
+    onDragLeave: () => setDropOn(null),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault()
+      setDropOn(null)
+      if (dragNotes.current.length) moveToFolder(dragNotes.current, id, name)
+      dragNotes.current = []
+    }
+  })
 
   const bulk = {
     pin: () => {
@@ -324,11 +381,42 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             <div className="np-head">
               <div className="np-titlebar">
                 <div className="grow" style={{ minWidth: 0 }}>
-                  {subjectFilter ? <h2 className="np-title sm-title">Notes</h2> : <h1 className="np-title">Notes</h1>}
+                  {browsing && folder && (
+                    <button className={`np-back ${dropOn === 'root' ? 'drop' : ''}`} onClick={() => openFolder(null)} {...dropProps(null, '')}>
+                      <ChevronLeft size={15} /> Notes
+                    </button>
+                  )}
+                  {browsing && folder ? (
+                    subjectFilter ? <h2 className="np-title sm-title trunc">{folder.data.name}</h2> : <h1 className="np-title trunc">{folder.data.name}</h1>
+                  ) : subjectFilter ? (
+                    <h2 className="np-title sm-title">Notes</h2>
+                  ) : (
+                    <h1 className="np-title">Notes</h1>
+                  )}
                   <div className="np-count">
-                    {plural(notes.filter((n) => !n.data.archived && (!subjectFilter || n.data.subjectId === subjectFilter)).length, 'note')}
+                    {browsing && folder
+                      ? plural(folderCount(folder.id), 'note')
+                      : plural(notes.filter((n) => !n.data.archived && (!subjectFilter || n.data.subjectId === subjectFilter)).length, 'note')}
                   </div>
                 </div>
+                {browsing && folder && (
+                  <button
+                    className="iconbtn plain"
+                    title="Rename or delete this folder"
+                    aria-label="Folder options"
+                    onClick={(e) => {
+                      const r = e.currentTarget.getBoundingClientRect()
+                      setFolderCtx({ x: r.left, y: r.bottom + 4, folder })
+                    }}
+                  >
+                    <MoreHorizontal size={17} />
+                  </button>
+                )}
+                {view === 'notes' && !folder && (
+                  <button className="iconbtn plain" onClick={() => setFolderDialog({ mode: 'new' })} title="New folder" aria-label="New folder">
+                    <FolderPlus size={17} />
+                  </button>
+                )}
                 <button
                   className={`iconbtn plain ${selecting ? 'on' : ''}`}
                   aria-pressed={selecting}
@@ -430,6 +518,30 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             </div>
 
             <div className="np-scroll">
+              {folderRows.length > 0 && (
+                <section className="np-section">
+                  <h3 className="np-section-title">Folders</h3>
+                  <div className="np-group">
+                    {folderRows.map((f) => (
+                      <button
+                        key={f.id}
+                        className={`np-row np-folder ${dropOn === f.id ? 'drop' : ''}`}
+                        onClick={() => openFolder(f.id)}
+                        onContextMenu={(e) => {
+                          e.preventDefault()
+                          setFolderCtx({ x: e.clientX, y: e.clientY, folder: f })
+                        }}
+                        {...dropProps(f.id, f.data.name)}
+                      >
+                        {dropOn === f.id ? <FolderOpen size={18} className="np-folder-icon" /> : <FolderIcon size={18} className="np-folder-icon" />}
+                        <span className="grow trunc np-folder-name">{f.data.name}</span>
+                        <span className="np-folder-count">{folderCount(f.id)}</span>
+                        <ChevronRight size={15} className="tert" />
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
               {sections.map(([name, list]) => (
                 <section key={name} className="np-section">
                   {!(sections.length === 1 && name === 'Notes') && <h3 className="np-section-title">{name}</h3>}
@@ -450,6 +562,16 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                             e.preventDefault()
                             setCtx({ x: e.clientX, y: e.clientY, id: n.id })
                           }}
+                          draggable={!phone && view === 'notes'}
+                          onDragStart={(e) => {
+                            dragNotes.current = isPicked ? pickedNotes : [n]
+                            e.dataTransfer.effectAllowed = 'move'
+                            e.dataTransfer.setData('text/plain', n.data.title || 'Untitled')
+                          }}
+                          onDragEnd={() => {
+                            dragNotes.current = []
+                            setDropOn(null)
+                          }}
                         >
                           {selecting && <span className="pick">{isPicked ? <CheckSquare size={17} /> : <Square size={17} />}</span>}
                           <span className="np-row-body">
@@ -462,8 +584,14 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                               <span className="np-row-date">{view === 'trash' ? `${daysLeft(n)}d left` : shortDate(stampOf(n), hour12)}</span>
                               {text ? terms.length ? <Marked text={text} terms={terms} /> : text : <span className="tert">No additional text</span>}
                             </span>
-                            {(s || (n.data.tags ?? []).length > 0) && (
+                            {(s || (n.data.tags ?? []).length > 0 || (!browsing && folderOf(n))) && (
                               <span className="np-row-meta">
+                                {!browsing && folderOf(n) && (
+                                  <span className="np-row-subject">
+                                    <FolderIcon size={11} />
+                                    {folders.find((f) => f.id === folderOf(n))?.data.name}
+                                  </span>
+                                )}
                                 {s && !subjectFilter && (
                                   <span className="np-row-subject">
                                     <i style={{ background: s.data.color }} />
@@ -488,8 +616,10 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                 <div className="np-empty">
                   <NotebookPen size={22} />
                   <p>
-                    {query || tag || subjectId
+                    {filtering
                       ? 'No notes match.'
+                      : browsing && folder
+                        ? 'This folder is empty. Make a note here, or drag notes onto it.'
                       : view === 'trash'
                         ? `The trash is empty. Deleted notes wait here for ${TRASH_DAYS} days.`
                         : view === 'archived'
@@ -550,6 +680,9 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                   </div>
                 )}
               </span>
+              <button className="btn sec" onClick={() => setMoveTo(pickedNotes)}>
+                <FolderIcon size={15} /> Move to folder
+              </button>
               <button className="btn sec" onClick={bulk.export}>
                 <Download size={15} /> Export
               </button>
@@ -625,6 +758,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
           ] : [
             ['Open', <FileText size={15} key="o" />, () => setSelected(ctxNote.id)],
             [ctxNote.data.pinned ? 'Unpin' : 'Pin to top', ctxNote.data.pinned ? <PinOff size={15} key="p" /> : <Pin size={15} key="p" />, () => db.put('note', { ...ctxNote.data, pinned: !ctxNote.data.pinned }, ctxNote.id)],
+            ['Move to folder…', <FolderIcon size={15} key="f" />, () => setMoveTo([ctxNote])],
             ['Duplicate', <Copy size={15} key="d" />, async () => setSelected((await duplicateNote(ctxNote.data)).id)],
             ['Export as Markdown', <Download size={15} key="e" />, async () => (await exportNotes([ctxNote.data])) && toast('Note exported')],
             ['Select', <CheckSquare size={15} key="s" />, () => { setSelecting(true); setPicked(new Set([...picked, ctxNote.id])) }],
@@ -635,6 +769,37 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             ],
             ['Move to trash', <Trash2 size={15} key="x" />, () => deleteMany([ctxNote]), true]
           ]}
+        />
+      )}
+      {folderCtx && (
+        <RowMenu
+          x={folderCtx.x}
+          y={folderCtx.y}
+          onClose={() => setFolderCtx(null)}
+          items={[
+            ['Open', <FolderOpen size={15} key="o" />, () => openFolder(folderCtx.folder.id)],
+            ['Rename', <Pencil size={15} key="r" />, () => setFolderDialog({ mode: 'rename', folder: folderCtx.folder })],
+            ['Delete folder', <Trash2 size={15} key="x" />, () => removeFolder(folderCtx.folder), true]
+          ]}
+        />
+      )}
+      {folderDialog && (
+        <FolderNameDialog
+          title={folderDialog.mode === 'new' ? 'New folder' : 'Rename folder'}
+          action={folderDialog.mode === 'new' ? 'Create' : 'Rename'}
+          initial={folderDialog.mode === 'rename' ? folderDialog.folder.data.name : ''}
+          onClose={() => setFolderDialog(null)}
+          onSave={(name) => void (folderDialog.mode === 'new' ? newFolder('note', name) : renameFolder(folderDialog.folder, name))}
+        />
+      )}
+      {moveTo && (
+        <FolderPickDialog
+          scope="note"
+          folders={folders}
+          title={moveTo.length === 1 ? 'Move to folder' : `Move ${plural(moveTo.length, 'note')} to folder`}
+          current={new Set(moveTo.map(folderOf)).size === 1 ? folderOf(moveTo[0]) : undefined}
+          onPick={(id, name) => moveToFolder(moveTo, id, name)}
+          onClose={() => setMoveTo(null)}
         />
       )}
       {forever && (

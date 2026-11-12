@@ -4,6 +4,17 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## Unreleased (in Veyra Study Dev)
+
+- **Folders for notes:** group notes into folders; open one to see just its notes, and new notes start there. Move notes by dragging them onto a folder, from the right-click menu, or several at once. Searching still looks through everything.
+- **Folders for subjects:** group subjects in the sidebar (for example Sciences and Humanities); click a folder to fold it away. Pick a subject's folder in its Edit, and manage folders in Settings → Subjects.
+- **Spelling suggestions:** misspelled words in notes get a wavy red line; right-click one for fixes ("consilting" → "consulting") or to add it to your dictionary. British and American English, offline.
+- **Right-click menus in text:** Cut, Copy, Paste, Undo and Select all wherever you type.
+- **Updates come by themselves:** Veyra looks for an update every 10 minutes and when you come back to it, downloads it quietly, and shows "Restart to update" in the title bar.
+- **Window buttons:** Windows' own (the default, with Snap layouts) or Mac-style dots, in Settings → Appearance.
+- **Focus timer:** breaks and the next focus block now start by themselves (you can turn this off).
+- **Full screen** keeps the glass look without flickering.
+
 ## 1.0.0
 
 **Veyra Study 1.0.** Your tasks, notes, timetable and study time in one calm app, on Windows and Android, synced through your Veyra account.

@@ -4,7 +4,7 @@
  * merges them last-writer-wins on (updatedAt, deviceId). Deletes are
  * tombstones (deletedAt set) so they sync too.
  */
-export type Kind = 'subject' | 'task' | 'note' | 'session' | 'settings'
+export type Kind = 'subject' | 'task' | 'note' | 'session' | 'settings' | 'folder'
 
 export interface RecordMeta {
   id: string
@@ -15,9 +15,19 @@ export interface RecordMeta {
   deviceId: string
 }
 
+/** A folder of notes (Notes) or of subjects (the sidebar). One level: folders don't hold folders. */
+export interface Folder {
+  name: string
+  scope: 'note' | 'subject'
+  /** Position among folders of the same scope; lower comes first. */
+  order?: number
+}
+
 export interface Subject {
   name: string
   color: string
+  /** The sidebar folder it sits in (a 'subject' Folder), or none. */
+  folderId?: string | null
   archived?: boolean
   /** Position in the sidebar and lists (Settings → Subjects); lower comes first. */
   order?: number
@@ -66,6 +76,8 @@ export type NoteFont = 'sans' | 'serif' | 'mono'
 export interface Note {
   title: string
   subjectId: string | null
+  /** The folder it sits in (a 'note' Folder), or none. */
+  folderId?: string | null
   /** TipTap JSON document (the main notes area). */
   content: unknown
   /** Plain-text preview, kept for search and lists (includes cues and summary). */
@@ -104,6 +116,7 @@ export interface DataByKind {
   note: Note
   session: StudySession
   settings: Partial<import('./settings').AppSettings>
+  folder: Folder
 }
 
 export type Rec<K extends Kind = Kind> = RecordMeta & { kind: K; data: DataByKind[K] }

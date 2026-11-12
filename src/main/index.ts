@@ -22,7 +22,7 @@ import { DriveError, GoogleDrive } from './drive'
 import { Sync } from './sync'
 import { VoiceError, Whisper } from './whisper'
 import { McpServer, addToClient, clientConfigPath, clientHasVeyra, mcpEntry } from './mcp'
-import { setupMenus } from './popup'
+import { setupMenus, setupTextMenu } from './popup'
 
 // Dev checks: VEYRA_FAKE_MIC=1 records a test tone instead of the real microphone.
 if (process.env['VEYRA_FAKE_MIC']) app.commandLine.appendSwitch('use-fake-device-for-media-stream')
@@ -315,6 +315,8 @@ function createWindow(): void {
   loadPage(win, process.env['VEYRA_ROUTE'])
   // The title bar's menus open in a small acrylic window of their own (real blur behind them).
   if (ownTitleBar) setupMenus(win, loadPage, join(__dirname, '../preload/index.js'), materialSupported)
+  // Right-click in text: spelling suggestions, then Cut / Copy / Paste.
+  setupTextMenu(win)
 }
 
 /** Loads the app's page into a window (`hash` picks a screen, or "menu" for the menu window). */
@@ -537,7 +539,7 @@ app.whenReady().then(async () => {
       throw new ApiError('That file isn’t a Veyra Study backup.')
     }
     if (file?.app !== 'veyra-study' || !Array.isArray(file.records)) throw new ApiError('That file isn’t a Veyra Study backup.')
-    const kinds = new Set(['subject', 'task', 'note', 'session', 'settings'])
+    const kinds = new Set(['subject', 'task', 'note', 'session', 'settings', 'folder'])
     let n = 0
     for (const r of file.records) {
       if (!r || typeof r.id !== 'string' || !kinds.has(r.kind) || typeof r.data !== 'object') continue

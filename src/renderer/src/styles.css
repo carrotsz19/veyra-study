@@ -1042,3 +1042,17 @@ html.material.fs-glass body::after { inset: 0; background: rgba(243, 242, 239, 0
 html.material.fs-glass.dark body::after { background: rgba(30, 28, 24, 0.66); }
 html.material.fs-glass[data-material='mica'] body::after { background: rgba(243, 242, 239, 0.78); }
 html.material.fs-glass.dark[data-material='mica'] body::after { background: rgba(30, 28, 24, 0.8); }
+
+/* ---------- subject folders in the sidebar (components/SubjectNav.tsx) ---------- */
+.side-folder-head { color: var(--ink); }
+.side-folder-head .side-folder-chev { margin: 0 -4px 0 -4px; opacity: 0.55; transition: transform 0.28s var(--spring-snappy); }
+.side-folder.open .side-folder-chev { transform: rotate(90deg); }
+.side-folder-head.has-current { color: var(--accent); }
+/* Folding: the grid row animates from 0fr to 1fr, so the height follows the content. */
+.side-folder-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.32s var(--spring-snappy); }
+.side-folder.open .side-folder-body { grid-template-rows: 1fr; }
+.side-folder-body > div { overflow: hidden; min-height: 0; }
+.navbtn.nested { padding-left: 30px; }
+.side-icons .side-folder-chev { display: none; }
+.side-icons .navbtn.nested { padding-left: 0; }
+@media (prefers-reduced-motion: reduce) { .side-folder-body, .side-folder-chev { transition: none !important; } }

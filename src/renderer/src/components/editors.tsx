@@ -9,6 +9,8 @@ import { useSettings } from '../data/settings'
 import { Dialog, Seg, useToast } from './ui'
 import { Select } from './Select'
 import { DateField, DateTimeField } from './DateTime'
+import { newFolder, useFolders } from '../lib/folders'
+import { FolderNameDialog } from './FolderDialogs'
 
 export function SubjectSelect({ value, onChange, noneLabel = 'No subject', className }: { value: string | null; onChange: (id: string | null) => void; noneLabel?: string; className?: string }) {
   const { items: subjects } = useRecords('subject')
@@ -150,6 +152,20 @@ export function TaskDialog({
 
 export function SubjectDialog({ subject, onClose, onSaved }: { subject?: Rec<'subject'>; onClose: () => void; onSaved?: (id: string) => void }) {
   const [s, setS] = useState<Subject>(subject ? subject.data : { name: '', color: SUBJECT_COLORS[0] })
+  const folders = useFolders('subject')
+  const [namingFolder, setNamingFolder] = useState(false)
+  if (namingFolder)
+    return (
+      <FolderNameDialog
+        title="New folder"
+        action="Create"
+        onClose={() => setNamingFolder(false)}
+        onSave={async (name) => {
+          const f = await newFolder('subject', name)
+          setS((cur) => ({ ...cur, folderId: f.id }))
+        }}
+      />
+    )
   const save = async () => {
     if (!s.name.trim()) return
     const rec = await db.put('subject', { ...s, name: s.name.trim() }, subject?.id)
@@ -167,6 +183,15 @@ export function SubjectDialog({ subject, onClose, onSaved }: { subject?: Rec<'su
         <div className="field">
           <label className="field-label" htmlFor="subj-name">Name</label>
           <input id="subj-name" autoFocus value={s.name} placeholder="Biology" onChange={(e) => setS({ ...s, name: e.target.value })} />
+        </div>
+        <div className="field">
+          <label className="field-label">Folder</label>
+          <Select
+            label="Folder"
+            value={s.folderId && folders.some((f) => f.id === s.folderId) ? s.folderId : ''}
+            onChange={(v) => (v === '__new' ? setNamingFolder(true) : setS({ ...s, folderId: v || null }))}
+            options={[{ value: '', label: 'No folder' }, ...folders.map((f) => ({ value: f.id, label: f.data.name })), { value: '__new', label: 'New folder…' }]}
+          />
         </div>
         <div className="field">
           <label className="field-label">Colour</label>

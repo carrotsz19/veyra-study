@@ -34,7 +34,7 @@ import { createGzip } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION = '1.3.0'
+const VERSION = '1.3.1'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -692,7 +692,7 @@ route('DELETE', '/admin/users/:username/block', ({ me, params }) => {
 })
 
 /* ---------- personal sync (only ever your own records) ---------- */
-const SYNC_KINDS = new Set(['subject', 'task', 'note', 'session'])
+const SYNC_KINDS = new Set(['subject', 'task', 'note', 'session', 'folder'])
 const SYNC_MAX_RECORD = 1_500_000
 const SYNC_MAX_ROWS = 100_000
 

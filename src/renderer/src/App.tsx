@@ -5,7 +5,6 @@ import { phaseLabel } from './components/timer'
 import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Monitor, Moon, NotebookPen, Plus, Search, Settings as SettingsIcon, Sun, Timer, Users } from 'lucide-react'
 import { useRecords } from './data/store'
 import { clock, isOverdue } from './lib/dates'
-import { sortSubjects } from './lib/subjects'
 import { NavCtx, useNav, type Route } from './nav'
 import { ToastProvider, useToast } from './components/ui'
 import { AccountGate, Avatar, useAccount } from './components/account'
@@ -32,6 +31,7 @@ import { startSegments } from './lib/segments'
 import { transition } from './lib/motion'
 import { IS_DEV } from '@shared/channel'
 import { BetaNotice } from './components/BetaNotice'
+import { SubjectNav } from './components/SubjectNav'
 
 startSegments()
 
@@ -101,14 +101,7 @@ function Sidebar({ route, go, onEnter, onLeave }: { route: Route; go: (r: Route)
         </button>
       </div>
       <nav aria-label="Subjects">
-        {sortSubjects(subjects)
-          .filter((s) => !s.data.archived)
-          .map((s) => (
-            <button key={s.id} className="navbtn" aria-current={route.name === 'subject' && route.id === s.id} onClick={() => go({ name: 'subject', id: s.id })} title={tip(s.data.name)} aria-label={s.data.name}>
-              <span className="dot" style={{ background: s.data.color }} />
-              <span className="trunc nav-label">{s.data.name}</span>
-            </button>
-          ))}
+        <SubjectNav subjects={subjects} route={route} go={go} tip={tip} />
         {!subjects.some((s) => !s.data.archived) && (
           <button className="navbtn dim" onClick={() => setAdding(true)} style={{ fontWeight: 500 }}>
             <Plus size={16} /> Add your first subject
