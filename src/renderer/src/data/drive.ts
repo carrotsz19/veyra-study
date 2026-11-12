@@ -88,7 +88,7 @@ export async function backupNow(): Promise<{ uploaded: number; removed: number }
     }
     const files = changes.map((r) => {
       const n = r.data as Note
-      return { id: r.id, name: n.title || 'Untitled', markdown: r.deletedAt ? '' : noteToMarkdown(n), updatedAt: r.updatedAt, deleted: !!r.deletedAt }
+      return { id: r.id, name: n.title || 'Untitled', markdown: r.deletedAt || n.trashedAt ? '' : noteToMarkdown(n), updatedAt: r.updatedAt, deleted: !!r.deletedAt || !!n.trashedAt }
     })
     const through = Math.max(...changes.map((r) => r.updatedAt))
     const r = await api.backup(files, through)

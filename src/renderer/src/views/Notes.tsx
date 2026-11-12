@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Archive, ArchiveRestore, ArrowUpDown, CheckSquare, ChevronLeft, Copy, Download, FileText, FolderInput, HardDrive, NotebookPen, Pin, PinOff, Plus, Search, Square, SquarePen, Trash2, X
+  Archive, ArchiveRestore, ArrowUpDown, CheckSquare, ChevronLeft, Copy, Download, FileText, FolderInput, HardDrive, NotebookPen, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, X
 } from 'lucide-react'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, onExternalChange, useRecords } from '../data/store'
-import { Empty, useToast } from '../components/ui'
+import { Dialog, Empty, useToast } from '../components/ui'
 import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../components/notes/NoteEditor'
 import { useSettings } from '../data/settings'
 import { preview, section, shortDate } from '../components/notes/listing'
 import { useNav } from '../nav'
 import { onAndroid, usePhone } from '../lib/phone'
 import { cleanError, importFromDrive, useDrive } from '../data/drive'
+import { TRASH_DAYS, daysLeft, deleteForever, emptyOldTrash, restoreNotes, scoreNote, searchTerms, snippet, trashNotes } from '../lib/notes'
 
 /** A new note, starting from the defaults in Settings → Notes. */
 export async function newNote(subjectId: string | null, d?: { noteTemplate: NoteTemplate; noteFont: NoteFont; noteCover: string }): Promise<string> {
@@ -20,7 +21,18 @@ export async function newNote(subjectId: string | null, d?: { noteTemplate: Note
   return rec.id
 }
 
-type View = 'notes' | 'archived'
+type View = 'notes' | 'archived' | 'trash'
+
+/** Text with the words you searched for marked. */
+export function Marked({ text, terms }: { text: string; terms: string[] }) {
+  if (!terms.length) return <>{text}</>
+  const re = new RegExp(`(${terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
+  return (
+    <>
+      {text.split(re).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part))}
+    </>
+  )
+}
 
 /** Right-click menu for one note. */
 function RowMenu({ x, y, items, onClose }: { x: number; y: number; items: [string, React.ReactNode, () => void, boolean?][]; onClose: () => void }) {
@@ -55,7 +67,12 @@ function RowMenu({ x, y, items, onClose }: { x: number; y: number; items: [strin
 }
 
 export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilter?: string }) {
-  const { items: notes, loaded } = useRecords('note')
+  const { items: everyNote, loaded } = useRecords('note')
+  // Notes in the trash only show under Trash.
+  const notes = useMemo(() => everyNote.filter((n) => !n.data.trashedAt), [everyNote])
+  const trash = useMemo(() => everyNote.filter((n) => n.data.trashedAt), [everyNote])
+  // Notes in the trash for over 30 days go for good.
+  useEffect(() => void emptyOldTrash(), [])
   const { items: subjects } = useRecords('subject')
   const { go } = useNav()
   const toast = useToast()
@@ -76,26 +93,23 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   useEffect(() => setSelected(noteId), [noteId])
 
   const query = q.trim().toLowerCase()
-  const inView = notes.filter((n) => (view === 'archived' ? !!n.data.archived : !n.data.archived))
+  const terms = useMemo(() => searchTerms(query), [query])
+  const inView = view === 'trash' ? trash : notes.filter((n) => (view === 'archived' ? !!n.data.archived : !n.data.archived))
   const allTags = useMemo(() => [...new Set(inView.flatMap((n) => n.data.tags ?? []))].sort(), [inView])
   const shown = inView
     .filter((n) => !subjectId || n.data.subjectId === subjectId)
     .filter((n) => !tag || (n.data.tags ?? []).includes(tag))
-    .filter(
-      (n) =>
-        !query ||
-        n.data.title.toLowerCase().includes(query) ||
-        n.data.excerpt.toLowerCase().includes(query) ||
-        (n.data.tags ?? []).some((t) => t.includes(query.replace(/^#/, '')))
-    )
+    // Search looks through every word of every note (title, text, Cornell cues and summary, tags).
+    .filter((n) => !terms.length || scoreNote(n, terms) > 0)
     .sort((a, b) => {
+      if (view === 'trash') return (b.data.trashedAt ?? 0) - (a.data.trashedAt ?? 0)
       const pin = Number(!!b.data.pinned) - Number(!!a.data.pinned)
       if (pin) return pin
       if (settings.noteSort === 'title') return (a.data.title || 'Untitled').localeCompare(b.data.title || 'Untitled')
       if (settings.noteSort === 'created') return b.createdAt - a.createdAt
       return b.updatedAt - a.updatedAt
     })
-  const current = notes.find((n) => n.id === selected)
+  const current = everyNote.find((n) => n.id === selected)
   const currentStamp = current?.updatedAt
   useEffect(() => {
     if (!remotePending.current) return
@@ -118,7 +132,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
 
   const create = async () => {
     const id = await newNote(subjectId, settings)
-    if (view === 'archived') setView('notes')
+    if (view !== 'notes') setView('notes')
     setSelected(id)
     if (!subjectFilter) go({ name: 'notes', noteId: id })
   }
@@ -145,7 +159,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     try {
       const ids = await importFromDrive(subjectId)
       if (ids.length) {
-        if (view === 'archived') setView('notes')
+        if (view !== 'notes') setView('notes')
         setSelected(ids[0])
         if (!subjectFilter) go({ name: 'notes', noteId: ids[0] })
         toast(ids.length === 1 ? 'Brought in from Google Drive' : `${ids.length} notes brought in from Google Drive`)
@@ -161,7 +175,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     setView(v)
     clearPick()
     // Don't leave a note open that isn't in the list you're looking at.
-    if (current && !!current.data.archived !== (v === 'archived')) setSelected(undefined)
+    if (current && (!!current.data.trashedAt !== (v === 'trash') || (v !== 'trash' && !!current.data.archived !== (v === 'archived')))) setSelected(undefined)
   }
 
   const clearPick = () => {
@@ -176,11 +190,27 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     for (const n of list) await db.put('note', { ...n.data, ...patch }, n.id)
     toast(message, { label: 'Undo', run: () => before.forEach(([id, data]) => db.put('note', data, id)) })
   }
+  // Deleting moves notes to the trash; from the trash it's for good.
   const deleteMany = async (list: Rec<'note'>[]) => {
-    const before = list.map((n) => [n.id, n.data] as const)
-    for (const n of list) await db.remove('note', n.id)
     if (list.some((n) => n.id === selected)) setSelected(undefined)
-    toast(list.length === 1 ? 'Note deleted' : `${list.length} notes deleted`, { label: 'Undo', run: () => before.forEach(([id, data]) => db.put('note', data, id)) })
+    if (view === 'trash' || list.every((n) => n.data.trashedAt)) return setForever(list)
+    const undo = await trashNotes(list)
+    toast(list.length === 1 ? 'Moved to the trash' : `${list.length} notes moved to the trash`, { label: 'Undo', run: undo })
+  }
+  const restoreMany = async (list: Rec<'note'>[]) => {
+    await restoreNotes(list)
+    toast(list.length === 1 ? 'Note restored' : `${list.length} notes restored`, { label: 'Open', run: () => {
+      setView(list[0].data.archived ? 'archived' : 'notes')
+      setSelected(list[0].id)
+    } })
+  }
+  // Notes waiting for "Delete for good" to be confirmed.
+  const [forever, setForever] = useState<Rec<'note'>[] | null>(null)
+  const reallyDelete = async () => {
+    if (!forever) return
+    await deleteForever(forever)
+    toast(forever.length === 1 ? 'Deleted for good' : `${forever.length} notes deleted for good`)
+    setForever(null)
   }
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
@@ -206,6 +236,10 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     },
     remove: () => {
       deleteMany(pickedNotes)
+      clearPick()
+    },
+    restore: () => {
+      restoreMany(pickedNotes)
       clearPick()
     }
   }
@@ -264,7 +298,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   const stampOf = (n: Rec<'note'>) => (settings.noteSort === 'created' ? n.createdAt : n.updatedAt)
   const sections: [string, Rec<'note'>[]][] = []
   for (const n of shown) {
-    const name = n.data.pinned ? 'Pinned' : settings.noteSort === 'title' ? 'Notes' : section(stampOf(n))
+    const name = view === 'trash' ? 'Notes' : n.data.pinned ? 'Pinned' : settings.noteSort === 'title' ? 'Notes' : section(stampOf(n))
     const last = sections[sections.length - 1]
     if (last && last[0] === name) last[1].push(n)
     else sections.push([name, [n]])
@@ -350,8 +384,20 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                   <button role="tab" aria-selected={view === 'archived'} onClick={() => switchView('archived')}>
                     Archived{archivedCount ? ` ${archivedCount}` : ''}
                   </button>
+                  {(trash.length > 0 || view === 'trash') && !subjectFilter && (
+                    <button role="tab" aria-selected={view === 'trash'} onClick={() => switchView('trash')}>
+                      Trash{trash.length ? ` ${trash.length}` : ''}
+                    </button>
+                  )}
                 </div>
                 <span className="grow" />
+                {view === 'trash' ? (
+                  trash.length > 0 && (
+                    <button className="linkbtn xs danger-link" onClick={() => setForever(trash)}>
+                      Empty trash
+                    </button>
+                  )
+                ) : (
                 <label className="np-sort">
                   <ArrowUpDown size={13} aria-hidden="true" />
                   <select aria-label="Sort notes" value={settings.noteSort} onChange={(e) => setSetting({ noteSort: e.target.value as typeof settings.noteSort })}>
@@ -360,6 +406,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                     <option value="title">A–Z</option>
                   </select>
                 </label>
+                )}
               </div>
 
               {selecting && (
@@ -380,7 +427,8 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                     {list.map((n) => {
                       const s = subjects.find((x) => x.id === n.data.subjectId)
                       const isPicked = picked.has(n.id)
-                      const text = preview(n.data.title, n.data.excerpt)
+                      const found = terms.length ? snippet(n, terms) : null
+                      const text = found ?? preview(n.data.title, n.data.excerpt)
                       return (
                         <button
                           key={n.id}
@@ -397,12 +445,12 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                           <span className="np-row-body">
                             <span className="np-row-title">
                               {n.data.icon && <span className="np-row-emoji">{n.data.icon}</span>}
-                              <span className="trunc">{n.data.title || 'Untitled'}</span>
+                              <span className="trunc">{terms.length ? <Marked text={n.data.title || 'Untitled'} terms={terms} /> : n.data.title || 'Untitled'}</span>
                               {n.data.pinned && name !== 'Pinned' && <Pin size={11} className="tert" />}
                             </span>
                             <span className="np-row-text">
-                              <span className="np-row-date">{shortDate(stampOf(n), hour12)}</span>
-                              {text || <span className="tert">No additional text</span>}
+                              <span className="np-row-date">{view === 'trash' ? `${daysLeft(n)}d left` : shortDate(stampOf(n), hour12)}</span>
+                              {text ? terms.length ? <Marked text={text} terms={terms} /> : text : <span className="tert">No additional text</span>}
                             </span>
                             {(s || (n.data.tags ?? []).length > 0) && (
                               <span className="np-row-meta">
@@ -429,7 +477,15 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
               {loaded && !shown.length && (
                 <div className="np-empty">
                   <NotebookPen size={22} />
-                  <p>{query || tag || subjectId ? 'No notes match.' : view === 'archived' ? 'No archived notes. Archive a note from its ••• menu to tidy your list without deleting it.' : 'No notes yet.'}</p>
+                  <p>
+                    {query || tag || subjectId
+                      ? 'No notes match.'
+                      : view === 'trash'
+                        ? `The trash is empty. Deleted notes wait here for ${TRASH_DAYS} days.`
+                        : view === 'archived'
+                          ? 'No archived notes. Archive a note from its ••• menu to tidy your list without deleting it.'
+                          : 'No notes yet.'}
+                  </p>
                   {view === 'notes' && !query && !tag && (
                     <button className="btn sec sm" onClick={create}>
                       <Plus size={14} /> New note
@@ -452,6 +508,17 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             )}
             <div className="bulk-count">{plural(picked.size, 'note')} selected</div>
             <div className="bulk-actions">
+              {view === 'trash' ? (
+                <>
+                  <button className="btn sec" onClick={bulk.restore}>
+                    <RotateCcw size={15} /> Restore
+                  </button>
+                  <button className="btn dan" onClick={bulk.remove}>
+                    <Trash2 size={15} /> Delete for good
+                  </button>
+                </>
+              ) : (
+              <>
               <button className="btn sec" onClick={bulk.pin}>
                 {pickedNotes.every((n) => n.data.pinned) ? <PinOff size={15} /> : <Pin size={15} />}
                 {pickedNotes.every((n) => n.data.pinned) ? 'Unpin' : 'Pin'}
@@ -482,12 +549,25 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
               <button className="btn dan" onClick={bulk.remove}>
                 <Trash2 size={15} /> Delete
               </button>
+              </>
+              )}
             </div>
             {!phone && (
               <p className="xs tert" style={{ marginTop: 14 }}>
-                Ctrl+A selects all · Delete removes the selection · Esc cancels. Every action can be undone.
+                {view === 'trash' ? 'Ctrl+A selects all · Esc cancels.' : 'Ctrl+A selects all · Delete moves the selection to the trash · Esc cancels. Every action can be undone.'}
               </p>
             )}
+          </div>
+        ) : current?.data.trashedAt ? (
+          <div className="note-pane">
+            {phone && (
+              <div className="np-appbar">
+                <button className="phone-back" onClick={() => setSelected(undefined)}>
+                  <ChevronLeft size={20} /> Trash
+                </button>
+              </div>
+            )}
+            <TrashedNote note={current} onRestore={() => restoreMany([current])} onDelete={() => deleteMany([current])} />
           </div>
         ) : current ? (
           <div className="note-pane">
@@ -511,7 +591,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
           <div className="note-pane note-empty">
             <Empty
               icon={NotebookPen}
-              title={view === 'archived' ? 'Pick an archived note' : 'Pick a note or start one'}
+              title={view === 'trash' ? 'Pick a note to restore it' : view === 'archived' ? 'Pick an archived note' : 'Pick a note or start one'}
               text="Notes save automatically as you type. Ctrl+N makes a new one."
               action={
                 <button className="btn" onClick={create}>
@@ -528,7 +608,11 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
           x={ctx.x}
           y={ctx.y}
           onClose={() => setCtx(null)}
-          items={[
+          items={ctxNote.data.trashedAt ? [
+            ['Restore', <RotateCcw size={15} key="r" />, () => restoreMany([ctxNote])],
+            ['Select', <CheckSquare size={15} key="s" />, () => { setSelecting(true); setPicked(new Set([...picked, ctxNote.id])) }],
+            ['Delete for good', <Trash2 size={15} key="x" />, () => deleteMany([ctxNote]), true]
+          ] : [
             ['Open', <FileText size={15} key="o" />, () => setSelected(ctxNote.id)],
             [ctxNote.data.pinned ? 'Unpin' : 'Pin to top', ctxNote.data.pinned ? <PinOff size={15} key="p" /> : <Pin size={15} key="p" />, () => db.put('note', { ...ctxNote.data, pinned: !ctxNote.data.pinned }, ctxNote.id)],
             ['Duplicate', <Copy size={15} key="d" />, async () => setSelected((await duplicateNote(ctxNote.data)).id)],
@@ -539,10 +623,53 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
               ctxNote.data.archived ? <ArchiveRestore size={15} key="a" /> : <Archive size={15} key="a" />,
               () => patchMany([ctxNote], { archived: !ctxNote.data.archived }, ctxNote.data.archived ? 'Note restored' : 'Note archived')
             ],
-            ['Delete', <Trash2 size={15} key="x" />, () => deleteMany([ctxNote]), true]
+            ['Move to trash', <Trash2 size={15} key="x" />, () => deleteMany([ctxNote]), true]
           ]}
         />
       )}
+      {forever && (
+        <Dialog title={forever.length === trash.length && forever.length > 1 ? 'Empty the trash?' : forever.length === 1 ? 'Delete this note for good?' : `Delete ${forever.length} notes for good?`} onClose={() => setForever(null)}>
+          <p className="dim" style={{ marginTop: 0 }}>
+            {forever.length === 1 ? `“${forever[0].data.title || 'Untitled'}” is removed` : `${forever.length} notes are removed`} from this device and your other devices. This can’t be undone.
+          </p>
+          <div className="actions">
+            <button className="btn sec" onClick={() => setForever(null)}>
+              Cancel
+            </button>
+            <button className="btn dan" autoFocus onClick={reallyDelete}>
+              Delete for good
+            </button>
+          </div>
+        </Dialog>
+      )}
+    </div>
+  )
+}
+
+/** A note in the trash: what it was, when it goes for good, and putting it back. */
+function TrashedNote({ note, onRestore, onDelete }: { note: Rec<'note'>; onRestore: () => void; onDelete: () => void }) {
+  const left = daysLeft(note)
+  const text = preview(note.data.title, note.data.excerpt)
+  return (
+    <div className="trashed-note">
+      <div className="trashed-banner">
+        <Trash2 size={16} />
+        <span className="grow">
+          In the trash. {left === 0 ? 'It’s removed for good today.' : `It’s removed for good in ${left} ${left === 1 ? 'day' : 'days'}.`}
+        </span>
+        <button className="btn sm" onClick={onRestore}>
+          <RotateCcw size={14} /> Restore
+        </button>
+        <button className="btn sm ghost" onClick={onDelete}>
+          Delete for good
+        </button>
+      </div>
+      <h1 className="trashed-title">
+        {note.data.icon && <span style={{ marginRight: 8 }}>{note.data.icon}</span>}
+        {note.data.title || 'Untitled'}
+      </h1>
+      <p className="trashed-text">{text || <span className="tert">This note was empty.</span>}</p>
+      <p className="xs tert">Restore it to read and edit the whole note.</p>
     </div>
   )
 }

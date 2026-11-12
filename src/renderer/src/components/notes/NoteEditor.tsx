@@ -24,6 +24,7 @@ import { AiPanel } from './AiPanel'
 import { parseBullets, parseCards, type AiTask } from '../../data/ai'
 import { noteToMarkdown } from './markdown'
 import { useSettings } from '../../data/settings'
+import { trashNotes } from '../../lib/notes'
 
 export const NOTE_COVERS: Record<string, string> = {
   clay: 'linear-gradient(120deg,#e9b9a4,#d9825f 55%,#b3492b)',
@@ -290,7 +291,7 @@ function PageMenu({
         {data.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />} {data.archived ? 'Unarchive' : 'Archive'}
       </button>
       <button className="menu-row danger" onClick={onDelete}>
-        <Trash2 size={15} /> Delete note
+        <Trash2 size={15} /> Move to trash
       </button>
     </div>
   )
@@ -372,7 +373,7 @@ function Tags({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => v
 
 /* ---------- the note page ---------- */
 export function duplicateNote(n: Note): Promise<Rec<'note'>> {
-  return db.put('note', { ...n, title: `${n.title || 'Untitled'} (copy)`, pinned: false, archived: false })
+  return db.put('note', { ...n, title: `${n.title || 'Untitled'} (copy)`, pinned: false, archived: false, trashedAt: null })
 }
 
 export async function exportNotes(notes: Note[]): Promise<number> {
@@ -519,9 +520,8 @@ export function NoteEditor({
   const remove = async () => {
     if (timer.current) clearTimeout(timer.current)
     timer.current = null
-    const snapshot = latest.current
-    await db.remove('note', note.id)
-    toast('Note deleted', { label: 'Undo', run: () => db.put('note', snapshot, note.id) })
+    const undo = await trashNotes([{ ...note, data: latest.current }])
+    toast('Moved to the trash', { label: 'Undo', run: undo })
     onDeleted()
   }
   const duplicate = async () => {

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { NavId, ThemeMode } from '@shared/settings'
 import { SettingsProvider, useSettings } from './data/settings'
 import { phaseLabel } from './components/timer'
-import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Monitor, Moon, NotebookPen, Plus, Settings as SettingsIcon, Sun, Timer, Users } from 'lucide-react'
+import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Monitor, Moon, NotebookPen, Plus, Search, Settings as SettingsIcon, Sun, Timer, Users } from 'lucide-react'
 import { useRecords } from './data/store'
 import { clock, isOverdue } from './lib/dates'
 import { sortSubjects } from './lib/subjects'
@@ -24,6 +24,8 @@ import { prefetchGroups } from './data/groups'
 import { startDriveBackup } from './data/drive'
 import { VoiceSetupHost } from './components/notes/Voice'
 import { PhoneNav } from './components/PhoneNav'
+import { Palette } from './components/Palette'
+import { emptyOldTrash } from './lib/notes'
 import { onAndroid, usePhone } from './lib/phone'
 
 function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
@@ -60,6 +62,11 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
         </div>
         <b>Veyra Study</b>
       </div>
+      <button className="side-search" onClick={() => window.dispatchEvent(new Event('veyra:palette'))} title="Search everything and run commands">
+        <Search size={15} />
+        <span className="grow">Search</span>
+        <kbd>Ctrl K</kbd>
+      </button>
       <nav aria-label="Main">
         {nav.map(([name, label, Icon, count]) => (
           <button key={name} className="navbtn" aria-current={route.name === name} onClick={() => go({ name } as Route)}>
@@ -229,6 +236,8 @@ function Shell() {
   useEffect(() => (signedIn ? prefetchGroups() : undefined), [signedIn])
   // Notes back up to Google Drive (when it's connected and backup is on).
   useEffect(() => startDriveBackup(), [])
+  // Notes in the trash for over 30 days go for good.
+  useEffect(() => void emptyOldTrash(), [])
   // The tray menu or a reminder asks for a screen.
   useEffect(() => window.veyra.app.onNav((screen) => ROUTES.includes(screen) && go({ name: screen } as Route)), [])
 
@@ -264,6 +273,7 @@ function Shell() {
           {phone ? <PhoneNav route={route} go={go} /> : <Sidebar route={route} go={go} />}
           <UpdatedNotice />
           <VoiceSetupHost />
+          <Palette />
           <main className={`main ${route.name === 'settings' ? 'main-settings' : route.name === 'notes' ? 'main-notes' : route.name === 'groups' ? 'main-groups' : route.name === 'calendar' ? 'main-calendar' : ''}`}>
             <Screen key={route.name + ('id' in route ? route.id : '')} route={route} />
           </main>

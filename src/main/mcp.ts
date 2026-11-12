@@ -10,12 +10,13 @@
  * pages (an Origin header, or a Host that isn't 127.0.0.1) are refused.
  */
 import { app } from 'electron'
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import type { GoogleEvent, Kind, Rec, Task } from '../shared/types'
+import type { GoogleEvent, Kind, Rec, Repeat, Task, TaskStep } from '../shared/types'
+import { nextInSeries, repeatLabel } from '../shared/repeat'
 import type { Store } from './db'
 import { docPlain, markdownToDoc, noteMarkdown } from './notetext'
 
@@ -183,10 +184,25 @@ const taskView = (st: Store, t: Rec<'task'>) => ({
   done: t.data.done,
   priority: t.data.priority,
   details: t.data.details || undefined,
-  remindAt: t.data.remindAt || undefined
+  remindAt: t.data.remindAt || undefined,
+  steps: t.data.steps?.length ? t.data.steps.map((x) => ({ text: x.text, done: x.done })) : undefined,
+  repeats: t.data.repeat ? repeatLabel(t.data.repeat, t.data.due) : undefined
 })
+const REPEATS: Record<string, Repeat> = {
+  daily: { unit: 'day', every: 1 },
+  weekdays: { unit: 'week', every: 1, days: [1, 2, 3, 4, 5] },
+  weekly: { unit: 'week', every: 1 },
+  fortnightly: { unit: 'week', every: 2 },
+  monthly: { unit: 'month', every: 1 },
+  yearly: { unit: 'year', every: 1 }
+}
+const stepsFrom = (v: unknown): TaskStep[] | undefined => {
+  if (!Array.isArray(v)) return undefined
+  const steps = v.map((x) => str(x, 300).trim()).filter(Boolean).slice(0, 50).map((text) => ({ id: randomUUID().slice(0, 8), text, done: false }))
+  return steps.length ? steps : undefined
+}
 const noteFind = (st: Store, id: unknown) => {
-  const n = (st.list('note') as Rec<'note'>[]).find((x) => x.id === id)
+  const n = (st.list('note') as Rec<'note'>[]).find((x) => x.id === id && !x.data.trashedAt)
   if (!n) throw new ToolError('No note with that id. Use search_notes to find it.')
   return n
 }
@@ -270,7 +286,9 @@ const TOOLS: Tool[] = [
         subject: { type: 'string', description: 'Subject name (must exist).' },
         priority: { type: 'string', enum: ['low', 'normal', 'high'] },
         details: { type: 'string' },
-        remind_at: { type: 'string', description: 'Local time for a reminder, YYYY-MM-DDTHH:MM.' }
+        remind_at: { type: 'string', description: 'Local time for a reminder, YYYY-MM-DDTHH:MM.' },
+        steps: { type: 'array', items: { type: 'string' }, description: 'Smaller steps inside the task, in order.' },
+        repeat: { type: 'string', enum: Object.keys(REPEATS), description: 'Makes it a repeating task: ticking it off makes the next one.' }
       }
     },
     run: (st, a, h) => {
@@ -284,7 +302,9 @@ const TOOLS: Tool[] = [
         due: isDay(a.due) ? a.due : null,
         priority: ['low', 'normal', 'high'].includes(a.priority) ? a.priority : 'normal',
         ...(a.details ? { details: str(a.details, 4000) } : {}),
-        ...(typeof a.remind_at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(a.remind_at) ? { remindAt: a.remind_at } : {})
+        ...(typeof a.remind_at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(a.remind_at) ? { remindAt: a.remind_at } : {}),
+        ...(stepsFrom(a.steps) ? { steps: stepsFrom(a.steps) } : {}),
+        ...(REPEATS[a.repeat] ? { repeat: REPEATS[a.repeat], due: isDay(a.due) ? a.due : today() } : {})
       }
       const rec = st.put('task', data) as Rec<'task'>
       h.changed(['task'], [rec.id])
@@ -314,9 +334,19 @@ const TOOLS: Tool[] = [
       if (!t) throw new ToolError('No task with that id. Use list_tasks to find it.')
       const d: Task = { ...t.data }
       if (typeof a.title === 'string' && a.title.trim()) d.title = a.title.trim().slice(0, 300)
+      let next: Rec<'task'> | null = null
       if (typeof a.done === 'boolean' && a.done !== d.done) {
         d.done = a.done
         d.completedAt = a.done ? Date.now() : null
+        // A repeating task carries on: its next one is made (once), same as ticking it in the app.
+        if (a.done) {
+          const n = nextInSeries(t.id, t.data, today())
+          if (n) {
+            const all = st.list('task') as Rec<'task'>[]
+            next = all.find((x) => x.id === n.id) ?? (st.put('task', n.data, n.id) as Rec<'task'>)
+            d.nextId = n.id
+          }
+        } else d.nextId = null
       }
       if (a.due === null) d.due = null
       else if (isDay(a.due)) d.due = a.due
@@ -327,8 +357,8 @@ const TOOLS: Tool[] = [
       if (a.remind_at === null) d.remindAt = null
       else if (typeof a.remind_at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(a.remind_at)) d.remindAt = a.remind_at
       const rec = st.put('task', d, t.id) as Rec<'task'>
-      h.changed(['task'], [rec.id])
-      return { updated: taskView(st, rec) }
+      h.changed(['task'], next ? [rec.id, next.id] : [rec.id])
+      return { updated: taskView(st, rec), ...(next ? { next: taskView(st, next) } : {}) }
     }
   },
   {
@@ -339,6 +369,7 @@ const TOOLS: Tool[] = [
       const q = str(a.query, 200).toLowerCase().split(/\s+/).filter(Boolean)
       const sid = a.subject ? subjectId(st, a.subject) : undefined
       return (st.list('note') as Rec<'note'>[])
+        .filter((n) => !n.data.trashedAt)
         .filter((n) => !n.data.archived && (sid === undefined || n.data.subjectId === sid))
         .map((n) => ({ n, text: `${n.data.title} ${docPlain(n.data.content)} ${docPlain(n.data.cues)} ${docPlain(n.data.summary)}`.toLowerCase() }))
         .filter(({ text }) => q.every((w) => text.includes(w)))

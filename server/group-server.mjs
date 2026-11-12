@@ -28,11 +28,13 @@ import { createServer } from 'node:http'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs'
+import { pipeline } from 'node:stream/promises'
+import { createGzip } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION = '1.2.3'
+const VERSION = '1.2.4'
 const HERE = dirname(fileURLToPath(import.meta.url))
 
 /* ---------- settings ---------- */
@@ -657,23 +659,66 @@ server.requestTimeout = 60_000
 server.headersTimeout = 30_000
 server.listen(PORT, '127.0.0.1', () => log(`Veyra group server ${VERSION} on http://127.0.0.1:${PORT} (data in ${DATA_DIR})`))
 
-/* ---------- daily backups (keeps 14) ---------- */
-function backup() {
-  const dir = join(DATA_DIR, 'backups')
-  mkdirSync(dir, { recursive: true })
-  const file = join(dir, `group-${new Date().toISOString().slice(0, 10)}.db`)
-  if (!existsSync(file)) {
-    try {
-      db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`)
-      log('backup saved', file)
-    } catch (e) {
-      log('backup failed', e.message)
-    }
-  }
-  const files = readdirSync(dir).filter((f) => f.startsWith('group-')).sort()
-  for (const f of files.slice(0, Math.max(0, files.length - 14))) rmSync(join(dir, f), { force: true })
+/* ---------- daily backups: compressed; the last 7 days plus one a week for 4 weeks before that ---------- */
+const BACKUP_RE = /^group-(\d{4}-\d{2}-\d{2})\.db(\.gz)?$/
+async function gzipFile(from, to) {
+  const tmp = to + '.part'
+  await pipeline(createReadStream(from), createGzip({ level: 9 }), createWriteStream(tmp))
+  renameSync(tmp, to)
+  rmSync(from, { force: true })
 }
-backup()
+let backingUp = false
+async function backup() {
+  if (backingUp) return
+  backingUp = true
+  const dir = join(DATA_DIR, 'backups')
+  try {
+    mkdirSync(dir, { recursive: true })
+    const day = new Date().toISOString().slice(0, 10)
+    const gz = join(dir, `group-${day}.db.gz`)
+    if (!existsSync(gz)) {
+      const raw = join(dir, `.snapshot-${day}.db`)
+      rmSync(raw, { force: true })
+      db.exec(`VACUUM INTO '${raw.replace(/'/g, "''")}'`)
+      await gzipFile(raw, gz)
+      log('backup saved', gz)
+    }
+    // Older uncompressed backups (before 1.2.4) are compressed too.
+    for (const name of readdirSync(dir).filter((n) => BACKUP_RE.test(n) && n.endsWith('.db'))) {
+      if (!existsSync(join(dir, name + '.gz'))) await gzipFile(join(dir, name), join(dir, name + '.gz'))
+      else rmSync(join(dir, name), { force: true })
+    }
+    // Keep the newest 7, then the newest of each of the 4 weeks before them.
+    const files = readdirSync(dir).filter((n) => BACKUP_RE.test(n)).sort().reverse()
+    const keep = new Set(files.slice(0, 7))
+    const weeks = new Set()
+    for (const name of files.slice(7)) {
+      const week = Math.floor(Date.parse(name.match(BACKUP_RE)[1]) / (7 * 86_400_000))
+      if (weeks.size < 4 && !weeks.has(week)) {
+        weeks.add(week)
+        keep.add(name)
+      }
+    }
+    for (const name of files) if (!keep.has(name)) rmSync(join(dir, name), { force: true })
+  } catch (e) {
+    log('backup failed', e.message)
+  } finally {
+    backingUp = false
+  }
+}
+
+/* ---------- deleted group items: their empty rows go after 30 days ---------- */
+// Clients load a group from scratch each time it opens, so nobody needs a delete that old.
+function sweepDeleted() {
+  try {
+    const r = q('DELETE FROM items WHERE deleted = 1 AND updated_at < ?').run(now() - 30 * 86_400_000)
+    if (r.changes) log(`cleared ${r.changes} deleted group items`)
+  } catch (e) {
+    log('sweep failed', e.message)
+  }
+}
+void backup().then(sweepDeleted)
+setInterval(sweepDeleted, 24 * 3600_000).unref()
 setInterval(backup, 3600_000).unref()
 
 /* ---------- the tunnel: start cloudflared, publish its address ---------- */

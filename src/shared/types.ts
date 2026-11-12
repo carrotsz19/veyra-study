@@ -36,6 +36,28 @@ export interface Task {
   details?: string
   /** A reminder at this local time, "YYYY-MM-DDTHH:MM", or none. */
   remindAt?: string | null
+  /** Smaller steps inside the task, ticked off one by one. */
+  steps?: TaskStep[]
+  /** Repeats: ticking it off makes the next one. */
+  repeat?: Repeat | null
+  /** The next one this made when it was ticked off (so ticking again doesn't make another). */
+  nextId?: string | null
+}
+
+export interface TaskStep {
+  id: string
+  text: string
+  done: boolean
+}
+
+export interface Repeat {
+  unit: 'day' | 'week' | 'month' | 'year'
+  /** Every 1, 2, 3... units. */
+  every: number
+  /** Weekly: which weekdays (0 = Sunday). Empty means the due date's weekday. */
+  days?: number[]
+  /** The first task in the series; the next ones get ids made from it, so two devices make the same one. */
+  series?: string
 }
 
 export type NoteTemplate = 'page' | 'cornell' | 'lined' | 'grid'
@@ -51,6 +73,8 @@ export interface Note {
   pinned?: boolean
   /** Archived notes leave the main list but are kept (Notes → Archived). */
   archived?: boolean
+  /** When it went in the trash (Notes → Trash); removed for good 30 days later. */
+  trashedAt?: number | null
   /** Lower-case labels for filtering. */
   tags?: string[]
   /** Emoji shown above the title and in lists. */

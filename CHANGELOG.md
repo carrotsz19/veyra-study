@@ -4,6 +4,16 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 0.2.7
+
+- **Search everything with Ctrl+K.** One box finds notes (every word in them), tasks and their steps, subjects, screens and settings, and runs actions: new task or note, start or pause the focus timer, change the theme. If what you type isn't there, it offers to make it a task or a note. On the computer there's also a Search button at the top of the sidebar; on phones it's at the top of More.
+- **Steps inside tasks.** Break a task into smaller steps in its editor (Enter adds the next one, Alt+↑/↓ reorders). The list shows how many are done, like 2/4, and you can tick steps right there without opening the task. When the last step is done, Veyra offers to tick off the whole task.
+- **Repeating tasks.** Every day, every weekday, every week, every 2 weeks, every month, every year, or your own rule (for example every 2 weeks on Monday and Thursday). Ticking one off makes the next one, with its reminder moved along and its steps unticked. Unticking it takes the new one back.
+- **A trash for notes.** Deleting a note moves it to Notes → Trash, where it waits 30 days before it's gone, so you can restore it. You can also delete it for good or empty the trash.
+- **Notes search looks through whole notes,** not just the title and first lines, and shows where your words appear.
+- AI apps (MCP) can add steps and repeats to tasks, and ticking off a repeating task there carries the series on too.
+- Older copies of Veyra on your other devices show notes in the trash as normal notes until they update.
+
 ## 0.2.6
 
 - **Updates arrive even if Veyra stays in the tray.** Closing the window keeps Veyra running, so it used to stay on an old version. Now it checks every few hours and whenever you open it, downloads new versions quietly, offers **Restart**, and installs the update when you close the window, coming back in the tray.

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BarChart3, CalendarDays, Home, ListTodo, MoreHorizontal, NotebookPen, PenLine, Plus, Settings as SettingsIcon, Timer, Users, X } from 'lucide-react'
+import { BarChart3, CalendarDays, Home, ListTodo, MoreHorizontal, NotebookPen, PenLine, Plus, Search, Settings as SettingsIcon, Timer, Users, X } from 'lucide-react'
 import type { Route } from '../nav'
 import type { NavId } from '@shared/settings'
 import { useRecords } from '../data/store'
@@ -170,6 +170,15 @@ export function PhoneNav({ route, go }: { route: Route; go: (r: Route) => void }
                 <X size={18} />
               </button>
             </div>
+            <button
+              className="phone-search"
+              onClick={() => {
+                setMore(false)
+                window.dispatchEvent(new Event('veyra:palette'))
+              }}
+            >
+              <Search size={17} /> Search notes, tasks and settings
+            </button>
             <div className="ig" style={{ marginTop: 10 }}>
               {(
                 [

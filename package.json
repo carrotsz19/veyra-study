@@ -1,6 +1,6 @@
 {
   "name": "veyra-study",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Veyra Study: tasks, notes, focus timer and group work.",
   "main": "out/main/index.js",
   "private": true,

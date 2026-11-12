@@ -26,7 +26,7 @@ import type { AiProvider, AiState, Rec, UpdateState } from '@shared/types'
 
 type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data' | 'updates' | 'phone'
 
-const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; keys?: (keyof AppSettings)[] }[] = [
+export const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; keys?: (keyof AppSettings)[] }[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal, hint: 'Your name, start screen, week and time', keys: ['name', 'greeting', 'startScreen', 'weekStart', 'timeFormat'] },
   { id: 'appearance', label: 'Appearance', icon: Palette, hint: 'Theme, colour, font, size and spacing', keys: ['theme', 'accent', 'font', 'zoom', 'density', 'corners', 'reduceMotion', 'material'] },
   { id: 'phone', label: 'Phone', icon: Smartphone, hint: 'The navigation bar, large titles, pure black, vibration and more', keys: ['phoneTabs', 'phoneTabLabels', 'phoneCompose', 'phoneDock', 'phoneHideNavTyping', 'phoneTimerPill', 'phoneLargeTitles', 'pureBlack', 'haptics', 'keepAwakeFocus', 'phoneNoteBar'] },
@@ -1072,7 +1072,7 @@ const JUMPS: { id: SectionId; words: string }[] = [
 const ANDROID_HIDDEN: SectionId[] = ['ai', 'connections', 'sidebar']
 const DESKTOP_HIDDEN: SectionId[] = ['phone']
 /** Whether a section belongs on this device. */
-const here = (id: SectionId) => !(onAndroid() ? ANDROID_HIDDEN : DESKTOP_HIDDEN).includes(id)
+export const here = (id: SectionId) => !(onAndroid() ? ANDROID_HIDDEN : DESKTOP_HIDDEN).includes(id)
 
 const SEARCHABLE: SectionId[] = ['general', 'appearance', 'phone', 'sidebar', 'subjects', 'ai', 'today', 'tasks', 'notes', 'timer', 'calendar', 'data']
 
@@ -1086,6 +1086,19 @@ export function Settings({ initial }: { initial?: string }) {
   useEffect(() => {
     sessionStorage.setItem('veyra.settingsSection', section)
   }, [section])
+  // The Ctrl+K palette asks for a section while Settings is already open.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail as SectionId
+      if (SECTIONS.some((x) => x.id === id)) {
+        setSection(id)
+        setQ('')
+        setPhoneOpen(true)
+      }
+    }
+    window.addEventListener('veyra:settings-section', on)
+    return () => window.removeEventListener('veyra:settings-section', on)
+  }, [])
 
   const current = SECTIONS.find((x) => x.id === section)!
   const changed = (current.keys ?? []).some((k) => JSON.stringify(s[k]) !== JSON.stringify(DEFAULT_SETTINGS[k]))
