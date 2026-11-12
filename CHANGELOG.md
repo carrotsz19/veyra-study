@@ -4,6 +4,20 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 1.0.0
+
+**Veyra Study 1.0.** Your tasks, notes, timetable and study time in one calm app, on Windows and Android, synced through your Veyra account.
+
+- **Today:** what's due, what's next, your focus time and streak, on a page you can arrange yourself.
+- **Tasks:** subjects, due dates, priorities and reminders; steps inside tasks; repeating tasks; swipe to tick off or delete on your phone.
+- **Notes:** a rich editor with headings, checklists, tables, drawings, files and voice notes (transcribed on your computer); Cornell, lined and grid pages; tags, pins, archive and a 30-day trash; search through every word.
+- **Calendar:** your month at a glance, with your tasks and your Google Calendar side by side.
+- **Focus timer:** focus and break blocks that carry on through restarts, with your study time saved to Stats.
+- **Group work:** shared tasks, chat, notes and deadlines with your classmates.
+- **Ctrl+K:** jump anywhere, find anything, or start something new.
+- **Made to feel right:** Veyra's own title bar, menus and pickers, acrylic glass, spring animations, light and dark, and lots to customise in Settings.
+- **Your data:** stays on your devices and syncs through your account; export it any time.
+
 ## 0.2.13
 
 - **A calmer calendar.** The month fills the window instead of scrolling, so the month name and the ‹ Today › controls are always in view. Events read as clean lines (a dot in their calendar's colour, the title, the time on the right), all-day events and birthdays as soft tinted bars, tasks with a small box in their subject's colour, and as many fit in each day as the window allows before "+ more".
