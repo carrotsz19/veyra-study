@@ -38,6 +38,8 @@ if (app.isPackaged && process.platform === 'win32') app.setAppUserModelId('app.v
 let mainWin: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
+/** True until the main window exists (the update window comes and goes first). */
+let startingUp = true
 app.on('before-quit', () => (quitting = true))
 /** Settings, read in the main process (tray and reminders). */
 const appSettings = () => {
@@ -438,6 +440,7 @@ app.whenReady().then(async () => {
   // Anything going wrong in the check still opens the app.
   if ((await updateAtStart().catch(() => 'open' as const)) === 'installing') return
   createWindow()
+  startingUp = false
   if (!process.env['VEYRA_SCREENSHOT']) {
     tray = new Tray(nativeImage.createFromPath(trayPath).resize({ width: 16, height: 16 }))
     tray.setToolTip('Veyra Study')
@@ -512,6 +515,8 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
+  // Not while starting up: the update window closes just before the main one opens.
+  if (startingUp) return
   if (process.platform !== 'darwin') app.quit()
 })
 
