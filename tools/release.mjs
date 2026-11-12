@@ -23,7 +23,8 @@
  * never mistakes one for a Windows update.
  */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { copyFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const REPO = 'carrotsz19/veyra-study'
@@ -58,16 +59,23 @@ if (dev) {
   console.log(`Publishing Veyra Study Dev ${devVersion} (${commit})…`)
   const env = { ...process.env, VEYRA_CHANNEL: 'dev', VEYRA_VERSION: devVersion }
   run('npm', ['run', 'typecheck'], env)
+  // Start clean, so nothing from an earlier test build is published by mistake.
+  rmSync('release-dev', { recursive: true, force: true })
   run('npx', ['electron-vite', 'build'], env)
   run('npx', ['electron-builder', '--win', '--publish', 'never', '--config', 'electron-builder.dev.cjs'], env)
 
   // A release in the private test-build repo (only you can see it), marked newest:
   // Dev apps read it with their read-only token. Windows looks for latest.yml there.
-  copyFileSync(join('release-dev', 'dev.yml'), join('release-dev', 'latest.yml'))
+  // (Written here from the installer just built: for a private repo electron-builder leaves it out.)
+  const exe = join('release-dev', 'Veyra-Study-Dev-Setup.exe')
+  const sha512 = createHash('sha512').update(readFileSync(exe)).digest('base64')
+  const size = statSync(exe).size
+  const yml = `version: ${devVersion}\nfiles:\n  - url: Veyra-Study-Dev-Setup.exe\n    sha512: ${sha512}\n    size: ${size}\npath: Veyra-Study-Dev-Setup.exe\nsha512: ${sha512}\nreleaseDate: '${new Date().toISOString()}'\n`
+  writeFileSync(join('release-dev', 'latest.yml'), yml)
   const tag = `dev-${devVersion}`
   const notesFile = join('release-dev', 'notes.md')
   writeFileSync(notesFile, `Test build from ${commit}.\n\nWindows: Veyra-Study-Dev-Setup.exe · Android: Veyra-Study-Dev.apk ("Veyra Dev"). Installed Dev apps update themselves.`)
-  const files = ['Veyra-Study-Dev-Setup.exe', 'Veyra-Study-Dev-Setup.exe.blockmap', 'latest.yml', 'dev.yml'].map((f) => join('release-dev', f))
+  const files = ['Veyra-Study-Dev-Setup.exe', 'Veyra-Study-Dev-Setup.exe.blockmap', 'latest.yml'].map((f) => join('release-dev', f))
   execFileSync('gh', ['release', 'create', tag, ...files, '--repo', DEV_REPO, '--title', `Veyra Study Dev ${devVersion}`, '--notes-file', notesFile, '--latest'], { stdio: 'inherit', env: ghEnv })
   // Then the Android test build, onto the same release (unless --windows-only).
   if (!process.argv.includes('--windows-only')) run('node', ['tools/release-android.mjs', '--dev'], { ...env, GH_TOKEN: token, VEYRA_DEV_TAG: tag })
