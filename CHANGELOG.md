@@ -17,6 +17,7 @@ without one.
 - **Ctrl+K:** jump anywhere, find anything, or start something new.
 - **Made to feel right:** Veyra's own title bar, menus and pickers, acrylic glass, spring animations, light and dark, and lots to customise in Settings.
 - **Your data:** stays on your devices and syncs through your account; export it any time.
+- **Still being built:** you may run into bugs. Tell the owner (@carrotsz19) at igreenrobotz@gmail.com, or open a bug report on GitHub (Help → Report a bug).
 
 ## 0.2.13
 
