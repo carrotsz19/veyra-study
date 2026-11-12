@@ -1,97 +1,108 @@
 # Veyra Study
 
-A study app for tracking tasks and progress per subject, taking notes, planning deadlines and timing focus sessions. It is part of the Veyra family, and its look comes from the Veyra design system (`carrotsz19/veyra`, `live/ui-standard.md`).
+Your tasks, notes, timetable and study time in one calm app, on **Windows** and **Android**, synced through your Veyra account (the same account as IronLog and Cashline). Its look comes from the Veyra design system (`carrotsz19/veyra`, `live/ui-standard.md`).
 
-## Run it
+**Download:** [the latest release](https://github.com/carrotsz19/veyra-study/releases/latest)
+- **Windows:** run `Veyra-Study-Setup-<version>.exe`.
+- **Android:** install `Veyra-Study-<version>.apk` from the matching `android-v<version>` release.
+- After the first install, both update themselves.
+
+## What it does
+
+- **Today:** what's due and what's next, your focus time and streak. You can rearrange the widgets.
+- **Tasks:** subjects, due dates, priorities and reminders; steps inside a task; repeating tasks; quick add. On the phone, swipe to tick a task off or delete it.
+- **Notes:** a rich editor with headings, checklists, callouts, question toggles, tables, code, drawings and files.
+  - Voice notes are transcribed on your computer (whisper.cpp).
+  - Page, Cornell, Lined and Grid layouts.
+  - Tags, pins, archive, and a trash that keeps deleted notes for 30 days.
+  - Search looks through every word.
+- **Calendar:** your month at a glance, with your tasks next to your Google Calendar or any iCal link.
+- **Focus timer:** focus and break blocks per subject. They carry on through restarts, and the time feeds Stats.
+- **Stats:** study time per day and per subject, daily average, tasks finished, streak.
+- **Group work:** shared tasks, chat, notes and deadlines with classmates.
+- **Ctrl+K:** jump anywhere, find anything, or start something new.
+- **AI:** your notes, tasks and timetable can be opened in Claude, Gemini or other MCP apps, read-only unless you allow changes. AI help is built into notes, using local AI or your own key.
+- **Google Drive:** an optional backup of your notes, and importing from Drive.
+- **Made to feel right:** Veyra's own title bar and menus on Windows, acrylic glass, spring animations, light and dark, and a lot to customise in Settings, with a whole section for the phone.
+
+## Run it from the code
 
 Needs [Node.js](https://nodejs.org) 22 or newer.
 
 ```bash
 npm install
-npm run dev      # app with live reload
-npm run build    # typecheck + production build
-npm start        # run the production build
-npm run dist     # Windows installer in release/
+npm run dev        # the app with live reload (uses its own data, never the installed app's)
+npm run build      # typecheck + production build
+npm test           # group server and relay tests
 ```
 
-Data lives in SQLite files under `%APPDATA%\veyra-study\`. It uses Electron's built-in `node:sqlite`, so there is nothing native to compile:
-- `veyra.db` is used without an account.
-- `accounts\<folder>\veyra.db` is one file per Veyra account (see `accounts.json`).
+Android, once: `npm run android:setup` installs a JDK and the Android SDK under `C:\dev\tools`. Then:
 
-## What's in it (phase 1)
+```bash
+npm run android:build      # build the APK
+npm run android:install    # build it and put it on the phone plugged in by USB
+```
 
-- **Today:** what's due or overdue, what's coming up, study time today, progress per subject.
-- **Subjects:** a colour, a progress bar, and the subject's own tasks, notes and study time.
-- **Tasks:** due dates, priority, details, quick add, and filters (open, overdue, done).
-- **Notes:** a document page with an icon, a cover and a font choice, and four layouts: Page, Cornell (cues, notes, summary), Lined and Grid.
-  - Type `/` to add headings, lists, checklists, callouts, question toggles, tables, quotes, code or dividers.
-  - Select text to format it, including five highlighter colours.
-  - Notes save as you type and are searchable.
-- **Calendar:** a month view of deadlines plus your Google Calendar events. Click a day to add a task due that day.
-- **Accounts:** sign in with your Veyra account (the same one as IronLog and Cashline), or use the app without one.
-- **Google Calendar:** shows events from the calendars you pick, and adds task deadlines as all-day events to a "Veyra Study" calendar. Set it up in Settings.
-- **Focus timer:** Pomodoro-style, tied to a subject. It keeps running while you move around the app, and finished blocks are logged.
-- **Stats:** study time per day, daily average, tasks finished, streak, and time per subject.
-- **Theme:** follows the system by default, or set light or dark.
+## Dev and Prod
 
-## Roadmap
+There are two builds, and they install side by side:
 
-1. ~~Desktop app~~ (done)
-2. Android app and sync. The phone runs the sync server, and Tailscale lets the PC reach it from anywhere.
-3. Voice: record and import audio, play it back, and transcribe it offline on the PC with whisper.cpp.
-4. Handwriting in notes, plus reminder notifications.
+- **Veyra Study** is what everyone uses.
+- **Veyra Study Dev** is for trying changes first. It has a DEV badge, its own data, and its own updates, which come from the private repo `carrotsz19/veyra-study-dev`.
 
-## How the data is shaped (and why)
+```bash
+npm run release:dev        # a Dev test build, Windows + Android (no version bump needed)
+npm run release            # Prod for Windows: bump package.json and add a CHANGELOG.md section first
+npm run release:android    # Prod for Android, the same version
+```
 
-Every item is a **record**: `{ id (UUID), kind, data (JSON), createdAt, updatedAt, deletedAt, deviceId }` in a single `records` table. That shape was chosen for syncing in phase 2:
+[RELEASING.md](RELEASING.md) explains the whole workflow and the rules that keep Prod safe. [CHANGELOG.md](CHANGELOG.md) lists what changed in each version, and the app shows it as "What's new".
 
-- Devices exchange records changed since their last sync (`changesSince`).
-- When two devices change the same record, the newer `updatedAt` wins, with `deviceId` breaking ties.
-- Deletes set `deletedAt` instead of removing the row, so a delete reaches the other device too.
+## Data and sync
 
-The UI only talks to storage through `src/renderer/src/data/store.ts` (the `VeyraDb` interface in `src/shared/types.ts`). The Android build can then provide the same interface without the screens changing.
+- **Where it lives:** in SQLite through Electron's built-in `node:sqlite`, so nothing native has to be compiled. Prod uses `%APPDATA%\veyra-study\`, and Dev and `npm run dev` use `%APPDATA%\veyra-study-dev\`.
+  - Without an account, everything is in `veyra.db`.
+  - With an account, there's one `accounts\<folder>\veyra.db` per account.
+- **On the phone:** IndexedDB, behind the same interface.
+- **What a record is:** every item is a record, `{ id, kind, data (JSON), createdAt, updatedAt, deletedAt, deviceId }`. The UI only reaches storage through `src/renderer/src/data/store.ts` (`VeyraDb` in `src/shared/types.ts`).
+- **How sync works** (`src/shared/sync-core.ts`):
+  - Each device pulls what the others changed, then pushes its own.
+  - When two devices change the same record, the newer `updatedAt` wins, with `deviceId` breaking ties.
+  - Deletes are kept as markers, so they reach the other devices too.
+  - Settings and attached files stay on each device.
 
 ## Accounts
 
-The app signs in through the Veyra Worker's existing endpoints (`getLoginSalt`, `veyraLogIn`, `veyraSignUp`, `launcherWhoAmI`, `logOut`), with no server changes:
+The app signs in through the Veyra Worker's existing endpoints (`getLoginSalt`, `veyraLogIn`, `veyraSignUp`, `launcherWhoAmI`, `logOut`):
 - Passwords are hashed in the app exactly as `live/index.html` does it (PBKDF2-SHA256, 310,000 rounds, `v2$` + base64).
-- The session cookie and handle stay in the main process, encrypted with Windows' secure storage (`safeStorage`). The UI never sees them.
-- The first account to sign in on a computer takes over the data that was there before. Signing out keeps each account's data on disk.
+- The session stays in the main process, encrypted with Windows' secure storage (`safeStorage`) or Android's secure storage. The UI never sees it.
+- The first account to sign in on a device takes over the data that was there before. Signing out keeps each account's data on disk.
 - `VEYRA_SERVER` points the app at another server, such as staging.
 
-## Google Calendar
+## Google Calendar and Drive
 
-**Connect (both ways).** Veyra Study has its own Google OAuth client (a Desktop app client in the owner's Google Cloud project), built in at build time. Users click **Connect** in Settings and approve in their browser. The redirect goes to a loopback address (`127.0.0.1`) and uses PKCE.
-- Scopes:
-  - `calendar.app.created`: create and manage only the Veyra Study calendar.
-  - `calendar.calendarlist.readonly` and `calendar.events.readonly`: read calendars and events.
-- Event IDs come from task IDs, so pushing a deadline again never creates a duplicate.
-- Until Google verifies the app, users see an "unverified app" warning, and at most 100 can connect.
+Veyra Study has its own Google OAuth client (a Desktop app client), built in at build time. People click **Connect** in Settings and approve in their browser, through a loopback redirect with PKCE.
+- **Calendar scopes:** `calendar.app.created` (only the Veyra Study calendar) plus read-only access to calendars and events. Deadlines become all-day events, and their IDs come from the task IDs, so they never duplicate.
+- **The client:** comes from `google-client.json` (downloaded from Google Cloud → Clients), which is **git-ignored and never committed**. `VEYRA_GOOGLE_CLIENT_ID` / `VEYRA_GOOGLE_CLIENT_SECRET` work too. Without either, people can enter their own client under "Advanced".
+- **Calendars by link:** paste any `.ics` link, read-only, with no sign-in. `ical.js` handles repeats and time zones, and links are stored encrypted.
 
-The client comes from `google-client.json` in the project folder: the JSON downloaded from Google Cloud → Clients. It is **git-ignored and never committed**. You can also set `VEYRA_GOOGLE_CLIENT_ID` and `VEYRA_GOOGLE_CLIENT_SECRET`. Without either, the Connect button is hidden and people can enter their own client under "Advanced".
+## Group work and sync server
 
-**Calendars by link (read-only, no sign-in).** Paste a calendar's "Secret address in iCal format", or any `.ics` link. Repeating events, moved or cancelled occurrences and time zones are handled by `ical.js`. Links are stored encrypted.
+Group work and sync run on a small server on a spare Android phone (Termux), `server/group-server.mjs`:
+- **Reaching it:** the phone gets a free Cloudflare quick-tunnel address and publishes it to a tiny relay Worker (`relay/`), where the apps look it up.
+- **Checking who you are:** the relay checks you with Veyra and hands the phone a signed 15-minute pass, so your Veyra session never reaches the phone.
+- **Backups:** the server keeps compressed daily backups.
 
-## Group work
-
-Shared tasks, chat, notes and deadlines live on a small server running on a
-spare Android phone (Termux). The phone gets a free Cloudflare quick-tunnel
-address that changes when it restarts, so it publishes the address to a tiny
-relay Worker (`relay/`), and the app looks it up there. The relay also checks
-who you are with Veyra and hands the phone a signed 15-minute pass, so your
-Veyra session never reaches the phone.
-
-**PC, once:**
+**On the PC, once:**
 
 ```
 npx wrangler login
 npm run relay:setup
 ```
 
-This makes the secrets on your PC, writes `server/.env` (git ignores it),
-creates the relay's storage, deploys the relay and gives it the secrets.
+This makes the secrets, writes `server/.env` (git-ignored), creates the relay's storage, and deploys the relay.
 
-**Phone (Termux, from F-Droid, plus Termux:Boot):**
+**On the phone** (Termux and Termux:Boot from F-Droid):
 
 ```
 pkg install -y nodejs cloudflared
@@ -99,8 +110,7 @@ termux-setup-storage
 mkdir -p ~/veyra-group ~/.termux/boot
 ```
 
-Copy `server/group-server.mjs`, `server/.env` and `server/start-phone.sh` to
-the phone's Download folder, then:
+Copy `server/group-server.mjs`, `server/.env` and `server/start-phone.sh` to the phone's Download folder, then:
 
 ```
 cp ~/storage/downloads/group-server.mjs ~/storage/downloads/.env ~/veyra-group/
@@ -108,32 +118,37 @@ cp ~/storage/downloads/start-phone.sh ~/.termux/boot/ && chmod +x ~/.termux/boot
 ~/.termux/boot/start-phone.sh &
 ```
 
-Delete `.env` from the Download folder afterwards. `tail ~/veyra-group/server.log`
-should show the tunnel address being published.
-
-Testing on the PC: `npm test` runs the server and relay tests; `TUNNEL=off npm run group-server` runs a local server.
+Delete `.env` from the Download folder afterwards. `tail ~/veyra-group/server.log` should show the tunnel address being published. To test on the PC, run `TUNNEL=off npm run group-server`.
 
 ## Layout
 
 ```
-src/main/        Electron main process: window, SQLite store (db.ts), IPC,
-                 Veyra accounts (account.ts), Google Calendar (gcal.ts),
-                 iCal links (ical.ts)
-src/preload/     exposes window.veyra.db to the UI
-src/shared/      types shared by both sides
-src/renderer/    React UI: views/, components/, data/, lib/, styles.css
+src/main/        Electron main process: window and title bar, SQLite store, accounts,
+                 updates, Google, sync, group work, voice, AI, MCP, tray and reminders
+src/preload/     the bridge (window.veyra) between the main process and the UI
+src/renderer/    React UI: views/, components/, data/, lib/, styles
+src/mobile/      the Android app's stand-in for the main process (Capacitor)
+src/shared/      shared by everything: types, settings, sync, repeating tasks, Dev/Prod channel
+android/         the Android project (Capacitor 8)
+server/          the group and sync server (runs on the phone)
+relay/           the Cloudflare Worker that finds the server
+tools/           build, release and setup scripts
+build/           installer additions (NSIS)
 ```
 
-Dev-check environment variables:
+## Checking things during development
 
 | Variable | Effect |
 |---|---|
-| `VEYRA_USERDATA=dir` | Uses a separate profile (sign-in and data) |
+| `VEYRA_USERDATA=dir` | A separate profile (sign-in and data) |
 | `VEYRA_DB=path` | Pins one database |
 | `VEYRA_ROUTE=stats` | Opens on that screen |
 | `VEYRA_THEME=light` or `dark` | Forces the theme |
 | `VEYRA_EVAL=js` | Runs a script before the screenshot |
 | `VEYRA_SCREENSHOT=out.png` | Saves a screenshot, then quits |
 | `VEYRA_FAKE_GOOGLE=1` | Shows sample Google events |
+| `VEYRA_NO_UPDATE=1` | Skips update checks |
+| `VEYRA_UPDATE_URL=url` | Uses a stand-in update server |
+| `VEYRA_UPDATE_DRYRUN=1` | Downloads updates but never installs them |
 
-Use `VEYRA_USERDATA` for any test that signs in, so your real profile stays untouched.
+Use `VEYRA_USERDATA` for any test that signs in, so a real profile stays untouched.
