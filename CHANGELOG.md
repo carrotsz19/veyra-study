@@ -6,6 +6,7 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **Server night hours:** for now the Veyra server sleeps from about 12 am to 8 am. A one-time note explains it, and Group work and the sync setting show a reminder from 11:30 pm and while it's asleep.
 - **Folders for notes:** group notes into folders, and folders inside folders; open one to see its folders and notes, and new notes start there. Move notes and folders by dragging them onto a folder (or onto the back link to go up a level), from the right-click menu, or several notes at once. Searching still looks through everything.
 - **Folders for subjects:** group subjects in the sidebar, with folders inside folders; click a folder to fold it away.
 - **Calendar day card:** tap a day to open it as a card: its events and tasks in time order (tick tasks off right there), a box to add a task on that day, and a swipe (or ← →) to the next or previous day.

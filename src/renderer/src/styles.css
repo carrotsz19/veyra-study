@@ -1133,3 +1133,13 @@ button.dc-row:hover, .dc-row.task:hover { background: var(--fill-tertiary); }
   .day-scrim { padding: 14px; }
   .day-card { height: min(80vh, 720px); border-radius: 30px; }
 }
+
+/* ---------- the server's night hours (components/ServerHours.tsx) ---------- */
+.srv-icon { background: color-mix(in srgb, #6c7bd9 20%, transparent); color: #6c7bd9; }
+.srv-banner {
+  display: flex; align-items: flex-start; gap: 10px; margin: 0 0 14px; padding: 10px 14px; border-radius: 12px;
+  font-size: 13px; line-height: 1.45; color: var(--ink);
+  background: color-mix(in srgb, #6c7bd9 13%, transparent); border: 1px solid color-mix(in srgb, #6c7bd9 28%, transparent);
+}
+.srv-banner svg { flex: none; margin-top: 2px; color: #6c7bd9; }
+.sync-row .srv-banner { margin: 10px 0 0; }

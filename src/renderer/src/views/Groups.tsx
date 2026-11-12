@@ -23,6 +23,7 @@ import type { Editor } from '@tiptap/react'
 import type { Group, GroupInvite, GroupItem, GroupNote, GroupPreview, GroupTask, GroupUser } from '@shared/types'
 import { Dialog, Empty, Seg, useToast } from '../components/ui'
 import { Avatar, useAccount } from '../components/account'
+import { ServerHoursBanner } from '../components/ServerHours'
 import { Area } from '../components/notes/NoteEditor'
 import { NoteToolbar } from '../components/notes/Toolbar'
 import { SlashMenu } from '../components/notes/SlashMenu'
@@ -113,6 +114,7 @@ export function Groups() {
     return (
       <div className="inner view">
         <Header />
+        <ServerHoursBanner />
         <div className="card grp-status grp-offline">
           <WifiOff size={18} />
           <div className="grow">
@@ -150,6 +152,8 @@ export function Groups() {
           <Plus size={16} /> New group
         </button>
       </Header>
+
+      <ServerHoursBanner />
 
       {status && status.state !== 'online' && (
         <div className="card grp-status grp-offline grp-banner">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
+import { ServerHoursBanner } from '../components/ServerHours'
 import { Bot, CalendarDays, Check, Copy, ExternalLink, HardDrive, Link2, LogOut, Plus, RefreshCw, Trash2, UserRound } from 'lucide-react'
 import { backupNow, backupStatus, onBackupStatus, useDrive } from '../data/drive'
 import type { GoogleState, McpState, SyncStatus } from '@shared/types'
@@ -455,6 +456,7 @@ function SyncRow() {
           <input type="checkbox" className="switch" checked={s.sending} onChange={async (e) => setS(await window.veyra.sync.setSending(e.target.checked))} />
         </label>
       )}
+      {s.enabled && <ServerHoursBanner what="Syncing" />}
       {s.enabled && (
         <div className="between" style={{ marginTop: 8 }}>
           <span className={`sm ${s.state === 'error' ? '' : 'dim'}`} style={s.state === 'error' ? { color: 'var(--bad)' } : undefined}>

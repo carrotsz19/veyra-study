@@ -16,6 +16,15 @@ export const emailOwner = () =>
   void window.veyra.open(`mailto:${FEEDBACK.email}?subject=${encodeURIComponent(`Veyra Study ${__APP_VERSION__}: `)}`)
 
 const KEY = 'veyra.betaNoticeSeen'
+/** Sent when the notice is dismissed (the next once-only notice can then show). */
+export const BETA_SEEN_EVENT = 'veyra:beta-seen'
+export function betaNoticeSeen(): boolean {
+  try {
+    return localStorage.getItem(KEY) === '1'
+  } catch {
+    return true
+  }
+}
 
 /** The card at the top of the app, until it's dismissed. */
 export function BetaNotice() {
@@ -34,6 +43,7 @@ export function BetaNotice() {
       /* storage unavailable: it just shows again next time */
     }
     setSeen(true)
+    window.dispatchEvent(new Event(BETA_SEEN_EVENT))
   }
   return (
     <div className="beta-notice" role="note">
