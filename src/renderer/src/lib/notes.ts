@@ -1,4 +1,4 @@
-import type { Rec } from '@shared/types'
+import type { Note, Rec } from '@shared/types'
 import { db } from '../data/store'
 
 /**
@@ -16,11 +16,20 @@ export const liveNotes = (list: Rec<'note'>[]): Rec<'note'>[] => list.filter((n)
 /** Days until a note in the trash is removed for good (at least 0). */
 export const daysLeft = (n: Rec<'note'>): number => Math.max(0, Math.ceil(((n.data.trashedAt ?? 0) + TRASH_DAYS * DAY - Date.now()) / DAY))
 
+// Notes open in an editor: hands over the editor's newest copy (and stops its pending save),
+// so trashing an open note keeps the last words typed and isn't undone by that save.
+const openEditors = new Map<string, (trashedAt: number) => Note>()
+export function registerOpenNote(id: string, take: (trashedAt: number) => Note): () => void {
+  openEditors.set(id, take)
+  return () => void (openEditors.get(id) === take && openEditors.delete(id))
+}
+
 /** Moves notes to the trash; returns what to run to put them back. */
 export async function trashNotes(list: Rec<'note'>[]): Promise<() => void> {
-  const before = list.map((n) => [n.id, n.data] as const)
   const at = Date.now()
-  for (const n of list) await db.put('note', { ...n.data, trashedAt: at, pinned: false }, n.id)
+  const newest = list.map((n) => [n.id, openEditors.get(n.id)?.(at) ?? n.data] as const)
+  const before = newest.map(([id, data]) => [id, { ...data, trashedAt: null }] as const)
+  for (const [id, data] of newest) await db.put('note', { ...data, trashedAt: at, pinned: false }, id)
   return () => before.forEach(([id, data]) => void db.put('note', { ...data, trashedAt: null }, id))
 }
 

@@ -108,6 +108,7 @@ export function Palette() {
 
   const items = useMemo(() => {
     const out: Item[] = []
+    if (!open) return out
     const subjectOf = (id: string | null) => subjects.find((x) => x.id === id)
     const both = (run: () => void) => () => {
       close()
@@ -229,7 +230,7 @@ export function Palette() {
       })
     }
     return sorted
-  }, [terms, query, notes, tasks, subjects, s, timer.running, timer.remaining, timer.total]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, terms, query, notes, tasks, subjects, s, timer.running, timer.remaining, timer.total]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => setAt(0), [q])
   // Keep the picked row in view.

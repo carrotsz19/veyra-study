@@ -24,7 +24,7 @@ import { AiPanel } from './AiPanel'
 import { parseBullets, parseCards, type AiTask } from '../../data/ai'
 import { noteToMarkdown } from './markdown'
 import { useSettings } from '../../data/settings'
-import { trashNotes } from '../../lib/notes'
+import { registerOpenNote, trashNotes } from '../../lib/notes'
 
 export const NOTE_COVERS: Record<string, string> = {
   clay: 'linear-gradient(120deg,#e9b9a4,#d9825f 55%,#b3492b)',
@@ -426,6 +426,17 @@ export function NoteEditor({
     else timer.current = setTimeout(flush, 500)
   }
   useEffect(() => () => void (timer.current && flush()), []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Trashing this note from the list takes the newest copy from here, and any later save keeps it in the trash.
+  useEffect(
+    () =>
+      registerOpenNote(note.id, (trashedAt) => {
+        if (timer.current) clearTimeout(timer.current)
+        timer.current = null
+        latest.current = { ...latest.current, trashedAt }
+        return latest.current
+      }),
+    [note.id]
+  )
   // Closing the window doesn't unmount React, so save anything pending right now.
   useEffect(() => {
     const onUnload = () => {

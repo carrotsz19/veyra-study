@@ -38,9 +38,12 @@ export function nextWhen(day: string): string {
 
 /** Ticks one step; says so when that was the last one. */
 async function toggleStep(task: Rec<'task'>, step: TaskStep): Promise<boolean> {
-  const steps = (task.data.steps ?? []).map((x) => (x.id === step.id ? { ...x, done: !x.done } : x))
-  await db.put('task', { ...task.data, steps }, task.id)
-  return !step.done && steps.every((x) => x.done) && !task.data.done
+  // From the newest copy, so quick ticks in a row don't undo each other.
+  const t = (await db.list('task')).find((x) => x.id === task.id) ?? task
+  const was = (t.data.steps ?? []).find((x) => x.id === step.id)?.done ?? step.done
+  const steps = (t.data.steps ?? []).map((x) => (x.id === step.id ? { ...x, done: !was } : x))
+  await db.put('task', { ...t.data, steps }, t.id)
+  return !was && steps.every((x) => x.done) && !t.data.done
 }
 
 /** Open tasks first (overdue, then by due date), finished ones at the end. */

@@ -633,10 +633,10 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             {forever.length === 1 ? `“${forever[0].data.title || 'Untitled'}” is removed` : `${forever.length} notes are removed`} from this device and your other devices. This can’t be undone.
           </p>
           <div className="actions">
-            <button className="btn sec" onClick={() => setForever(null)}>
+            <button className="btn sec" autoFocus onClick={() => setForever(null)}>
               Cancel
             </button>
-            <button className="btn dan" autoFocus onClick={reallyDelete}>
+            <button className="btn dan" onClick={reallyDelete}>
               Delete for good
             </button>
           </div>

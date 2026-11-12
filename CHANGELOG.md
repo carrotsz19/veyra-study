@@ -12,7 +12,7 @@ without one.
 - **A trash for notes.** Deleting a note moves it to Notes → Trash, where it waits 30 days before it's gone, so you can restore it. You can also delete it for good or empty the trash.
 - **Notes search looks through whole notes,** not just the title and first lines, and shows where your words appear.
 - AI apps (MCP) can add steps and repeats to tasks, and ticking off a repeating task there carries the series on too.
-- Older copies of Veyra on your other devices show notes in the trash as normal notes until they update.
+- Older copies of Veyra on your other devices show notes in the trash as normal notes, and don't make the next repeating task when you tick one off there, until they update.
 
 ## 0.2.6
 
