@@ -1052,7 +1052,14 @@ html.material.fs-glass.dark[data-material='mica'] body::after { background: rgba
 .side-folder-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.32s var(--spring-snappy); }
 .side-folder.open .side-folder-body { grid-template-rows: 1fr; }
 .side-folder-body > div { overflow: hidden; min-height: 0; }
-.navbtn.nested { padding-left: 30px; }
+.navbtn.nested { padding-left: calc(12px + var(--depth, 1) * 16px); }
 .side-icons .side-folder-chev { display: none; }
 .side-icons .navbtn.nested { padding-left: 0; }
+/* Dragging in the sidebar: where it would land. */
+.navbtn[draggable='true'] { -webkit-user-drag: element; }
+.navbtn.drop-into, .side-drop-top.drop-into > * { background: var(--accent-soft) !important; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.side-drop-top { border-radius: 8px; }
+.side-drop-top.drop-into > * { border-radius: 8px; }
+.navbtn.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.menu-row:disabled { opacity: 0.4; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .side-folder-body, .side-folder-chev { transition: none !important; } }

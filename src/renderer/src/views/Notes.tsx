@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Archive, ArchiveRestore, ArrowUpDown, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, FileText, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, HardDrive, MoreHorizontal, NotebookPen, Pencil, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, X
 } from 'lucide-react'
-import { deleteFolder, newFolder, renameFolder, useFolders } from '../lib/folders'
+import { childrenOf, deleteFolder, drag, folderPath, moveFolder, newFolder, parentOf, renameFolder, useFolders, withDescendants } from '../lib/folders'
 import { FolderNameDialog, FolderPickDialog } from '../components/FolderDialogs'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, onExternalChange, useRecords } from '../data/store'
@@ -98,6 +98,8 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   const [folderId, setFolderId] = useState<string | null>(null)
   const folder = folders.find((f) => f.id === folderId) ?? null
   const [folderDialog, setFolderDialog] = useState<{ mode: 'new' } | { mode: 'rename'; folder: Rec<'folder'> } | null>(null)
+  const [movingFolder, setMovingFolder] = useState<Rec<'folder'> | null>(null)
+  const parent = folder ? folders.find((f) => f.id === parentOf(folders, folder)) ?? null : null
   const [moveTo, setMoveTo] = useState<Rec<'note'>[] | null>(null)
   const [folderCtx, setFolderCtx] = useState<{ x: number; y: number; folder: Rec<'folder'> } | null>(null)
   const [dropOn, setDropOn] = useState<string | null>(null)
@@ -112,9 +114,13 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   // Searching or filtering looks through every folder; otherwise you're in one folder (or the top level).
   const filtering = !!terms.length || !!tag || (!!subjectId && subjectId !== subjectFilter)
   const browsing = view === 'notes' && !filtering
-  const folderCount = (id: string) => inView.filter((n) => folderOf(n) === id && (!subjectId || n.data.subjectId === subjectId)).length
-  // On a subject's page, only the folders that hold its notes.
-  const folderRows = browsing && !folder ? folders.filter((f) => !subjectFilter || folderCount(f.id) > 0) : []
+  // Notes in a folder, counting the folders inside it.
+  const folderCount = (id: string) => {
+    const ids = withDescendants(folders, id)
+    return inView.filter((n) => ids.has(folderOf(n) ?? '') && (!subjectId || n.data.subjectId === subjectId)).length
+  }
+  // The folders here (at the top level, or inside the open folder). On a subject's page, only those holding its notes.
+  const folderRows = browsing ? childrenOf(folders, folder?.id ?? null).filter((f) => !subjectFilter || folderCount(f.id) > 0) : []
   const allTags = useMemo(() => [...new Set(inView.flatMap((n) => n.data.tags ?? []))].sort(), [inView])
   const shown = inView
     .filter((n) => !subjectId || n.data.subjectId === subjectId)
@@ -242,9 +248,15 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     patchMany(changing, { folderId: id }, id ? `Moved ${plural(changing.length, 'note')} to ${name}` : `Took ${plural(changing.length, 'note')} out of the folder`)
   }
   const removeFolder = async (f: Rec<'folder'>) => {
-    if (folderId === f.id) openFolder(null)
+    if (folderId && withDescendants(folders, f.id).has(folderId)) openFolder(parentOf(folders, f))
     const undo = await deleteFolder(f)
-    toast(`Deleted the folder ${f.data.name}. Its notes are still here.`, { label: 'Undo', run: () => void undo() })
+    toast(`Deleted the folder ${f.data.name}. What was in it moved up a level.`, { label: 'Undo', run: () => void undo() })
+  }
+  const putFolder = async (f: Rec<'folder'>, into: string | null) => {
+    const before = f.data
+    if (!(await moveFolder(folders, f, into))) return
+    const name = folders.find((x) => x.id === into)?.data.name
+    toast(name ? `Moved ${f.data.name} into ${name}` : `Moved ${f.data.name} to the top level`, { label: 'Undo', run: () => void db.put('folder', before, f.id) })
   }
   const openFolder = (id: string | null) => {
     const go = () => {
@@ -255,11 +267,17 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     if (phone) transition(go, id ? 'push' : 'pop')
     else go()
   }
-  // Dragging notes onto a folder (desktop): the picked notes if the dragged one is picked, else just it.
-  const dragNotes = useRef<Rec<'note'>[]>([])
+  // Dragging onto a folder (desktop): notes (the picked ones if the dragged one is picked), or another folder.
+  const canDrop = (id: string | null) => {
+    const d = drag.get()
+    if (d?.kind === 'notes') return true
+    if (d?.kind !== 'folder' || d.scope !== 'note') return false
+    const f = folders.find((x) => x.id === d.id)
+    return !!f && !(id && withDescendants(folders, f.id).has(id)) && parentOf(folders, f) !== id
+  }
   const dropProps = (id: string | null, name: string) => ({
     onDragOver: (e: React.DragEvent) => {
-      if (!dragNotes.current.length) return
+      if (!canDrop(id)) return
       e.preventDefault()
       e.dataTransfer.dropEffect = 'move'
       setDropOn(id ?? 'root')
@@ -268,10 +286,16 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     onDrop: (e: React.DragEvent) => {
       e.preventDefault()
       setDropOn(null)
-      if (dragNotes.current.length) moveToFolder(dragNotes.current, id, name)
-      dragNotes.current = []
+      const d = drag.get()
+      drag.end()
+      if (d?.kind === 'notes') moveToFolder(notes.filter((n) => d.ids.includes(n.id)), id, name)
+      else if (d?.kind === 'folder') {
+        const f = folders.find((x) => x.id === d.id)
+        if (f && canDropFolder(f, id)) void putFolder(f, id)
+      }
     }
   })
+  const canDropFolder = (f: Rec<'folder'>, id: string | null) => !(id && withDescendants(folders, f.id).has(id))
 
   const bulk = {
     pin: () => {
@@ -382,12 +406,17 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
               <div className="np-titlebar">
                 <div className="grow" style={{ minWidth: 0 }}>
                   {browsing && folder && (
-                    <button className={`np-back ${dropOn === 'root' ? 'drop' : ''}`} onClick={() => openFolder(null)} {...dropProps(null, '')}>
-                      <ChevronLeft size={15} /> Notes
+                    <button
+                      className={`np-back ${dropOn === (parent?.id ?? 'root') ? 'drop' : ''}`}
+                      title={folderPath(folders, folder.id).map((f) => f.data.name).join(' › ')}
+                      onClick={() => openFolder(parent?.id ?? null)}
+                      {...dropProps(parent?.id ?? null, parent?.data.name ?? '')}
+                    >
+                      <ChevronLeft size={15} /> <span className="trunc">{parent?.data.name ?? 'Notes'}</span>
                     </button>
                   )}
                   {browsing && folder ? (
-                    subjectFilter ? <h2 className="np-title sm-title trunc">{folder.data.name}</h2> : <h1 className="np-title trunc">{folder.data.name}</h1>
+                    subjectFilter ? <h2 className="np-title sm-title np-folder-title">{folder.data.name}</h2> : <h1 className="np-title np-folder-title">{folder.data.name}</h1>
                   ) : subjectFilter ? (
                     <h2 className="np-title sm-title">Notes</h2>
                   ) : (
@@ -402,7 +431,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                 {browsing && folder && (
                   <button
                     className="iconbtn plain"
-                    title="Rename or delete this folder"
+                    title="Rename, move or delete this folder"
                     aria-label="Folder options"
                     onClick={(e) => {
                       const r = e.currentTarget.getBoundingClientRect()
@@ -412,8 +441,8 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                     <MoreHorizontal size={17} />
                   </button>
                 )}
-                {view === 'notes' && !folder && (
-                  <button className="iconbtn plain" onClick={() => setFolderDialog({ mode: 'new' })} title="New folder" aria-label="New folder">
+                {browsing && (
+                  <button className="iconbtn plain" onClick={() => setFolderDialog({ mode: 'new' })} title={folder ? `New folder in ${folder.data.name}` : 'New folder'} aria-label="New folder">
                     <FolderPlus size={17} />
                   </button>
                 )}
@@ -532,6 +561,16 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                           setFolderCtx({ x: e.clientX, y: e.clientY, folder: f })
                         }}
                         {...dropProps(f.id, f.data.name)}
+                        draggable={!phone}
+                        onDragStart={(e) => {
+                          drag.start({ kind: 'folder', id: f.id, scope: 'note' })
+                          e.dataTransfer.effectAllowed = 'move'
+                          e.dataTransfer.setData('text/plain', f.data.name)
+                        }}
+                        onDragEnd={() => {
+                          drag.end()
+                          setDropOn(null)
+                        }}
                       >
                         {dropOn === f.id ? <FolderOpen size={18} className="np-folder-icon" /> : <FolderIcon size={18} className="np-folder-icon" />}
                         <span className="grow trunc np-folder-name">{f.data.name}</span>
@@ -564,12 +603,12 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                           }}
                           draggable={!phone && view === 'notes'}
                           onDragStart={(e) => {
-                            dragNotes.current = isPicked ? pickedNotes : [n]
+                            drag.start({ kind: 'notes', ids: (isPicked ? pickedNotes : [n]).map((x) => x.id) })
                             e.dataTransfer.effectAllowed = 'move'
                             e.dataTransfer.setData('text/plain', n.data.title || 'Untitled')
                           }}
                           onDragEnd={() => {
-                            dragNotes.current = []
+                            drag.end()
                             setDropOn(null)
                           }}
                         >
@@ -589,7 +628,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                                 {!browsing && folderOf(n) && (
                                   <span className="np-row-subject">
                                     <FolderIcon size={11} />
-                                    {folders.find((f) => f.id === folderOf(n))?.data.name}
+                                    {folderPath(folders, folderOf(n)).map((f) => f.data.name).join(' › ')}
                                   </span>
                                 )}
                                 {s && !subjectFilter && (
@@ -619,7 +658,9 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                     {filtering
                       ? 'No notes match.'
                       : browsing && folder
-                        ? 'This folder is empty. Make a note here, or drag notes onto it.'
+                        ? folderRows.length
+                          ? 'No notes directly in this folder.'
+                          : 'This folder is empty. Make a note here, or drag notes onto it.'
                       : view === 'trash'
                         ? `The trash is empty. Deleted notes wait here for ${TRASH_DAYS} days.`
                         : view === 'archived'
@@ -779,6 +820,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
           items={[
             ['Open', <FolderOpen size={15} key="o" />, () => openFolder(folderCtx.folder.id)],
             ['Rename', <Pencil size={15} key="r" />, () => setFolderDialog({ mode: 'rename', folder: folderCtx.folder })],
+            ['Move to…', <FolderInput size={15} key="m" />, () => setMovingFolder(folderCtx.folder)],
             ['Delete folder', <Trash2 size={15} key="x" />, () => removeFolder(folderCtx.folder), true]
           ]}
         />
@@ -789,7 +831,19 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
           action={folderDialog.mode === 'new' ? 'Create' : 'Rename'}
           initial={folderDialog.mode === 'rename' ? folderDialog.folder.data.name : ''}
           onClose={() => setFolderDialog(null)}
-          onSave={(name) => void (folderDialog.mode === 'new' ? newFolder('note', name) : renameFolder(folderDialog.folder, name))}
+          onSave={(name) => void (folderDialog.mode === 'new' ? newFolder('note', name, folder?.id ?? null) : renameFolder(folderDialog.folder, name))}
+        />
+      )}
+      {movingFolder && (
+        <FolderPickDialog
+          scope="note"
+          folders={folders}
+          title={`Move ${movingFolder.data.name} to…`}
+          noneLabel="Top level"
+          current={parentOf(folders, movingFolder)}
+          exclude={withDescendants(folders, movingFolder.id)}
+          onPick={(id) => void putFolder(movingFolder, id)}
+          onClose={() => setMovingFolder(null)}
         />
       )}
       {moveTo && (

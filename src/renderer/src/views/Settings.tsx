@@ -20,8 +20,8 @@ import { LocalAiSetup } from '../components/LocalAiSetup'
 import { db, useRecords } from '../data/store'
 import { sortSubjects } from '../lib/subjects'
 import { SubjectDialog } from '../components/editors'
-import { FolderNameDialog } from '../components/FolderDialogs'
-import { deleteFolder, newFolder, renameFolder, useFolders } from '../lib/folders'
+import { FolderNameDialog, FolderPickDialog } from '../components/FolderDialogs'
+import { childrenOf, deleteFolder, folderPath, folderTree, moveFolder as putFolderIn, newFolder, parentOf, renameFolder, useFolders, withDescendants } from '../lib/folders'
 import type { AiProvider, AiState, Rec, UpdateState } from '@shared/types'
 import { Select as Dropdown } from '../components/Select'
 import { TimeField } from '../components/DateTime'
@@ -661,17 +661,20 @@ function Subjects() {
   const archived = sortSubjects(subjects.filter((x) => x.data.archived))
   const folders = useFolders('subject')
   const [folderDialog, setFolderDialog] = useState<{ mode: 'new' } | { mode: 'rename'; folder: Rec<'folder'> } | null>(null)
-  const folderName = (x: Rec<'subject'>) => folders.find((f) => f.id === x.data.folderId)?.data.name
-  const moveFolder = (i: number, d: -1 | 1) => {
-    const next = [...folders]
+  const [movingFolder, setMovingFolder] = useState<Rec<'folder'> | null>(null)
+  const folderName = (x: Rec<'subject'>) => (x.data.folderId ? folderPath(folders, x.data.folderId).map((f) => f.data.name).join(' › ') || undefined : undefined)
+  // Up and down among the folders next to it (in the same folder).
+  const moveFolder = (f: Rec<'folder'>, d: -1 | 1) => {
+    const next = childrenOf(folders, parentOf(folders, f))
+    const i = next.indexOf(f)
     const j = i + d
     if (j < 0 || j >= next.length) return
     ;[next[i], next[j]] = [next[j], next[i]]
-    next.forEach((f, n) => f.data.order !== n && db.put('folder', { ...f.data, order: n }, f.id))
+    next.forEach((x, n) => x.data.order !== n && db.put('folder', { ...x.data, order: n }, x.id))
   }
   const dropFolder = async (f: Rec<'folder'>) => {
     const undo = await deleteFolder(f)
-    toast(`Deleted the folder ${f.data.name}. Its subjects are still here.`, { label: 'Undo', run: () => void undo() })
+    toast(`Deleted the folder ${f.data.name}. What was in it moved up a level.`, { label: 'Undo', run: () => void undo() })
   }
 
   const reorder = (list: Rec<'subject'>[], i: number, d: -1 | 1) => {
@@ -758,25 +761,34 @@ function Subjects() {
           </button>
         </Row>
       </Group>
-      <Group title="Folders" footer="Folders group subjects in the sidebar, and fold away when you click them. Put a subject in a folder from its Edit. Deleting a folder keeps its subjects.">
-        {folders.map((f, i) => (
-          <Row key={f.id} label={f.data.name} hint={`${active.filter((x) => x.data.folderId === f.id).length} subjects`} keywords="folder group subjects sidebar">
+      <Group title="Folders" footer="Folders group subjects in the sidebar, can hold other folders, and fold away when you click them. Drag subjects and folders in the sidebar to sort them, or pick a subject's folder from its Edit. Deleting a folder moves what was in it up a level.">
+        {folderTree(folders).map(({ folder: f, depth }) => {
+          const siblings = childrenOf(folders, parentOf(folders, f))
+          const i = siblings.indexOf(f)
+          const inside = parentOf(folders, f) ? folderPath(folders, parentOf(folders, f)).map((x) => x.data.name).join(' › ') : null
+          const n = active.filter((x) => x.data.folderId === f.id).length
+          return (
+          <Row key={f.id} label={`${'   '.repeat(depth)}${depth ? '└ ' : ''}${f.data.name}`} hint={`${inside ? `In ${inside} · ` : ''}${n} subject${n === 1 ? '' : 's'}`} keywords="folder group subjects sidebar nest">
             <div className="row" style={{ gap: 4 }}>
-              <button className="iconbtn plain" aria-label={`Move ${f.data.name} up`} disabled={i === 0} onClick={() => moveFolder(i, -1)}>
+              <button className="iconbtn plain" aria-label={`Move ${f.data.name} up`} disabled={i === 0} onClick={() => moveFolder(f, -1)}>
                 <ArrowUp size={15} />
               </button>
-              <button className="iconbtn plain" aria-label={`Move ${f.data.name} down`} disabled={i === folders.length - 1} onClick={() => moveFolder(i, 1)}>
+              <button className="iconbtn plain" aria-label={`Move ${f.data.name} down`} disabled={i === siblings.length - 1} onClick={() => moveFolder(f, 1)}>
                 <ArrowDown size={15} />
               </button>
               <button className="btn ghost sm" onClick={() => setFolderDialog({ mode: 'rename', folder: f })}>
                 Rename
+              </button>
+              <button className="btn ghost sm" onClick={() => setMovingFolder(f)}>
+                Move
               </button>
               <button className="iconbtn plain" aria-label={`Delete ${f.data.name}`} title="Delete folder (keeps its subjects)" onClick={() => dropFolder(f)}>
                 <Trash2 size={15} />
               </button>
             </div>
           </Row>
-        ))}
+          )
+        })}
         <Row label="Add a folder" keywords="new folder group">
           <button className="btn sm sec" onClick={() => setFolderDialog({ mode: 'new' })}>
             <Plus size={14} /> New folder
@@ -790,6 +802,18 @@ function Subjects() {
           initial={folderDialog.mode === 'rename' ? folderDialog.folder.data.name : ''}
           onClose={() => setFolderDialog(null)}
           onSave={(name) => void (folderDialog.mode === 'new' ? newFolder('subject', name) : renameFolder(folderDialog.folder, name))}
+        />
+      )}
+      {movingFolder && (
+        <FolderPickDialog
+          scope="subject"
+          folders={folders}
+          title={`Move ${movingFolder.data.name} to…`}
+          noneLabel="Top level"
+          current={parentOf(folders, movingFolder)}
+          exclude={withDescendants(folders, movingFolder.id)}
+          onPick={(id) => void putFolderIn(folders, movingFolder, id)}
+          onClose={() => setMovingFolder(null)}
         />
       )}
       {archived.length > 0 && (

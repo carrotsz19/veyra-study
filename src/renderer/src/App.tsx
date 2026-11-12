@@ -94,20 +94,25 @@ function Sidebar({ route, go, onEnter, onLeave }: { route: Route; go: (r: Route)
 
       {s.showSubjectsInSidebar && (
         <>
-      <div className="between group-label side-section">
-        <h2 style={{ margin: 0 }}>Subjects</h2>
-        <button className="iconbtn plain" style={{ width: 26, height: 26 }} aria-label="Add subject" onClick={() => setAdding(true)}>
-          <Plus size={15} />
+      <SubjectNav
+        subjects={subjects}
+        route={route}
+        go={go}
+        tip={tip}
+        heading={
+          <div className="between group-label side-section">
+            <h2 style={{ margin: 0 }}>Subjects</h2>
+            <button className="iconbtn plain" style={{ width: 26, height: 26 }} aria-label="Add subject" onClick={() => setAdding(true)}>
+              <Plus size={15} />
+            </button>
+          </div>
+        }
+      />
+      {!subjects.some((s) => !s.data.archived) && (
+        <button className="navbtn dim" onClick={() => setAdding(true)} style={{ fontWeight: 500 }}>
+          <Plus size={16} /> Add your first subject
         </button>
-      </div>
-      <nav aria-label="Subjects">
-        <SubjectNav subjects={subjects} route={route} go={go} tip={tip} />
-        {!subjects.some((s) => !s.data.archived) && (
-          <button className="navbtn dim" onClick={() => setAdding(true)} style={{ fontWeight: 500 }}>
-            <Plus size={16} /> Add your first subject
-          </button>
-        )}
-      </nav>
+      )}
         </>
       )}
 

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Check, Folder as FolderIcon, FolderPlus, FolderMinus } from 'lucide-react'
 import type { Folder, Rec } from '@shared/types'
 import { Dialog } from './ui'
-import { newFolder } from '../lib/folders'
+import { folderTree, newFolder } from '../lib/folders'
 
 /** Naming a folder: a new one, or renaming. */
 export function FolderNameDialog({ title, initial = '', action, onSave, onClose }: { title: string; initial?: string; action: string; onSave: (name: string) => void; onClose: () => void }) {
@@ -34,20 +34,28 @@ export function FolderNameDialog({ title, initial = '', action, onSave, onClose 
   )
 }
 
-/** Picking a folder to move things into (or out of every folder), or making a new one there and then. */
+/**
+ * Picking a folder to move things into (or to the top level), shown as a
+ * tree, or making a new folder there and then. `exclude`: folders that can't
+ * be picked (a folder can't go inside itself).
+ */
 export function FolderPickDialog({
   scope,
   folders,
   current,
   title,
+  noneLabel,
+  exclude,
   onPick,
   onClose
 }: {
   scope: Folder['scope']
   folders: Rec<'folder'>[]
-  /** The folder they're in now, if they're all in the same one. */
+  /** Where they are now, if they're all in the same place (null: top level). */
   current?: string | null
   title: string
+  noneLabel?: string
+  exclude?: Set<string>
   onPick: (folderId: string | null, name: string) => void
   onClose: () => void
 }) {
@@ -68,18 +76,18 @@ export function FolderPickDialog({
   return (
     <Dialog title={title} onClose={onClose}>
       <div className="folder-pick">
-        {folders.map((f) => (
-          <button key={f.id} className="menu-row" onClick={() => (onPick(f.id, f.data.name), onClose())}>
+        <button className="menu-row" onClick={() => (onPick(null, ''), onClose())}>
+          <FolderMinus size={16} className="dim" />
+          <span className="grow">{noneLabel ?? (scope === 'note' ? 'Not in a folder' : 'No folder')}</span>
+          {current === null && <Check size={15} style={{ color: 'var(--tint)' }} />}
+        </button>
+        {folderTree(folders).map(({ folder: f, depth }) => (
+          <button key={f.id} className="menu-row" disabled={exclude?.has(f.id)} style={{ paddingLeft: 8 + depth * 20 }} onClick={() => (onPick(f.id, f.data.name), onClose())}>
             <FolderIcon size={16} className="dim" />
             <span className="grow trunc">{f.data.name}</span>
             {current === f.id && <Check size={15} style={{ color: 'var(--tint)' }} />}
           </button>
         ))}
-        <button className="menu-row" onClick={() => (onPick(null, ''), onClose())}>
-          <FolderMinus size={16} className="dim" />
-          <span className="grow">{scope === 'note' ? 'Not in a folder' : 'No folder'}</span>
-          {current === null && <Check size={15} style={{ color: 'var(--tint)' }} />}
-        </button>
         <div className="menu-sep" />
         <button className="menu-row" onClick={() => setNaming(true)}>
           <FolderPlus size={16} className="dim" />

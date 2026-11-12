@@ -15,10 +15,12 @@ export interface RecordMeta {
   deviceId: string
 }
 
-/** A folder of notes (Notes) or of subjects (the sidebar). One level: folders don't hold folders. */
+/** A folder of notes (Notes) or of subjects (the sidebar). Folders can hold folders. */
 export interface Folder {
   name: string
   scope: 'note' | 'subject'
+  /** The folder it sits in (same scope), or none: the top level. */
+  parentId?: string | null
   /** Position among folders of the same scope; lower comes first. */
   order?: number
 }

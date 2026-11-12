@@ -6,8 +6,9 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
-- **Folders for notes:** group notes into folders; open one to see just its notes, and new notes start there. Move notes by dragging them onto a folder, from the right-click menu, or several at once. Searching still looks through everything.
-- **Folders for subjects:** group subjects in the sidebar (for example Sciences and Humanities); click a folder to fold it away. Pick a subject's folder in its Edit, and manage folders in Settings → Subjects.
+- **Folders for notes:** group notes into folders, and folders inside folders; open one to see its folders and notes, and new notes start there. Move notes and folders by dragging them onto a folder (or onto the back link to go up a level), from the right-click menu, or several notes at once. Searching still looks through everything.
+- **Folders for subjects:** group subjects in the sidebar, with folders inside folders; click a folder to fold it away.
+- **Drag and drop in the sidebar:** drag a subject onto a folder to put it in, onto another subject to place it there, or onto the Subjects heading to take it out; drag folders into folders; drag notes from the list onto a subject to give them that subject. Everything can be undone.
 - **Spelling suggestions:** misspelled words in notes get a wavy red line; right-click one for fixes ("consilting" → "consulting") or to add it to your dictionary. British and American English, offline.
 - **Right-click menus in text:** Cut, Copy, Paste, Undo and Select all wherever you type.
 - **Updates come by themselves:** Veyra looks for an update every 10 minutes and when you come back to it, downloads it quietly, and shows "Restart to update" in the title bar.

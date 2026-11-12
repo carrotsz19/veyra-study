@@ -9,7 +9,7 @@ import { useSettings } from '../data/settings'
 import { Dialog, Seg, useToast } from './ui'
 import { Select } from './Select'
 import { DateField, DateTimeField } from './DateTime'
-import { newFolder, useFolders } from '../lib/folders'
+import { folderPath, folderTree, newFolder, useFolders } from '../lib/folders'
 import { FolderNameDialog } from './FolderDialogs'
 
 export function SubjectSelect({ value, onChange, noneLabel = 'No subject', className }: { value: string | null; onChange: (id: string | null) => void; noneLabel?: string; className?: string }) {
@@ -190,7 +190,7 @@ export function SubjectDialog({ subject, onClose, onSaved }: { subject?: Rec<'su
             label="Folder"
             value={s.folderId && folders.some((f) => f.id === s.folderId) ? s.folderId : ''}
             onChange={(v) => (v === '__new' ? setNamingFolder(true) : setS({ ...s, folderId: v || null }))}
-            options={[{ value: '', label: 'No folder' }, ...folders.map((f) => ({ value: f.id, label: f.data.name })), { value: '__new', label: 'New folder…' }]}
+            options={[{ value: '', label: 'No folder' }, ...folderTree(folders).map(({ folder: f }) => ({ value: f.id, label: folderPath(folders, f.id).map((x) => x.data.name).join(' › ') })), { value: '__new', label: 'New folder…' }]}
           />
         </div>
         <div className="field">

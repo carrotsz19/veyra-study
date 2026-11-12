@@ -543,3 +543,5 @@ main.main.main-notes { padding: 0; overflow: hidden; }
   text-decoration: underline wavy color-mix(in srgb, var(--bad, #d64545) 80%, transparent);
   text-decoration-thickness: 1.5px; text-underline-offset: 3px; text-decoration-skip-ink: none;
 }
+.np-title.np-folder-title { overflow-wrap: anywhere; line-height: 1.15; }
+.np-back .trunc { max-width: 180px; }
