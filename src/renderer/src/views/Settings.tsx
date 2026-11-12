@@ -22,6 +22,7 @@ import type { AiProvider, AiState, Rec, UpdateState } from '@shared/types'
 import { Select as Dropdown } from '../components/Select'
 import { TimeField } from '../components/DateTime'
 import { IS_DEV } from '@shared/channel'
+import { BetaNote } from '../components/BetaNotice'
 
 /* =====================================================================
    Settings: categories on the left, one category at a time on the
@@ -1265,6 +1266,7 @@ function SoftwareUpdate() {
   return (
     <>
       <Group>
+        <BetaNote />
         <div className="upd-card">
           <VeyraMark size={42} />
           <div className="grow" style={{ minWidth: 0 }}>

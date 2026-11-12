@@ -504,7 +504,8 @@ app.whenReady().then(async () => {
     return { saved: files.length }
   })
   ipcMain.handle('app:open', (_e, url: string) => {
-    if (/^https:\/\//.test(url)) shell.openExternal(url)
+    // Web links, and email (the "still being built" notice's Email button).
+    if (/^https:\/\//.test(url) || /^mailto:[^\s]+$/.test(url)) shell.openExternal(url)
   })
 
   ipcMain.handle('app:setStartup', (_e, on: boolean) => {

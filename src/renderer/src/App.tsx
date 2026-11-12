@@ -31,6 +31,7 @@ import { onAndroid, usePhone } from './lib/phone'
 import { startSegments } from './lib/segments'
 import { transition } from './lib/motion'
 import { IS_DEV } from '@shared/channel'
+import { BetaNotice } from './components/BetaNotice'
 
 startSegments()
 
@@ -294,6 +295,7 @@ function Shell() {
           <UpdatedNotice />
           <VoiceSetupHost />
           <Palette />
+          <BetaNotice />
           <main className={`main ${route.name === 'settings' ? 'main-settings' : route.name === 'notes' ? 'main-notes' : route.name === 'groups' ? 'main-groups' : route.name === 'calendar' ? 'main-calendar' : ''}`}>
             <Screen key={route.name + ('id' in route ? route.id : '')} route={route} />
           </main>

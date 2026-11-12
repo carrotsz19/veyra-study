@@ -873,3 +873,31 @@ html.dark .menu-win { background: color-mix(in srgb, var(--bg-elevated) 30%, tra
   margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.45;
   background: color-mix(in srgb, #7c4dff 14%, transparent); border: 1px solid color-mix(in srgb, #7c4dff 35%, transparent);
 }
+
+/* ---------- "still being built" notice (components/BetaNotice.tsx) ---------- */
+.beta-notice {
+  /* Top of the content, under the title bar: toasts use the bottom corner. */
+  position: fixed; z-index: 70; top: calc(var(--titlebar, 0px) + 14px); left: calc(var(--sidebar) + 24px); right: 24px; max-width: 820px; margin: 0 auto;
+  display: flex; align-items: center; gap: 12px; padding: 12px 44px 12px 14px; border-radius: 14px;
+  background: var(--glass-bg); backdrop-filter: var(--glass-filter); -webkit-backdrop-filter: var(--glass-filter);
+  border: 1px solid var(--glass-edge); box-shadow: var(--glass-shine), var(--elev-3);
+  animation: selIn var(--spring-spatial-ms) var(--spring-spatial);
+}
+/* On the see-through window the browser can't blur, so it's near-solid there. */
+html.material .beta-notice { background: color-mix(in srgb, var(--bg-elevated) 94%, transparent); }
+.beta-icon { width: 30px; height: 30px; border-radius: 9px; display: inline-grid; place-items: center; flex-shrink: 0; background: color-mix(in srgb, #c9871a 18%, transparent); color: #c9871a; }
+.beta-text { flex: 1; min-width: 0; font-size: 13px; line-height: 1.45; }
+.beta-text .linkbtn, .beta-note .linkbtn { padding: 0; font-size: inherit; }
+.beta-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.beta-close { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; }
+.phone-shell .beta-notice { left: 12px; right: 12px; top: calc(env(safe-area-inset-top) + 10px); flex-wrap: wrap; padding: 12px 40px 12px 12px; }
+.phone-shell .beta-actions { width: 100%; justify-content: flex-end; }
+@media (max-width: 1100px) {
+  .shell:not(.phone-shell) .beta-notice { flex-wrap: wrap; }
+  .shell:not(.phone-shell) .beta-actions { width: 100%; justify-content: flex-end; }
+}
+.beta-note {
+  display: block; margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.45;
+  background: color-mix(in srgb, #c9871a 10%, transparent); color: var(--ink);
+}
+.beta-note svg { color: #c9871a; vertical-align: -2px; margin-right: 6px; }
