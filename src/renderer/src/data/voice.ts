@@ -24,7 +24,7 @@ export const registerVoiceSetup = (fn: SetupRequest) => {
 /** Makes sure the engine and the chosen model are downloaded (asking first). */
 export async function ensureVoice(model: VoiceModel): Promise<boolean> {
   const st = await api.status()
-  if (st.engine && st.models.includes(model)) return true
+  if (st.subtitleMaker || (st.engine && st.models.includes(model))) return true
   return setupHost ? setupHost(model) : false
 }
 

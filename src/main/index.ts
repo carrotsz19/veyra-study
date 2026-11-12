@@ -219,10 +219,13 @@ app.whenReady().then(() => {
   setInterval(() => google?.schedulePush(0), 15 * 60 * 1000)
 
   files.handleProtocol()
-  ipcMain.handle('voice:status', () => whisper.status())
+  ipcMain.handle('voice:status', () => {
+    whisper.useSubtitleMaker = appSettings().voiceUseSubtitleMaker
+    return whisper.status()
+  })
   ipcMain.handle('voice:setup', (e, model) => friendly(() => whisper.setup(model, e.sender)))
   ipcMain.handle('voice:cancelSetup', () => whisper.cancelSetup())
-  ipcMain.handle('voice:transcribe', (e, id: string, wav: Uint8Array, model, language: string) => friendly(() => whisper.transcribe(String(id), wav, model === 'small' ? 'small' : 'base', String(language), e.sender)))
+  ipcMain.handle('voice:transcribe', (e, id: string, wav: Uint8Array, model, language: string) => friendly(() => (whisper.useSubtitleMaker = appSettings().voiceUseSubtitleMaker, whisper).transcribe(String(id), wav, model === 'small' ? 'small' : 'base', String(language), e.sender)))
   ipcMain.handle('voice:cancel', (_e, id: string) => whisper.cancel(String(id)))
   ipcMain.handle('voice:save', (_e, name: string, mime: string, bytes: Uint8Array) => friendly(async () => files.fromDownload(String(name), String(mime), bytes)))
   const noSync = { enabled: false, state: 'idle', error: '' }

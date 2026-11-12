@@ -12,6 +12,7 @@ import { availableParallelism, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { VoiceModel, VoiceProgress, VoiceStatus } from '../shared/types'
+import { findSubtitleMaker, transcribeWithSubtitleMaker } from './subtitle-maker'
 
 const run = promisify(execFile)
 const MB = 1024 * 1024
@@ -35,8 +36,13 @@ export class Whisper {
     return join(this.dir, 'models', VOICE_MODELS.find((m) => m.id === id)!.file)
   }
 
-  status(): VoiceStatus {
+  /** Use Subtitle Maker when it's installed and working (Settings → Notes → Voice recordings). */
+  useSubtitleMaker = true
+
+  async status(): Promise<VoiceStatus> {
+    const sm = this.useSubtitleMaker ? await findSubtitleMaker() : null
     return {
+      ...(sm ? { subtitleMaker: { level: sm.level, device: sm.device } } : {}),
       engine: existsSync(this.exe),
       models: VOICE_MODELS.filter((m) => existsSync(this.model(m.id))).map((m) => m.id),
       choices: VOICE_MODELS.map(({ id, label, sizeMB, why }) => ({ id, label, sizeMB, why }))
@@ -110,8 +116,31 @@ export class Whisper {
 
   /** Transcribes a 16 kHz mono WAV. Progress goes to the window as voice:transcribing. */
   async transcribe(id: string, wav: Uint8Array, model: VoiceModel, language: string, wc: WebContents): Promise<string> {
-    if (!existsSync(this.exe) || !existsSync(this.model(model))) throw new VoiceError('Transcription isn’t set up yet.')
     if (!(wav instanceof Uint8Array) || wav.byteLength < 100) throw new VoiceError('That recording is empty.')
+    // Subtitle Maker on this computer: its models, quality level, GPU settings and word fixes.
+    const sm = this.useSubtitleMaker ? await findSubtitleMaker() : null
+    if (sm) {
+      const work = join(tmpdir(), `veyra-voice-${randomUUID()}`)
+      mkdirSync(work, { recursive: true })
+      try {
+        writeFileSync(join(work, 'audio.wav'), wav)
+        return await transcribeWithSubtitleMaker(
+          sm,
+          join(work, 'audio.wav'),
+          language,
+          (p) => !wc.isDestroyed() && wc.send('voice:transcribing', { id, progress: p }),
+          (p) => {
+            this.jobs.set(id, p)
+            p.on('close', () => this.jobs.delete(id))
+          }
+        ).catch((e) => {
+          throw new VoiceError(e instanceof Error ? e.message : 'Subtitle Maker stopped.')
+        })
+      } finally {
+        rmSync(work, { recursive: true, force: true })
+      }
+    }
+    if (!existsSync(this.exe) || !existsSync(this.model(model))) throw new VoiceError('Transcription isn’t set up yet.')
     const work = join(tmpdir(), `veyra-voice-${randomUUID()}`)
     mkdirSync(work, { recursive: true })
     const input = join(work, 'audio.wav')

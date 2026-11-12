@@ -69,6 +69,8 @@ export interface AppSettings {
   voiceModel: 'base' | 'small'
   voiceLanguage: string
   voiceAutoTranscribe: boolean
+  /** Transcribe with Subtitle Maker when it's installed and working. */
+  voiceUseSubtitleMaker: boolean
   /** AI apps (MCP) can read Veyra; and, separately, change it. */
   mcpEnabled: boolean
   mcpAllowWrites: boolean
@@ -164,6 +166,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   voiceModel: 'base',
   voiceLanguage: 'auto',
   voiceAutoTranscribe: true,
+  voiceUseSubtitleMaker: true,
   mcpEnabled: false,
   mcpAllowWrites: false,
   noteTemplate: 'page',

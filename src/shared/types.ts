@@ -425,6 +425,8 @@ export interface SyncApi {
 /* ---------- voice recordings and offline transcription ---------- */
 export type VoiceModel = 'base' | 'small'
 export interface VoiceStatus {
+  /** Subtitle Maker is installed and working, so transcription needs no download. */
+  subtitleMaker?: { level: string; device: string }
   engine: boolean
   models: VoiceModel[]
   choices: { id: VoiceModel; label: string; sizeMB: number; why: string }[]
