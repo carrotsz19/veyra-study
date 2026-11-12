@@ -25,6 +25,7 @@ import { parseBullets, parseCards, type AiTask } from '../../data/ai'
 import { noteToMarkdown } from './markdown'
 import { useSettings } from '../../data/settings'
 import { registerOpenNote, trashNotes } from '../../lib/notes'
+import { Select } from '../Select'
 
 export const NOTE_COVERS: Record<string, string> = {
   clay: 'linear-gradient(120deg,#e9b9a4,#d9825f 55%,#b3492b)',
@@ -88,21 +89,22 @@ function FormatBar({ editor }: { editor: Editor }) {
         <LinkInput editor={editor} onDone={() => setLinking(false)} />
       ) : (
         <>
-      <select
-        className="fb-select"
-        aria-label="Text style"
+      <Select
+        className="quiet fb-sel"
+        label="Text style"
+        keepFocus
         value={s.block}
-        onChange={(e) => {
-          const v = e.target.value
+        onChange={(v) => {
           if (v === 'p') c().setParagraph().run()
           else c().setHeading({ level: Number(v[1]) as 1 | 2 | 3 }).run()
         }}
-      >
-        <option value="p">Text</option>
-        <option value="h1">Heading</option>
-        <option value="h2">Subheading</option>
-        <option value="h3">Small heading</option>
-      </select>
+        options={[
+          { value: 'p', label: 'Text' },
+          { value: 'h1', label: 'Heading', style: { fontSize: 18, fontWeight: 800 } },
+          { value: 'h2', label: 'Subheading', style: { fontSize: 15.5, fontWeight: 750 } },
+          { value: 'h3', label: 'Small heading', style: { fontSize: 14, fontWeight: 700 } }
+        ]}
+      />
       <span className="fb-sep" />
       {btn('Bold', s.bold, () => c().toggleBold().run(), <Bold size={15} />)}
       {btn('Italic', s.italic, () => c().toggleItalic().run(), <Italic size={15} />)}
@@ -648,19 +650,19 @@ export function NoteEditor({
           />
 
           <div className="note-meta">
-            <label className="subject-chip" style={subject ? { ['--chip' as string]: subject.data.color } : undefined}>
+            <span className="subject-chip" style={subject ? { ['--chip' as string]: subject.data.color } : undefined}>
               <span className="dot" />
-              <select value={data.subjectId ?? ''} onChange={(e) => update({ subjectId: e.target.value || null }, true)} aria-label="Subject">
-                <option value="">No subject</option>
-                {subjects
-                  .filter((s) => !s.data.archived || s.id === data.subjectId)
-                  .map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.data.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
+              <Select
+                className="quiet subject-sel"
+                label="Subject"
+                value={data.subjectId ?? ''}
+                onChange={(v) => update({ subjectId: v || null }, true)}
+                options={[
+                  { value: '', label: 'No subject' },
+                  ...subjects.filter((s) => !s.data.archived || s.id === data.subjectId).map((s) => ({ value: s.id, label: s.data.name, dot: s.data.color }))
+                ]}
+              />
+            </span>
             <Tags tags={data.tags ?? []} onChange={(tags) => update({ tags }, true)} />
             {settings.showWordCount && (
               <>

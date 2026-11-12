@@ -27,6 +27,9 @@ import { PhoneNav } from './components/PhoneNav'
 import { Palette } from './components/Palette'
 import { emptyOldTrash } from './lib/notes'
 import { onAndroid, usePhone } from './lib/phone'
+import { startSegments } from './lib/segments'
+
+startSegments()
 
 function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   const { items: subjects } = useRecords('subject')

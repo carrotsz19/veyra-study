@@ -5,6 +5,7 @@ import {
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, onExternalChange, useRecords } from '../data/store'
 import { Dialog, Empty, useToast } from '../components/ui'
+import { Select } from '../components/Select'
 import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../components/notes/NoteEditor'
 import { useSettings } from '../data/settings'
 import { preview, section, shortDate } from '../components/notes/listing'
@@ -398,14 +399,20 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                     </button>
                   )
                 ) : (
-                <label className="np-sort">
+                <span className="np-sort">
                   <ArrowUpDown size={13} aria-hidden="true" />
-                  <select aria-label="Sort notes" value={settings.noteSort} onChange={(e) => setSetting({ noteSort: e.target.value as typeof settings.noteSort })}>
-                    <option value="edited">Last edited</option>
-                    <option value="created">Newest</option>
-                    <option value="title">A–Z</option>
-                  </select>
-                </label>
+                  <Select
+                    className="quiet"
+                    label="Sort notes"
+                    value={settings.noteSort}
+                    onChange={(v) => setSetting({ noteSort: v as typeof settings.noteSort })}
+                    options={[
+                      { value: 'edited', label: 'Last edited' },
+                      { value: 'created', label: 'Newest' },
+                      { value: 'title', label: 'A–Z' }
+                    ]}
+                  />
+                </span>
                 )}
               </div>
 

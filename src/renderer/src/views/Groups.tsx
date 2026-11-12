@@ -46,6 +46,7 @@ import {
 } from '../data/groups'
 import '../notes.css'
 import '../groups.css'
+import { Select } from '../components/Select'
 
 type Tab = 'tasks' | 'chat' | 'notes' | 'deadlines' | 'members'
 const msg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Try again.')
@@ -531,14 +532,16 @@ function GroupTaskDialog({ group, items, task, me, onClose }: { group: Group; it
             <label className="field-label" htmlFor="gt-who">
               Who’s doing it
             </label>
-            <select id="gt-who" value={d.assignee ?? ''} onChange={(e) => setD({ ...d, assignee: e.target.value || null })}>
-              <option value="">Anyone</option>
-              {group.members.map((m) => (
-                <option key={m.username} value={m.username}>
-                  {m.displayName} (@{m.username}){m.username === me?.username ? ' – you' : ''}
-                </option>
-              ))}
-            </select>
+            <Select
+              id="gt-who"
+              label="Who’s doing it"
+              value={d.assignee ?? ''}
+              onChange={(v) => setD({ ...d, assignee: v || null })}
+              options={[
+                { value: '', label: 'Anyone' },
+                ...group.members.map((m) => ({ value: m.username, label: m.username === me?.username ? `${m.displayName} (you)` : m.displayName, hint: `@${m.username}` }))
+              ]}
+            />
           </div>
           <div>
             <label className="field-label" htmlFor="gt-due">

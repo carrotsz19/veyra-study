@@ -18,6 +18,7 @@ import { db, useRecords } from '../data/store'
 import { sortSubjects } from '../lib/subjects'
 import { SubjectDialog } from '../components/editors'
 import type { AiProvider, AiState, Rec, UpdateState } from '@shared/types'
+import { Select as Dropdown } from '../components/Select'
 
 /* =====================================================================
    Settings: categories on the left, one category at a time on the
@@ -99,13 +100,13 @@ function Choice<T extends string | number>({ value, options, onChange, label }: 
 
 function Select<T extends string | number>({ value, options, onChange, label }: { value: T; options: [T, string][]; onChange: (v: T) => void; label: string }) {
   return (
-    <select className="set-select" aria-label={label} value={String(value)} onChange={(e) => onChange(options.find(([v]) => String(v) === e.target.value)![0])}>
-      {options.map(([v, l]) => (
-        <option key={String(v)} value={String(v)}>
-          {l}
-        </option>
-      ))}
-    </select>
+    <Dropdown
+      className="set-sel"
+      label={label}
+      value={String(value)}
+      onChange={(v) => onChange(options.find(([o]) => String(o) === v)![0])}
+      options={options.map(([v, l]) => ({ value: String(v), label: l }))}
+    />
   )
 }
 
@@ -534,13 +535,13 @@ function Notes() {
           <Choice label="Transcription model" value={s.voiceModel} onChange={(voiceModel) => set({ voiceModel })} options={[['base', 'Fast'], ['small', 'More accurate']]} />
         </Row>
         <Row label="Language" hint="What’s spoken in your recordings. Detect works for most; pick one if it guesses wrong." keywords="language english detect">
-          <select className="set-select" value={s.voiceLanguage} onChange={(e) => set({ voiceLanguage: e.target.value })} aria-label="Recording language">
-            {[['auto', 'Detect'], ['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'], ['zh', 'Chinese'], ['ja', 'Japanese'], ['ko', 'Korean'], ['hi', 'Hindi'], ['ar', 'Arabic'], ['ru', 'Russian'], ['tl', 'Filipino'], ['vi', 'Vietnamese'], ['id', 'Indonesian']].map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            ))}
-          </select>
+          <Dropdown
+            className="set-sel"
+            label="Recording language"
+            value={s.voiceLanguage}
+            onChange={(voiceLanguage) => set({ voiceLanguage })}
+            options={[['auto', 'Detect'], ['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'], ['zh', 'Chinese'], ['ja', 'Japanese'], ['ko', 'Korean'], ['hi', 'Hindi'], ['ar', 'Arabic'], ['ru', 'Russian'], ['tl', 'Filipino'], ['vi', 'Vietnamese'], ['id', 'Indonesian']].map(([v, l]) => ({ value: v, label: l }))}
+          />
         </Row>
       </Group>
       )}
@@ -842,12 +843,14 @@ function AiSettings() {
           </Row>
           {models && models.length > 0 && (
             <Row label="Model" hint={speeds[chosenModel] ? `${speeds[chosenModel]} tokens/s on this computer` : 'Speed shows after its first answer.'} keywords="model local speed tokens">
-              <select className="set-select" aria-label="Local model" value={chosenModel} onChange={async (e) => setSt(await window.veyra.ai.set({ model: { provider: 'ollama', model: e.target.value } }))}>
-                {!chosenModel && <option value="">Choose a model</option>}
-                {models.map((m) => (
-                  <option key={m}>{m}</option>
-                ))}
-              </select>
+              <Dropdown
+                className="set-sel"
+                label="Local model"
+                placeholder="Choose a model"
+                value={chosenModel}
+                onChange={async (model) => setSt(await window.veyra.ai.set({ model: { provider: 'ollama', model } }))}
+                options={models.map((m) => ({ value: m, label: m }))}
+              />
             </Row>
           )}
           {!modelErr && models && (
@@ -911,13 +914,14 @@ function AiSettings() {
           </Row>
           {st.hasKey[def.id as Exclude<AiProvider, 'ollama'>] && (
             <Row label="Model" hint={modelErr || (def.id === 'anthropic' ? 'Claude Opus 5.5 is the default.' : undefined)} keywords="model">
-              <select className="set-select" aria-label={`${def.name} model`} value={chosenModel} onChange={async (e) => setSt(await window.veyra.ai.set({ model: { provider: def.id, model: e.target.value } }))}>
-                {!chosenModel && <option value="">Choose a model</option>}
-                {chosenModel && !(models ?? []).includes(chosenModel) && <option>{chosenModel}</option>}
-                {(models ?? []).map((m) => (
-                  <option key={m}>{m}</option>
-                ))}
-              </select>
+              <Dropdown
+                className="set-sel"
+                label={`${def.name} model`}
+                placeholder="Choose a model"
+                value={chosenModel}
+                onChange={async (model) => setSt(await window.veyra.ai.set({ model: { provider: def.id, model } }))}
+                options={[...(chosenModel && !(models ?? []).includes(chosenModel) ? [chosenModel] : []), ...(models ?? [])].map((m) => ({ value: m, label: m }))}
+              />
             </Row>
           )}
         </Group>

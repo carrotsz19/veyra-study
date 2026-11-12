@@ -7,20 +7,23 @@ import { db, useRecords } from '../data/store'
 import { SUBJECT_COLORS, blankTask, defaultDueDate, sortSubjects } from '../lib/subjects'
 import { useSettings } from '../data/settings'
 import { Dialog, Seg, useToast } from './ui'
+import { Select } from './Select'
 
-export function SubjectSelect({ value, onChange, noneLabel = 'No subject' }: { value: string | null; onChange: (id: string | null) => void; noneLabel?: string }) {
+export function SubjectSelect({ value, onChange, noneLabel = 'No subject', className }: { value: string | null; onChange: (id: string | null) => void; noneLabel?: string; className?: string }) {
   const { items: subjects } = useRecords('subject')
   return (
-    <select value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
-      <option value="">{noneLabel}</option>
-      {sortSubjects(subjects)
-        .filter((s) => !s.data.archived || s.id === value)
-        .map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.data.name}
-          </option>
-        ))}
-    </select>
+    <Select
+      label="Subject"
+      className={className}
+      value={value ?? ''}
+      onChange={(v) => onChange(v || null)}
+      options={[
+        { value: '', label: noneLabel },
+        ...sortSubjects(subjects)
+          .filter((s) => !s.data.archived || s.id === value)
+          .map((s) => ({ value: s.id, label: s.data.name, dot: s.data.color }))
+      ]}
+    />
   )
 }
 
@@ -332,26 +335,33 @@ export function RepeatPicker({ value, due, onChange }: { value: Repeat | null; d
   const r = cleanRepeat(value)
   return (
     <div className="repeat-pick">
-      <select id="task-repeat" value={preset} onChange={(e) => pick(e.target.value as Preset)}>
-        <option value="none">Doesn’t repeat</option>
-        <option value="day">Every day</option>
-        <option value="weekdays">Every weekday (Mon–Fri)</option>
-        <option value="week">Every week on {DAY_NAMES[wd.getDay()]}</option>
-        <option value="fortnight">Every 2 weeks on {DAY_NAMES[wd.getDay()]}</option>
-        <option value="month">Every month on the {ordinal(wd.getDate())}</option>
-        <option value="year">Every year</option>
-        <option value="custom">Custom…</option>
-      </select>
+      <Select
+        id="task-repeat"
+        label="Repeat"
+        value={preset}
+        onChange={(v) => pick(v as Preset)}
+        options={[
+          { value: 'none', label: 'Doesn’t repeat' },
+          { value: 'day', label: 'Every day' },
+          { value: 'weekdays', label: 'Every weekday', hint: 'Monday to Friday' },
+          { value: 'week', label: `Every week on ${DAY_NAMES[wd.getDay()]}` },
+          { value: 'fortnight', label: `Every 2 weeks on ${DAY_NAMES[wd.getDay()]}` },
+          { value: 'month', label: `Every month on the ${ordinal(wd.getDate())}` },
+          { value: 'year', label: 'Every year' },
+          { value: 'custom', label: 'Custom…', hint: 'Your own days and how often' }
+        ]}
+      />
       {preset === 'custom' && r && (
         <div className="repeat-custom">
           <span className="dim">Every</span>
           <input type="number" min={1} max={99} value={r.every} aria-label="How often" onChange={(e) => onChange({ ...r, every: Number(e.target.value) || 1 })} />
-          <select value={r.unit} aria-label="Unit" onChange={(e) => onChange({ ...r, unit: e.target.value as Repeat['unit'], days: e.target.value === 'week' ? r.days ?? [wd.getDay()] : undefined })}>
-            <option value="day">{r.every === 1 ? 'day' : 'days'}</option>
-            <option value="week">{r.every === 1 ? 'week' : 'weeks'}</option>
-            <option value="month">{r.every === 1 ? 'month' : 'months'}</option>
-            <option value="year">{r.every === 1 ? 'year' : 'years'}</option>
-          </select>
+          <Select
+            label="Unit"
+            className="sel-auto"
+            value={r.unit}
+            onChange={(v) => onChange({ ...r, unit: v as Repeat['unit'], days: v === 'week' ? r.days ?? [wd.getDay()] : undefined })}
+            options={(['day', 'week', 'month', 'year'] as const).map((u) => ({ value: u, label: r.every === 1 ? u : `${u}s` }))}
+          />
           {r.unit === 'week' && (
             <div className="repeat-days" role="group" aria-label="On these days">
               {DAYS.map((d, i) => {

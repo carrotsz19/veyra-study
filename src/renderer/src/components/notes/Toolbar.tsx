@@ -11,6 +11,7 @@ import { LinkInput } from './LinkInput'
 import { useContext } from 'react'
 import { NoteAiCtx } from './aiContext'
 import { AI_LABELS, type AiTask } from '../../data/ai'
+import { Select } from '../Select'
 
 const HL = [
   ['Yellow', 'var(--hl-yellow)'],
@@ -105,22 +106,22 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
         </Btn>
         <span className="tb-sep" />
       </span>
-      <select
-        className="tb-select"
-        aria-label="Text style"
+      <Select
+        className="quiet tb-sel"
+        label="Text style"
+        keepFocus
         value={s.block}
-        onMouseDown={(e) => e.stopPropagation()}
-        onChange={(e) => {
-          const v = e.target.value
+        onChange={(v) => {
           if (v === 'p') c().setParagraph().run()
           else c().setHeading({ level: Number(v[1]) as 1 | 2 | 3 }).run()
         }}
-      >
-        <option value="p">Text</option>
-        <option value="h1">Heading</option>
-        <option value="h2">Subheading</option>
-        <option value="h3">Small heading</option>
-      </select>
+        options={[
+          { value: 'p', label: 'Text' },
+          { value: 'h1', label: 'Heading', style: { fontSize: 18, fontWeight: 800 } },
+          { value: 'h2', label: 'Subheading', style: { fontSize: 15.5, fontWeight: 750 } },
+          { value: 'h3', label: 'Small heading', style: { fontSize: 14, fontWeight: 700 } }
+        ]}
+      />
       <span className="tb-sep" />
       <Btn label="Bold (Ctrl+B)" active={s.bold} onClick={() => c().toggleBold().run()}>
         <Bold size={15} />

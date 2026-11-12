@@ -4,6 +4,12 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 0.2.8
+
+- **Drop-downs that match Veyra.** Every drop-down (text style, subject, repeat, sort, settings) is now Veyra's own instead of the system one, which showed a white list with faint text in dark mode. On the computer it springs open under the button with a tick by your choice; arrow keys, typing a letter, Enter and Esc all work. On phones it's a sheet from the bottom that you can swipe away.
+- **Motion that feels physical.** Animations now follow real spring curves: dialogs rise in, menus spring out from where they open, the chosen segment in switches like Open / Done / All slides across, toggles stretch as you press them, and ticking a task off pops the check in.
+- **Press feedback everywhere.** Buttons, chips, menu rows and list rows give a little as you press them.
+
 ## 0.2.7
 
 - **Search everything with Ctrl+K.** One box finds notes (every word in them), tasks and their steps, subjects, screens and settings, and runs actions: new task or note, start or pause the focus timer, change the theme. If what you type isn't there, it offers to make it a task or a note. On the computer there's also a Search button at the top of the sidebar; on phones it's at the top of More.
