@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, GraduationCap } from 'lucide-react'
+import { Check, GraduationCap, PanelLeftClose, PanelLeftDashed, PanelLeftOpen } from 'lucide-react'
 import type { NavId, ThemeMode } from '@shared/settings'
 import { useSettings } from '../data/settings'
 import { useNav, type Route } from '../nav'
@@ -91,7 +91,11 @@ export function TitleBar() {
         { label: 'Smaller', keys: 'Ctrl+−', run: () => zoom(-0.1) },
         { label: 'Actual size', keys: 'Ctrl+0', run: () => zoom(null) },
         'sep',
-        { label: 'Full screen', keys: 'F11', run: () => win('fullscreen') }
+        { label: 'Full screen', keys: 'F11', run: () => win('fullscreen') },
+        'sep',
+        { label: 'Sidebar: full', checked: s.sidebarMode === 'full', run: () => set({ sidebarMode: 'full' }) },
+        { label: 'Sidebar: icons only', checked: s.sidebarMode === 'icons', run: () => set({ sidebarMode: 'icons' }) },
+        { label: 'Sidebar: hidden (point at the left edge)', keys: 'Ctrl+\\', checked: s.sidebarMode === 'hidden', run: () => set({ sidebarMode: 'hidden' }) }
       ]
     ],
     [
@@ -131,6 +135,10 @@ export function TitleBar() {
       } else if (ctrl && e.key === '0') {
         e.preventDefault()
         zoom(null)
+      } else if (ctrl && e.key === '\\') {
+        // Full → icons only → hidden → full.
+        e.preventDefault()
+        set({ sidebarMode: s.sidebarMode === 'full' ? 'icons' : s.sidebarMode === 'icons' ? 'hidden' : 'full' })
       } else if (ctrl && e.key.toLowerCase() === 'q') {
         e.preventDefault()
         win('quit')
@@ -236,6 +244,14 @@ export function TitleBar() {
         <b>Veyra Study</b>
         {IS_DEV && <span className="dev-pill" title="A test build: its own app and data, separate from the real Veyra Study.">DEV</span>}
       </div>
+      <button
+        className="wb-side-btn"
+        aria-label="Sidebar"
+        title={`Sidebar: ${s.sidebarMode === 'full' ? 'full' : s.sidebarMode === 'icons' ? 'icons only' : 'hidden'} (Ctrl+\\)`}
+        onClick={() => set({ sidebarMode: s.sidebarMode === 'full' ? 'icons' : s.sidebarMode === 'icons' ? 'hidden' : 'full' })}
+      >
+        {s.sidebarMode === 'full' ? <PanelLeftClose size={15} /> : s.sidebarMode === 'icons' ? <PanelLeftDashed size={15} /> : <PanelLeftOpen size={15} />}
+      </button>
       <nav className="wb-menus" aria-label="Menu">
         {menus.map(([name, list]) => (
           <div key={name} className="wb-menu-wrap">

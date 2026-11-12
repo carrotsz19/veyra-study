@@ -33,6 +33,8 @@ export interface AppSettings {
   showCounts: boolean
   showSubjectsInSidebar: boolean
   showTimerCard: boolean
+  /** Computer: the full sidebar, just its icons, or hidden until you point at the left edge (like Zen browser). */
+  sidebarMode: 'full' | 'icons' | 'hidden'
   /* general */
   startScreen: StartScreen
   name: string
@@ -162,6 +164,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showCounts: true,
   showSubjectsInSidebar: true,
   showTimerCard: true,
+  sidebarMode: 'full',
   startScreen: 'today',
   name: '',
   greeting: true,

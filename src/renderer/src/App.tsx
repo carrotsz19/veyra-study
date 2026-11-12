@@ -35,7 +35,10 @@ import { BetaNotice } from './components/BetaNotice'
 
 startSegments()
 
-function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
+/** Full → icons only → hidden (slides out at the left edge) → full. */
+export const nextSidebarMode = (m: 'full' | 'icons' | 'hidden') => (m === 'full' ? 'icons' : m === 'icons' ? 'hidden' : 'full')
+
+function Sidebar({ route, go, onEnter, onLeave }: { route: Route; go: (r: Route) => void; onEnter?: () => void; onLeave?: () => void }) {
   const { items: subjects } = useRecords('subject')
   const { items: tasks } = useRecords('task')
   const timer = useTimer()
@@ -60,9 +63,11 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
   }
   const nav = s.nav.filter((n) => n.visible).map((n) => [n.id, ...items[n.id]] as [NavId, string, typeof Home, string?])
   const nextTheme: Record<ThemeMode, ThemeMode> = { system: 'dark', dark: 'light', light: 'system' }
+  // Icons only: names show as tooltips.
+  const tip = (label: string) => (s.sidebarMode === 'full' ? undefined : label)
 
   return (
-    <aside className="side">
+    <aside className="side" onMouseEnter={onEnter} onMouseLeave={onLeave}>
       {/* The name is in the title bar on Windows; elsewhere it heads the sidebar. */}
       {!window.veyra.app.titleBar && (
         <div className="brand">
@@ -73,15 +78,15 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
           {IS_DEV && <span className="dev-pill">DEV</span>}
         </div>
       )}
-      <button className="side-search" onClick={() => window.dispatchEvent(new Event('veyra:palette'))} title="Search everything and run commands">
+      <button className="side-search" onClick={() => window.dispatchEvent(new Event('veyra:palette'))} title="Search everything and run commands (Ctrl+K)">
         <Search size={15} />
-        <span className="grow">Search</span>
-        <kbd>Ctrl K</kbd>
+        <span className="grow nav-label">Search</span>
+        <kbd className="nav-label">Ctrl K</kbd>
       </button>
       <nav aria-label="Main">
         {nav.map(([name, label, Icon, count]) => (
-          <button key={name} className="navbtn" aria-current={route.name === name} onClick={() => go({ name } as Route)}>
-            <Icon size={17} /> {label}
+          <button key={name} className="navbtn" aria-current={route.name === name} onClick={() => go({ name } as Route)} title={tip(count ? `${label} (${count})` : label)} aria-label={label}>
+            <Icon size={17} /> <span className="nav-label">{label}</span>
             {count && s.showCounts && <span className="count">{count}</span>}
           </button>
         ))}
@@ -89,7 +94,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
 
       {s.showSubjectsInSidebar && (
         <>
-      <div className="between group-label">
+      <div className="between group-label side-section">
         <h2 style={{ margin: 0 }}>Subjects</h2>
         <button className="iconbtn plain" style={{ width: 26, height: 26 }} aria-label="Add subject" onClick={() => setAdding(true)}>
           <Plus size={15} />
@@ -99,9 +104,9 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
         {sortSubjects(subjects)
           .filter((s) => !s.data.archived)
           .map((s) => (
-            <button key={s.id} className="navbtn" aria-current={route.name === 'subject' && route.id === s.id} onClick={() => go({ name: 'subject', id: s.id })}>
+            <button key={s.id} className="navbtn" aria-current={route.name === 'subject' && route.id === s.id} onClick={() => go({ name: 'subject', id: s.id })} title={tip(s.data.name)} aria-label={s.data.name}>
               <span className="dot" style={{ background: s.data.color }} />
-              <span className="trunc">{s.data.name}</span>
+              <span className="trunc nav-label">{s.data.name}</span>
             </button>
           ))}
         {!subjects.some((s) => !s.data.archived) && (
@@ -116,7 +121,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
       <div className="spacer" />
       {s.showTimerCard && (timer.running || timer.remaining < timer.total) && route.name !== 'timer' && (
         <button className={`sidecard ${timer.running ? 'live' : ''}`} onClick={() => go({ name: 'timer' })}>
-          <div className="xs" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+          <div className="xs nav-label" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
             {phaseLabel(timer.phase)} {timer.running ? '' : '· paused'}
           </div>
           <div className="num" style={{ fontSize: 20, fontWeight: 800 }}>
@@ -133,7 +138,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
               <SettingsIcon size={15} />
             </span>
           )}
-          <span className="grow" style={{ minWidth: 0 }}>
+          <span className="grow nav-label" style={{ minWidth: 0 }}>
             <span className="trunc" style={{ display: 'block', fontWeight: 650 }}>{user ? user.displayName : 'Settings'}</span>
             <span className="trunc xs dim" style={{ display: 'block' }}>{user ? `@${user.username}` : 'Not signed in'}</span>
           </span>
@@ -244,6 +249,17 @@ function Shell() {
   const signedIn = useAccount().state.mode === 'account'
   const phone = usePhone()
   const titleBar = !phone && (window.veyra.app.titleBar ?? 0) > 0 ? window.veyra.app.titleBar! : 0
+  // Hidden sidebar (Zen-style): it slides out while you point at the left edge or at it, and back after a moment away.
+  const [peek, setPeek] = useState(false)
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const peekIn = useCallback(() => {
+    if (leaveTimer.current) clearTimeout(leaveTimer.current)
+    setPeek(true)
+  }, [])
+  const peekOut = useCallback(() => {
+    if (leaveTimer.current) clearTimeout(leaveTimer.current)
+    leaveTimer.current = setTimeout(() => setPeek(false), 380)
+  }, [])
   // Moving to another screen crossfades it in (the same screen again just updates).
   const current = useRef(route)
   current.current = route
@@ -289,9 +305,11 @@ function Shell() {
   return (
     <TimerProvider>
       <NavCtx.Provider value={{ route, go: navigate }}>
-        <div className={`shell ${phone ? 'phone-shell' : titleBar ? 'has-titlebar' : ''}`} data-route={route.name} style={titleBar ? ({ '--titlebar': `${titleBar}px` } as React.CSSProperties) : undefined}>
+        <div className={`shell ${phone ? 'phone-shell' : `${titleBar ? 'has-titlebar' : ''} side-${s.sidebarMode} ${peek ? 'peek' : ''}`}`} data-route={route.name} style={titleBar ? ({ '--titlebar': `${titleBar}px` } as React.CSSProperties) : undefined}>
           {titleBar && <TitleBar />}
-          {phone ? <PhoneNav route={route} go={navigate} /> : <Sidebar route={route} go={navigate} />}
+          {phone ? <PhoneNav route={route} go={navigate} /> : <Sidebar route={route} go={navigate} onEnter={peekIn} onLeave={peekOut} />}
+          {/* Hidden sidebar: pointing at the left edge slides it out. */}
+          {!phone && s.sidebarMode === 'hidden' && <div className="side-hotzone" onMouseEnter={peekIn} onMouseLeave={peekOut} aria-hidden />}
           <UpdatedNotice />
           <VoiceSetupHost />
           <Palette />

@@ -356,6 +356,20 @@ function Sidebar() {
   const visible = s.nav.filter((n) => n.visible).length
   return (
     <>
+      <Group title="Style" footer="Hidden works like Zen browser: point at the left edge of the window and the sidebar slides out. Ctrl+\ switches between the three.">
+        <Row label="Sidebar" hint="Full, just its icons, or hidden until you point at the left edge." keywords="collapse minimise minimize compact zen hide icons rail">
+          <Choice
+            label="Sidebar"
+            value={s.sidebarMode}
+            onChange={(sidebarMode) => set({ sidebarMode })}
+            options={[
+              ['full', 'Full'],
+              ['icons', 'Icons only'],
+              ['hidden', 'Hidden']
+            ]}
+          />
+        </Row>
+      </Group>
       <Group title="Screens" footer="Hiding a screen keeps its data. Show it again here any time.">
         {s.nav.map((n, i) => (
           <Row key={n.id} label={NAV_LABELS[n.id]} keywords="order hide show menu navigation">

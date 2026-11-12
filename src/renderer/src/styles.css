@@ -920,3 +920,43 @@ html.material .beta-notice { background: color-mix(in srgb, var(--bg-elevated) 9
 .owner-sub { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); margin: 18px 4px 8px; }
 .owner-item-text { font-size: 13.5px; white-space: pre-wrap; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .danger-text { color: var(--bad) !important; }
+
+/* ---------- sidebar: full, icons only, or hidden until you point at the left edge (Zen-style) ---------- */
+.shell:not(.phone-shell) { transition: grid-template-columns var(--spring-spatial-ms) var(--spring-spatial); }
+.shell:not(.phone-shell) > main.main { grid-column: 2; }
+.shell.side-full { --side-w: var(--sidebar); }
+.shell.side-icons { grid-template-columns: 64px minmax(0, 1fr); --side-w: 64px; }
+.shell.side-hidden { grid-template-columns: 0px minmax(0, 1fr); --side-w: 0px; }
+.beta-notice { left: calc(var(--side-w, var(--sidebar)) + 24px); }
+
+/* Icons only: a slim column; names show as tooltips. */
+.side-icons aside.side { padding: 10px 8px; overflow-x: hidden; align-items: stretch; }
+.side-icons .nav-label, .side-icons .navbtn .count, .side-icons .side-section h2 { display: none; }
+.side-icons .navbtn { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
+.side-icons .navbtn .dot { margin: 0; width: 11px; height: 11px; }
+.side-icons .side-search { justify-content: center; padding: 8px 0; margin: 0 0 10px; }
+.side-icons .side-section { justify-content: center; padding: 12px 0 6px; border-top: 1px solid var(--line); margin-top: 10px; }
+.side-icons .side-foot { flex-direction: column; gap: 6px; }
+.side-icons .account-chip { justify-content: center; padding: 4px; }
+.side-icons .sidecard { padding: 8px 2px; text-align: center; }
+.side-icons .sidecard .num { font-size: 12.5px !important; }
+.side-icons .navbtn[aria-label='Today'] .count, .side-icons .navbtn .count { display: none; }
+
+/* Hidden: a floating panel that springs out from the left edge while you point there. */
+.side-hidden aside.side {
+  position: fixed; z-index: 90; left: 8px; top: calc(var(--titlebar, 0px) + 8px); bottom: 8px; width: var(--sidebar);
+  border-radius: 16px; border: 1px solid var(--glass-edge); background: var(--bg-elevated); box-shadow: var(--glass-shine), var(--elev-3);
+  transform: translateX(calc(-100% - 20px)); transition: transform var(--spring-spatial-ms) var(--spring-spatial);
+}
+html.material .shell.side-hidden aside.side { background: color-mix(in srgb, var(--bg-elevated) 97%, transparent); border-right: 1px solid var(--glass-edge); }
+.side-hidden.peek aside.side { transform: none; }
+.side-hotzone { position: fixed; z-index: 89; left: 0; top: var(--titlebar, 0px); bottom: 0; width: 10px; }
+html.material .shell.side-hidden > main.main, html.material .shell.side-icons > main.main { border-top-left-radius: 12px; }
+.wb-side-btn {
+  width: 30px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--dim);
+  display: inline-grid; place-items: center; margin-right: 4px; transition: background-color 0.12s, color 0.12s;
+}
+.wb-side-btn:hover { background: var(--fill-tertiary); color: var(--ink); }
+/* The floating sidebar is always solid (the glass window can't blur behind it, so see-through would just be messy). */
+.shell.side-hidden aside.side, html.material .shell.side-hidden aside.side { background: #fbfaf7 !important; }
+html.dark .shell.side-hidden aside.side, html.dark.material .shell.side-hidden aside.side { background: #1f1d18 !important; }
