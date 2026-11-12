@@ -20,6 +20,7 @@ import { DriveError, GoogleDrive } from './drive'
 import { Sync } from './sync'
 import { VoiceError, Whisper } from './whisper'
 import { McpServer, addToClient, clientConfigPath, clientHasVeyra, mcpEntry } from './mcp'
+import { setupMenus } from './popup'
 
 // Dev checks: VEYRA_FAKE_MIC=1 records a test tone instead of the real microphone.
 if (process.env['VEYRA_FAKE_MIC']) app.commandLine.appendSwitch('use-fake-device-for-media-stream')
@@ -250,10 +251,17 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  loadPage(win, process.env['VEYRA_ROUTE'])
+  // The title bar's menus open in a small acrylic window of their own (real blur behind them).
+  if (ownTitleBar) setupMenus(win, loadPage, join(__dirname, '../preload/index.js'), materialSupported)
+}
+
+/** Loads the app's page into a window (`hash` picks a screen, or "menu" for the menu window). */
+function loadPage(w: BrowserWindow, hash?: string): void {
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL'] + (process.env['VEYRA_ROUTE'] ? '#' + process.env['VEYRA_ROUTE'] : ''))
+    w.loadURL(process.env['ELECTRON_RENDERER_URL'] + (hash ? '#' + hash : ''))
   } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: process.env['VEYRA_ROUTE'], query: process.env['VEYRA_THEME'] ? { theme: process.env['VEYRA_THEME'] } : undefined })
+    w.loadFile(join(__dirname, '../renderer/index.html'), { hash, query: process.env['VEYRA_THEME'] ? { theme: process.env['VEYRA_THEME'] } : undefined })
   }
 }
 

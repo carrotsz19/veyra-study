@@ -25,6 +25,8 @@ const SCREENS: [NavId, string][] = [
   ['stats', 'Stats']
 ]
 const REPO = 'https://github.com/carrotsz19/veyra-study'
+// Windows 11: menus open in an acrylic window of their own, so what's behind them is truly blurred.
+const NATIVE = !!window.veyra.menu?.supported()
 const win = (cmd: Parameters<NonNullable<typeof window.veyra.app.win>>[0]) => void window.veyra.app.win?.(cmd)
 
 export function TitleBar() {
@@ -135,9 +137,10 @@ export function TitleBar() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  // Clicking elsewhere, Esc, or the window losing focus closes a menu.
+  // Clicking elsewhere, Esc, or the window losing focus closes a menu drawn in the page.
+  // (The acrylic menu window takes focus when it opens, and closes itself when it loses it.)
   useEffect(() => {
-    if (!open) return
+    if (!open || NATIVE) return
     const away = (e: MouseEvent) => !bar.current?.contains(e.target as Node) && setOpen(null)
     const blur = () => setOpen(null)
     document.addEventListener('mousedown', away, true)
@@ -147,6 +150,51 @@ export function TitleBar() {
       window.removeEventListener('blur', blur)
     }
   }, [open])
+
+  // The acrylic menu window: show the open menu there, and hear back what happened.
+  const btns = useRef(new Map<string, HTMLButtonElement | null>())
+  const lastClosed = useRef({ name: '', at: 0 })
+  const now = useRef({ menus, open })
+  now.current = { menus, open }
+  useEffect(() => {
+    if (!NATIVE) return
+    const m = window.veyra.menu!
+    if (!open) return m.close()
+    const list = menus.find(([n]) => n === open)?.[1] ?? []
+    const b = btns.current.get(open)?.getBoundingClientRect()
+    if (!b) return
+    const css = getComputedStyle(document.documentElement)
+    m.open({
+      x: b.left,
+      y: b.bottom + 4,
+      dark: document.documentElement.classList.contains('dark'),
+      accent: css.getPropertyValue('--accent').trim(),
+      zoom: 1,
+      items: list.map((it, i) => (it === 'sep' ? { sep: true as const } : { id: `${open}:${i}`, label: it.label, keys: it.keys, checked: it.checked }))
+    })
+  }, [open, s.theme, s.zoom]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!NATIVE) return
+    const m = window.veyra.menu!
+    const offs = [
+      m.onPicked((id) => {
+        const [name, i] = id.split(':')
+        const it = now.current.menus.find(([n]) => n === name)?.[1][Number(i)]
+        setOpen(null)
+        if (it && it !== 'sep') it.run()
+      }),
+      m.onClosed(() => {
+        lastClosed.current = { name: now.current.open ?? '', at: Date.now() }
+        setOpen(null)
+      }),
+      m.onStep((by) => {
+        const names = now.current.menus.map(([n]) => n)
+        const at = names.indexOf(now.current.open ?? '')
+        if (at >= 0) setOpen(names[(at + by + names.length) % names.length])
+      })
+    ]
+    return () => offs.forEach((off) => off())
+  }, [])
 
   const items = menus.find(([n]) => n === open)?.[1] ?? []
   const pick = (it: Item) => {
@@ -188,11 +236,14 @@ export function TitleBar() {
         {menus.map(([name, list]) => (
           <div key={name} className="wb-menu-wrap">
             <button
+              ref={(el) => void btns.current.set(name, el)}
               className={`wb-menu-btn ${open === name ? 'open' : ''}`}
               aria-haspopup="menu"
               aria-expanded={open === name}
               onMouseDown={(e) => {
                 e.preventDefault()
+                // Clicking the open menu's own button closes it (the menu window already closed as focus left it).
+                if (NATIVE && lastClosed.current.name === name && Date.now() - lastClosed.current.at < 300) return
                 setOpen(open === name ? null : name)
                 setActive(-1)
               }}
@@ -207,7 +258,7 @@ export function TitleBar() {
             >
               {name}
             </button>
-            {open === name && (
+            {open === name && !NATIVE && (
               <div className="wb-menu" role="menu" aria-label={name}>
                 {list.map((it, i) =>
                   it === 'sep' ? (

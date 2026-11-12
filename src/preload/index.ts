@@ -185,4 +185,39 @@ const filesApi = {
 /** Saves right away, blocking: only for the moment the window closes. */
 const saveNow = (kind: string, data: unknown, id: string) => ipcRenderer.sendSync('db:putSync', kind, data, id)
 
-contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, voice: voiceApi, mcp: mcpApi, update: updateApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })
+/** Title bar menus in their own acrylic window (Windows 11). */
+const menuApi = {
+  supported: () => ipcRenderer.sendSync('menu:supported') as boolean,
+  // The app's side
+  open: (spec: unknown) => ipcRenderer.send('menu:open', spec),
+  close: () => ipcRenderer.send('menu:close', 'asked'),
+  justShown: () => ipcRenderer.sendSync('menu:justShown') as boolean,
+  onPicked: (cb: (id: string) => void) => {
+    const h = (_: unknown, id: string) => cb(id)
+    ipcRenderer.on('menu:picked', h)
+    return () => void ipcRenderer.removeListener('menu:picked', h)
+  },
+  onClosed: (cb: () => void) => {
+    const h = () => cb()
+    ipcRenderer.on('menu:closed', h)
+    return () => void ipcRenderer.removeListener('menu:closed', h)
+  },
+  onStep: (cb: (by: number) => void) => {
+    const h = (_: unknown, by: number) => cb(by)
+    ipcRenderer.on('menu:step', h)
+    return () => void ipcRenderer.removeListener('menu:step', h)
+  },
+  // The menu window's side
+  onRender: (cb: (spec: unknown) => void) => {
+    const h = (_: unknown, spec: unknown) => cb(spec)
+    ipcRenderer.on('menu:render', h)
+    return () => void ipcRenderer.removeListener('menu:render', h)
+  },
+  size: (w: number, h: number) => ipcRenderer.send('menu:size', w, h),
+  pick: (id: string) => ipcRenderer.send('menu:pick', id),
+  step: (by: number) => ipcRenderer.send('menu:step', by),
+  dismiss: () => ipcRenderer.send('menu:close', 'away')
+}
+
+contextBridge.exposeInMainWorld('veyra', {
+  menu: menuApi, db, account, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, voice: voiceApi, mcp: mcpApi, update: updateApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })

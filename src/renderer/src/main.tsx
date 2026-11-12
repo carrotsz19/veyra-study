@@ -1,6 +1,5 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { App } from './App'
 import './styles.css'
 import './notes.css'
 import './account.css'
@@ -29,9 +28,16 @@ import { startScrollbars } from './lib/scrollbars'
   })
 }
 
-startScrollbars()
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-)
+// The title bar's acrylic menu window shows just a menu; everything else is the app.
+if (location.hash === '#menu') {
+  void import('./components/MenuWindow').then(({ MenuWindow }) => createRoot(document.getElementById('root')!).render(<MenuWindow />))
+} else {
+  startScrollbars()
+  void import('./App').then(({ App }) =>
+    createRoot(document.getElementById('root')!).render(
+      <StrictMode>
+        <App />
+      </StrictMode>
+    )
+  )
+}

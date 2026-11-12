@@ -4,6 +4,10 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 0.2.12
+
+- **The title bar's menus are real acrylic now.** They open in a little window of their own that Windows blurs behind, like its own menus, so what's underneath is softly blurred rather than just showing through. (The browser engine Veyra runs on can't blur inside a see-through window, which is why 0.2.11's menus only looked faded.)
+
 ## 0.2.11
 
 - **Menus are acrylic.** The title bar menus, drop-downs, date and time pickers, and right-click and toolbar menus are now see-through and blurred, like Windows 11 menus, in light and dark.
