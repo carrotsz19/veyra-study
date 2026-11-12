@@ -67,19 +67,55 @@ export function playSound(kind: AppSettings['sound'], volume: number): void {
   }
 }
 
+/* A block in progress is kept, so it survives the app closing (or Android stopping it in the background). */
+const SAVED = 'veyra.timer'
+interface Saved {
+  phase: Phase
+  running: boolean
+  total: number
+  remaining: number
+  subjectId: string | null
+  streak: number
+  endsAt: number | null
+  startedAt: number | null
+}
+function loadSaved(): Saved | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(SAVED) ?? 'null') as Saved | null
+    // Anything older than a day is stale.
+    if (!v || typeof v.total !== 'number' || v.startedAt == null || Date.now() - v.startedAt > 86_400_000) return null
+    return v
+  } catch {
+    return null
+  }
+}
+
 export function TimerProvider({ children }: { children: ReactNode }) {
   const { s } = useSettings()
-  const [phase, setPhase] = useState<Phase>('focus')
-  const [running, setRunning] = useState(false)
-  const [total, setTotal] = useState(() => lengthOf('focus', s))
-  const [remaining, setRemaining] = useState(total)
-  const [subjectId, setSubject] = useState<string | null>(null)
-  const [streak, setStreak] = useState(0)
+  const [saved] = useState(loadSaved)
+  const [phase, setPhase] = useState<Phase>(saved?.phase ?? 'focus')
+  const [running, setRunning] = useState(saved?.running ?? false)
+  const [total, setTotal] = useState(() => saved?.total ?? lengthOf('focus', s))
+  const [remaining, setRemaining] = useState(() => (saved ? (saved.running && saved.endsAt ? Math.max(0, (saved.endsAt - Date.now()) / 1000) : saved.remaining) : total))
+  const [subjectId, setSubject] = useState<string | null>(saved?.subjectId ?? null)
+  const [streak, setStreak] = useState(saved?.streak ?? 0)
 
   // Wall-clock based so the count stays right even if the window is throttled.
-  const endsAt = useRef<number | null>(null)
-  const startedAt = useRef<number | null>(null)
+  const endsAt = useRef<number | null>(saved?.running ? saved.endsAt : null)
+  const startedAt = useRef<number | null>(saved?.startedAt ?? null)
   const idle = !running && startedAt.current == null
+  // Bumped whenever a block starts or resets, so it's saved even when nothing else changed.
+  const [rev, bump] = useState(0)
+
+  // Remember the block whenever it starts, pauses, ends or changes subject.
+  useEffect(() => {
+    try {
+      if (startedAt.current == null && !running) localStorage.removeItem(SAVED)
+      else localStorage.setItem(SAVED, JSON.stringify({ phase, running, total, remaining, subjectId, streak, endsAt: endsAt.current, startedAt: startedAt.current } satisfies Saved))
+    } catch {
+      /* storage unavailable */
+    }
+  }, [phase, running, total, subjectId, streak, rev]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // While nothing is in progress, new lengths from Settings apply at once.
   useEffect(() => {
@@ -107,6 +143,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       startedAt.current = autostart ? Date.now() : null
       endsAt.current = autostart ? Date.now() + t * 1000 : null
       setRunning(autostart)
+      bump((n) => n + 1)
     },
     [s]
   )

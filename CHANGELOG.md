@@ -4,6 +4,12 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 0.2.3
+
+- **The focus timer survives a restart.** A running or paused block carries on if Veyra is closed, or if Android stops it in the background, and its study time is still saved.
+- **Android: alerts on time.** Focus timer and reminder notifications now arrive at the minute they're due (Android 12 and later could delay them).
+- **Android: Settings search** no longer leads to sections that only exist in the computer app.
+
 ## 0.2.2
 
 - **Software update in Settings.** See your version, check for updates, download with progress and restart to update, all from Settings → Software update. You can also turn off the check at start-up. After an update, Veyra tells you what's new.

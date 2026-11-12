@@ -523,11 +523,13 @@ function Calendar({ go }: { go: (id: SectionId) => void }) {
       <Row label="Finished tasks" keywords="done completed">
         <Toggle label="Finished tasks" on={s.calendarShowDone} onChange={(calendarShowDone) => set({ calendarShowDone })} />
       </Row>
-      <Row label="Events from connected calendars" hint="Google Calendar and calendar links." keywords="google ical events">
+      <Row label="Events from connected calendars" hint={onAndroid() ? 'Google Calendar and calendar links are connected in the computer app.' : 'Google Calendar and calendar links.'} keywords="google ical events">
         <div className="row" style={{ gap: 10 }}>
-          <button className="linkbtn sm" onClick={() => go('connections')}>
-            Manage
-          </button>
+          {!onAndroid() && (
+            <button className="linkbtn sm" onClick={() => go('connections')}>
+              Manage
+            </button>
+          )}
           <Toggle label="Events" on={s.calendarShowEvents} onChange={(calendarShowEvents) => set({ calendarShowEvents })} />
         </div>
       </Row>
@@ -1050,7 +1052,7 @@ export function Settings({ initial }: { initial?: string }) {
             <div className="set-head">
               <h2 className="set-title">Results for “{q}”</h2>
             </div>
-            {JUMPS.filter((j) => matches(q.trim(), j.words)).map((j) => {
+            {JUMPS.filter((j) => matches(q.trim(), j.words) && !(onAndroid() && ANDROID_HIDDEN.includes(j.id))).map((j) => {
               const x = SECTIONS.find((y) => y.id === j.id)!
               return (
                 <button key={j.id} className="set-jump" onClick={() => go(j.id)}>
@@ -1065,7 +1067,7 @@ export function Settings({ initial }: { initial?: string }) {
                 </button>
               )
             })}
-            {SEARCHABLE.map((id) => {
+            {SEARCHABLE.filter((id) => !(onAndroid() && ANDROID_HIDDEN.includes(id))).map((id) => {
               const x = SECTIONS.find((y) => y.id === id)!
               return (
                 <section key={id} className="set-result" data-section={id}>
