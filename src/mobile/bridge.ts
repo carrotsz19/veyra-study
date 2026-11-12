@@ -11,6 +11,8 @@ import * as online from './online'
 import * as reminders from './reminders'
 import * as phoneFiles from './files'
 import * as exports from './exports'
+import * as updates from './updates'
+import { withDefaults } from '@shared/settings'
 
 type Veyra = Window['veyra']
 const unsub = () => () => {}
@@ -130,11 +132,11 @@ const voice: Veyra['voice'] = {
   saveRecording: (name, mime, bytes) => phoneFiles.save(name, mime, bytes)
 }
 const update: Veyra['update'] = {
-  state: async () => ({ supported: false, current: __APP_VERSION__, status: 'idle' }),
-  check: async () => ({ supported: false, current: __APP_VERSION__, status: 'idle' }),
-  download: async () => ({ supported: false, current: __APP_VERSION__, status: 'idle' }),
-  install: async () => {},
-  onState: unsub
+  state: () => updates.getState(),
+  check: () => updates.check(),
+  download: () => updates.download(),
+  install: () => updates.install(),
+  onState: (cb) => updates.onState(cb)
 }
 const mcp: Veyra['mcp'] = {
   state: async () => ({ running: false, port: 0, command: '', args: [], claude: { path: '', added: false }, gemini: { path: '', added: false } }),
@@ -193,4 +195,8 @@ export async function installBridge(): Promise<void> {
   })
   reminders.startReminders()
   online.startOnline()
+  // Look for a new version now and then (Settings → Software update can turn this off).
+  void idb.list('settings').then((r) => {
+    if (withDefaults((r[0]?.data as object) ?? {}).checkUpdatesAtStart) updates.checkAtStart(() => {})
+  })
 }

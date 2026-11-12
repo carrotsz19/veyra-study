@@ -177,8 +177,25 @@ function UpdatedNotice() {
       /* storage unavailable */
     }
   }, [toast, go])
+  // A newer version turned up (the phone checks quietly at start): say so once.
+  useEffect(
+    () =>
+      window.veyra.update.onState((u) => {
+        if (u.status !== 'available' || !u.latest || told.has(u.latest)) return
+        told.add(u.latest)
+        toast(`Veyra Study ${u.latest} is available`, {
+          label: 'Update',
+          run: () => {
+            sessionStorage.setItem('veyra.settingsSection', 'updates')
+            go({ name: 'settings' })
+          }
+        })
+      }),
+    [toast, go]
+  )
   return null
 }
+const told = new Set<string>()
 
 /** After the first sign-in moved this computer's data into the account. */
 function MovedNotice() {

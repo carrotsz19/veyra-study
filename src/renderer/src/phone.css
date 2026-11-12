@@ -159,6 +159,11 @@
   html .set-row { flex-wrap: wrap; gap: 10px; }
   html .set-row .set-control { margin-left: auto; }
 
+  /* Software update: the button goes under the text */
+  html .upd-card .grow { flex: 1 1 200px; }
+  html .upd-actions { width: 100%; }
+  html .upd-actions .btn { flex: 1; justify-content: center; min-height: 44px; }
+
   /* Calendar */
   html .cal .cell { min-height: 58px; padding: 4px; }
   html .cal .cell .chip { font-size: 0; height: 5px; min-height: 0; padding: 0; border-radius: 9px; overflow: hidden; }

@@ -1109,7 +1109,11 @@ function SoftwareUpdate() {
   const [u, setU] = useState<UpdateState | null>(null)
   const [, tick] = useState(0)
   useEffect(() => {
-    void window.veyra.update.state().then(setU)
+    // Opening this page checks, unless that's already been done.
+    void window.veyra.update.state().then((s) => {
+      setU(s)
+      if (s.supported && s.status === 'idle') void window.veyra.update.check().then(setU)
+    })
     const off = window.veyra.update.onState(setU)
     const t = setInterval(() => tick((n) => n + 1), 30_000) // keeps "checked 2 minutes ago" fresh
     return () => {
@@ -1153,7 +1157,7 @@ function SoftwareUpdate() {
               {u.status === 'up-to-date' && <Check size={13} />}
               {status}
             </div>
-            {u.error && u.status === 'available' && <div className="upd-status error">{u.error}</div>}
+            {u.error && (u.status === 'available' || u.status === 'ready') && <div className="upd-status error">{u.error}</div>}
             {u.checkedAt && u.status !== 'checking' && u.status !== 'downloading' && <div className="xs tert">Checked {formatDistanceToNowStrict(u.checkedAt, { addSuffix: true })}</div>}
           </div>
           <div className="upd-actions">
@@ -1163,7 +1167,7 @@ function SoftwareUpdate() {
               </button>
             ) : u.status === 'ready' ? (
               <button className="btn" onClick={() => void window.veyra.update.install()}>
-                <RotateCcw size={15} /> Restart to update
+                <RotateCcw size={15} /> {android ? 'Install update' : 'Restart to update'}
               </button>
             ) : (
               <button className="btn sec" disabled={u.status === 'checking' || u.status === 'downloading'} onClick={() => void window.veyra.update.check().then(setU)}>
@@ -1191,13 +1195,19 @@ function SoftwareUpdate() {
         </Group>
       )}
 
-      {!android && (
-        <Group title="Automatic updates">
-          <Row label="Check for updates when Veyra starts" hint="A small window checks GitHub before the app opens and installs a new version if there is one. Off: check here whenever you like." keywords="automatic update startup check version">
-            <Toggle label="Check for updates when Veyra starts" on={s.checkUpdatesAtStart} onChange={(checkUpdatesAtStart) => set({ checkUpdatesAtStart })} />
-          </Row>
-        </Group>
-      )}
+      <Group title="Automatic updates" footer={android ? 'Android asks you to confirm each install. The first time, it also asks you to let Veyra Study install apps.' : undefined}>
+        <Row
+          label={android ? 'Look for updates when Veyra opens' : 'Check for updates when Veyra starts'}
+          hint={
+            android
+              ? 'Checks GitHub every few hours and tells you when a new version is out. Off: check here whenever you like.'
+              : 'A small window checks GitHub before the app opens and installs a new version if there is one. Off: check here whenever you like.'
+          }
+          keywords="automatic update startup check version"
+        >
+          <Toggle label="Check for updates automatically" on={s.checkUpdatesAtStart} onChange={(checkUpdatesAtStart) => set({ checkUpdatesAtStart })} />
+        </Row>
+      </Group>
 
       <Group title="About">
         <Row label="All versions and what changed" keywords="releases changelog history">
