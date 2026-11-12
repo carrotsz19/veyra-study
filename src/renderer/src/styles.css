@@ -610,3 +610,108 @@ html.dark .seg.has-thumb::before { background: var(--separator); }
 .subject-chip .sel.subject-sel .sel-chev { color: inherit; opacity: 0.6; }
 .np-sort .sel.quiet { min-height: 26px; padding: 3px 4px; font-size: 12px; color: var(--dim); }
 .np-sort .sel.quiet:hover { color: var(--ink); }
+
+/* ---------- leaving: dialogs, sheets and the palette sink away (lib/motion.ts useExit) ---------- */
+.leaving { pointer-events: none !important; }
+.scrim.leaving { animation: fadeOut 0.2s var(--ease-standard) forwards; }
+.scrim.leaving .dialog { animation: dialogOut 0.2s var(--ease-sheet) forwards; }
+.pal-scrim.leaving .pal { animation: dialogOut 0.16s var(--ease-sheet) forwards; }
+.phone-sheet-scrim.leaving { animation: fadeOut 0.28s var(--ease-standard) forwards; }
+.phone-sheet-scrim.leaving .phone-sheet { animation: sheetOut 0.28s var(--ease-sheet) forwards; }
+@keyframes dialogOut { to { opacity: 0; transform: translateY(8px) scale(0.97); } }
+
+/* ---------- moving between screens (lib/motion.ts transition) ---------- */
+main.main { view-transition-name: screen; }
+html.vt .view { animation: none; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+::view-transition-old(screen), ::view-transition-new(screen) { mix-blend-mode: normal; height: 100%; object-fit: cover; object-position: top; }
+html[data-vt='fade']::view-transition-old(screen) { animation: vtOut 0.14s var(--ease-standard) both; }
+html[data-vt='fade']::view-transition-new(screen) { animation: vtIn var(--spring-spatial-ms) var(--spring-spatial) both; }
+@keyframes vtOut { to { opacity: 0; } }
+@keyframes vtIn { from { opacity: 0; transform: translateY(10px); } }
+/* Phone: a page slides in from the right over the one before (push), and back out (pop). */
+html[data-vt='push']::view-transition-old(screen) { animation: pushOld var(--spring-spatial-ms) var(--spring-spatial) both; }
+html[data-vt='push']::view-transition-new(screen) { animation: pushNew var(--spring-spatial-ms) var(--spring-spatial) both; box-shadow: -10px 0 30px rgba(0, 0, 0, 0.12); }
+html[data-vt='pop']::view-transition-old(screen) { animation: popOld 0.32s var(--ease-sheet) both; z-index: 2; box-shadow: -10px 0 30px rgba(0, 0, 0, 0.12); }
+html[data-vt='pop']::view-transition-new(screen) { animation: popNew 0.32s var(--ease-sheet) both; }
+@keyframes pushOld { to { transform: translateX(-28%); opacity: 0.55; } }
+@keyframes pushNew { from { transform: translateX(100%); } }
+@keyframes popOld { to { transform: translateX(100%); } }
+@keyframes popNew { from { transform: translateX(-28%); opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } }
+
+/* ---------- swipe a task on the phone: right to tick off, left to delete ---------- */
+.swipe-wrap { position: relative; overflow: hidden; }
+.swipe-wrap + .swipe-wrap > .swipe-front > .ig-row::before,
+.swipe-wrap + .ig-row::before, .ig-row + .swipe-wrap > .swipe-front > .ig-row::before {
+  content: ''; position: absolute; top: 0; right: 0; left: 50px; height: 1px; background: var(--line);
+}
+.swipe-front { position: relative; z-index: 1; background: var(--panel); touch-action: pan-y; will-change: transform; }
+.swipe-act {
+  position: absolute; inset: 0; display: flex; align-items: center; gap: 8px; padding: 0 22px; color: #fff;
+  font-weight: 700; font-size: 14px; opacity: 0;
+}
+.swipe-act.done { background: var(--ok); justify-content: flex-start; }
+.swipe-act.del { background: var(--bad); justify-content: flex-end; }
+.swipe-wrap.right .swipe-act.done, .swipe-wrap.left .swipe-act.del { opacity: 1; }
+.swipe-act svg, .swipe-act span { transition: transform var(--spring-snappy-ms) var(--spring-bouncy); transform: scale(0.85); }
+.swipe-wrap.armed .swipe-act svg { transform: scale(1.15); }
+.swipe-wrap.armed .swipe-act span { transform: scale(1); }
+
+/* ---------- popovers and the date / time pickers (Popover.tsx, DateTime.tsx) ---------- */
+.pop-panel {
+  position: fixed; z-index: 140; padding: 12px; border-radius: 16px; border: 1px solid var(--line); box-shadow: var(--elev-3);
+  background: color-mix(in srgb, var(--bg-elevated) 96%, transparent);
+  backdrop-filter: blur(28px) saturate(1.6); -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  transform-origin: top left; animation: selIn var(--spring-snappy-ms) var(--spring-snappy);
+}
+.pop-panel.up { transform-origin: bottom left; animation-name: selInUp; }
+.pop-panel.closing { animation: selOut 0.15s var(--ease-standard) forwards; pointer-events: none; }
+.pop-sheet-body { padding: 0 16px 16px; overflow-y: auto; }
+.dt-btn { width: auto; min-width: 150px; }
+.dt-btn .dim { flex-shrink: 0; }
+.dt-pair { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.sel.set-time { min-width: 130px; }
+
+.dp { width: 280px; user-select: none; }
+.pop-sheet .dp { width: 100%; }
+.dp-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.dp-chip {
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 99px; padding: 4px 11px;
+  font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;
+}
+.dp-chip:hover { border-color: var(--accent); }
+.dp-chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-tint); }
+.dp-chip.clear { color: var(--dim); }
+.dp-head { display: flex; align-items: center; gap: 2px; padding: 0 2px 6px; }
+.dp-head b { font-size: 14px; }
+.dp-nav { width: 28px; height: 28px; }
+.dp-dow, .dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.dp-dow span { text-align: center; font-size: 11px; font-weight: 700; color: var(--label-tertiary); padding: 2px 0 4px; }
+.dp-grid { gap: 2px; }
+.dp-grid.from-right { animation: dpRight var(--spring-snappy-ms) var(--spring-snappy); }
+.dp-grid.from-left { animation: dpLeft var(--spring-snappy-ms) var(--spring-snappy); }
+@keyframes dpRight { from { opacity: 0; transform: translateX(24px); } }
+@keyframes dpLeft { from { opacity: 0; transform: translateX(-24px); } }
+.dp-day {
+  aspect-ratio: 1; border: 0; border-radius: 99px; background: transparent; color: var(--ink); font-size: 13px; font-weight: 550;
+  font-variant-numeric: tabular-nums; padding: 0; transition: transform var(--spring-snappy-ms) var(--spring-snappy), background-color 0.12s;
+}
+.dp-day:hover { background: var(--fill-tertiary); }
+.dp-day:active { transform: scale(0.9); }
+.dp-day.out { color: var(--label-tertiary); }
+.dp-day.today { color: var(--accent); font-weight: 800; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent); }
+.dp-day.on { background: var(--accent); color: var(--on-tint); box-shadow: none; animation: tickPop var(--spring-bouncy-ms) var(--spring-bouncy); }
+.pop-sheet .dp-day { font-size: 15px; }
+
+.tp { width: 210px; display: flex; flex-direction: column; gap: 6px; }
+.pop-sheet .tp { width: 100%; }
+.tp-type { padding: 7px 10px; font-size: 13px; }
+.tp-list { max-height: 248px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; scroll-behavior: auto; }
+.pop-sheet .tp-list { max-height: 44dvh; }
+.tp-slot { border: 0; background: transparent; color: var(--ink); text-align: left; padding: 7px 10px; border-radius: 8px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.tp-slot:hover { background: var(--fill-tertiary); }
+.tp-slot.on { background: var(--accent); color: var(--on-tint); font-weight: 650; }
+.tp-slot.typed { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.tp-slot.typed[disabled] { background: var(--panel-2); color: var(--dim); }
+.pop-sheet .tp-slot { padding: 11px 12px; font-size: 15px; }

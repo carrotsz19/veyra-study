@@ -257,7 +257,11 @@ function SelectSheet({
     // Only from the grip or the title, so the list itself still scrolls.
     if (!(e.target as HTMLElement).closest('.sel-sheet-head')) return
     drag.current = { y: e.clientY, t: e.timeStamp, dy: 0, v: 0 }
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    try {
+      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    } catch {
+      /* the pointer is already gone */
+    }
     sheet.current?.classList.add('dragging')
   }
   const onMove = (e: React.PointerEvent) => {
@@ -266,8 +270,8 @@ function SelectSheet({
     const raw = e.clientY - d.y
     // Down moves 1:1; up meets resistance (rubber band).
     const dy = raw > 0 ? raw : (raw * 0.55) / (1 + (-raw * 0.55) / 120)
-    const dt = Math.max(1, e.timeStamp - d.t)
-    d.v = (dy - d.dy) / dt
+    const dt = Math.max(8, e.timeStamp - d.t)
+    d.v = d.v * 0.5 + ((dy - d.dy) / dt) * 0.5
     d.dy = dy
     d.t = e.timeStamp
     sheet.current.style.transform = `translateY(${dy}px)`
@@ -279,7 +283,7 @@ function SelectSheet({
     if (!d || !el) return
     el.classList.remove('dragging')
     // Far enough, or flicked down: away it goes, carrying on at the speed it was thrown.
-    if (d.dy > 110 || d.v > 0.6) {
+    if (d.dy > 110 || (d.v > 0.6 && d.dy > 40)) {
       el.style.setProperty('--from', `${d.dy}px`)
       el.style.transform = ''
       onClose()

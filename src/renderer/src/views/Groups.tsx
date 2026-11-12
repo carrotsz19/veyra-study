@@ -30,6 +30,7 @@ import { docText } from '../components/notes/extensions'
 import { useSettings } from '../data/settings'
 import { useNav } from '../nav'
 import { usePhone } from '../lib/phone'
+import { transition } from '../lib/motion'
 import { dueLabel, isOverdue, todayKey } from '../lib/dates'
 import {
   GROUP_COLORS,
@@ -47,6 +48,7 @@ import {
 import '../notes.css'
 import '../groups.css'
 import { Select } from '../components/Select'
+import { DateField, TimeField } from '../components/DateTime'
 
 type Tab = 'tasks' | 'chat' | 'notes' | 'deadlines' | 'members'
 const msg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Try again.')
@@ -209,10 +211,12 @@ export function Groups() {
                 key={g.id}
                 className="ig-row tap"
                 aria-current={!phone && open?.id === g.id}
-                onClick={() => {
-                  setOpenId(g.id)
-                  setPhoneOpen(true)
-                }}
+                onClick={() =>
+                  transition(() => {
+                    setOpenId(g.id)
+                    setPhoneOpen(true)
+                  }, phone ? 'push' : 'fade')
+                }
               >
                 <span className="grp-swatch" style={{ background: g.color }}>
                   {g.name.slice(0, 1).toUpperCase()}
@@ -231,7 +235,7 @@ export function Groups() {
               key={open.id}
               group={open}
               me={status?.me ?? null}
-              onBack={phone ? () => setPhoneOpen(false) : undefined}
+              onBack={phone ? () => transition(() => setPhoneOpen(false), 'pop') : undefined}
               onChanged={(g) => setGroups((all) => all && all.map((x) => (x.id === g.id ? g : x)))}
               onGone={() => {
                 setOpenId(null)
@@ -547,7 +551,7 @@ function GroupTaskDialog({ group, items, task, me, onClose }: { group: Group; it
             <label className="field-label" htmlFor="gt-due">
               Due
             </label>
-            <input id="gt-due" type="date" value={d.due ?? ''} onChange={(e) => setD({ ...d, due: e.target.value || null })} />
+            <DateField id="gt-due" label="Due" value={d.due ?? null} onChange={(due) => setD({ ...d, due })} />
           </div>
         </div>
         <div className="field">
@@ -909,6 +913,7 @@ function GroupDeadlines({ group, items }: { group: Group; items: ItemsApi }) {
 
   const add = async () => {
     if (!form.title.trim()) return toast('Give the deadline a name.')
+    if (!form.date) return toast('Pick a date for the deadline.')
     try {
       items.apply(await addItem(group.id, 'event', { title: form.title.trim(), date: form.date, time: form.time || null, details: form.details }))
       setForm({ ...form, title: '', time: '', details: '' })
@@ -954,8 +959,8 @@ function GroupDeadlines({ group, items }: { group: Group; items: ItemsApi }) {
         }}
       >
         <input placeholder="Deadline, e.g. Lab report due" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} aria-label="Deadline name" maxLength={200} />
-        <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} aria-label="Date" required />
-        <input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} aria-label="Time (optional)" title="Time (optional)" />
+        <DateField label="Date" placeholder="Pick a date" clearable={false} value={form.date || null} onChange={(date) => setForm({ ...form, date: date ?? '' })} />
+        <TimeField label="Time (optional)" value={form.time || null} onChange={(time) => setForm({ ...form, time })} />
         <button className="btn">
           <Plus size={15} /> Add
         </button>

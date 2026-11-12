@@ -15,6 +15,7 @@ import { scoreNote, searchTerms, snippet } from '../lib/notes'
 import { dueLabel, todayKey } from '../lib/dates'
 import { blankTask, defaultDueDate, sortSubjects } from '../lib/subjects'
 import { useToast } from './ui'
+import { useExit } from '../lib/motion'
 
 /**
  * Ctrl+K: one box to jump anywhere and do anything. Finds notes (every word
@@ -60,6 +61,17 @@ function score(terms: string[], label: string, extra = ''): number {
     else return 0
   }
   return s
+}
+
+/** The palette's backdrop; it fades back out when the palette closes. */
+function PalFrame({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useExit(ref, 200)
+  return (
+    <div ref={ref} className="scrim pal-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      {children}
+    </div>
+  )
 }
 
 export function Palette() {
@@ -258,7 +270,7 @@ export function Palette() {
   return (
     <>
       {open && (
-        <div className="scrim pal-scrim" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+        <PalFrame onClose={close}>
           <div className="pal" role="dialog" aria-modal="true" aria-label="Search and commands">
             <div className="pal-input">
               <Search size={18} className="dim" />
@@ -319,7 +331,7 @@ export function Palette() {
               </span>
             </div>
           </div>
-        </div>
+        </PalFrame>
       )}
       {editing && (
         <TaskDialog

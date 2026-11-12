@@ -11,6 +11,7 @@ import { useSettings } from '../data/settings'
 import { preview, section, shortDate } from '../components/notes/listing'
 import { useNav } from '../nav'
 import { onAndroid, usePhone } from '../lib/phone'
+import { transition } from '../lib/motion'
 import { cleanError, importFromDrive, useDrive } from '../data/drive'
 import { TRASH_DAYS, daysLeft, deleteForever, emptyOldTrash, restoreNotes, scoreNote, searchTerms, snippet, trashNotes } from '../lib/notes'
 
@@ -264,7 +265,9 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
       return
     }
     setAnchor(id)
-    setSelected(id)
+    // On a phone the note slides in over the list, like iOS.
+    if (phone && id !== selected) transition(() => setSelected(id), 'push')
+    else setSelected(id)
   }
 
   /* ---------- keyboard shortcuts ---------- */
@@ -569,7 +572,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
           <div className="note-pane">
             {phone && (
               <div className="np-appbar">
-                <button className="phone-back" onClick={() => setSelected(undefined)}>
+                <button className="phone-back" onClick={() => transition(() => setSelected(undefined), 'pop')}>
                   <ChevronLeft size={20} /> Trash
                 </button>
               </div>
@@ -580,7 +583,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
           <div className="note-pane">
             {phone && (
               <div className="np-appbar">
-                <button className="phone-back" onClick={() => setSelected(undefined)}>
+                <button className="phone-back" onClick={() => transition(() => setSelected(undefined), 'pop')}>
                   <ChevronLeft size={20} /> Notes
                 </button>
               </div>

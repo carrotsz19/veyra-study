@@ -10,6 +10,7 @@ import { sortSubjects } from '../lib/subjects'
 import { useAccount, Avatar } from './account'
 import { TaskDialog } from './editors'
 import { newNote } from '../views/Notes'
+import { useExit } from '../lib/motion'
 
 /**
  * The phone's navigation, One UI style: a floating bar with four tabs and
@@ -25,6 +26,17 @@ const SCREENS: Record<NavId, [string, typeof Home]> = {
   groups: ['Groups', Users],
   timer: ['Focus', Timer],
   stats: ['Stats', BarChart3]
+}
+
+/** The More sheet's frame: it slides back down when closed. */
+function MoreSheet({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useExit(ref, 300)
+  return (
+    <div ref={ref} className="phone-sheet-scrim" onClick={onClose}>
+      {children}
+    </div>
+  )
 }
 
 export function PhoneNav({ route, go }: { route: Route; go: (r: Route) => void }) {
@@ -161,7 +173,7 @@ export function PhoneNav({ route, go }: { route: Route; go: (r: Route) => void }
       {newTask && <TaskDialog defaults={{ subjectId }} onClose={() => setNewTask(false)} />}
 
       {more && (
-        <div className="phone-sheet-scrim" onClick={() => setMore(false)}>
+        <MoreSheet onClose={() => setMore(false)}>
           <div className="phone-sheet" role="dialog" aria-label="More" onClick={(e) => e.stopPropagation()}>
             <div className="phone-sheet-grip" />
             <div className="between">
@@ -208,7 +220,7 @@ export function PhoneNav({ route, go }: { route: Route; go: (r: Route) => void }
               </>
             )}
           </div>
-        </div>
+        </MoreSheet>
       )}
     </>
   )

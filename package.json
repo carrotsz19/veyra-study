@@ -1,6 +1,6 @@
 {
   "name": "veyra-study",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Veyra Study: tasks, notes, focus timer and group work.",
   "main": "out/main/index.js",
   "private": true,
@@ -23,7 +23,11 @@
     "productName": "Veyra Study",
     "files": [
       "out/**/*",
-      "resources/**/*"
+      "resources/**/*",
+      "!**/node_modules/@capacitor/**",
+      "!**/node_modules/@capacitor-community/**",
+      "!**/node_modules/@aparajita/**",
+      "!**/node_modules/**/{android,ios}/**"
     ],
     "directories": {
       "output": "release"
@@ -48,7 +52,8 @@
       "shortcutName": "Veyra Study",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
-      "artifactName": "Veyra-Study-Setup-${version}.${ext}"
+      "artifactName": "Veyra-Study-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
     },
     "publish": [
       {
@@ -61,8 +66,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
-    "@capacitor/haptics": "^8.0.2",
-    "@capacitor/share": "^8.0.2",
     "electron-updater": "^6.8.11",
     "ical.js": "^2.2.1"
   },
@@ -74,7 +77,9 @@
     "@capacitor/cli": "^8.6.0",
     "@capacitor/core": "^8.6.0",
     "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/haptics": "^8.0.2",
     "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/share": "^8.0.2",
     "@floating-ui/dom": "^1.8.0",
     "@fontsource/inter": "^5.3.0",
     "@tiptap/extension-details": "^3.33.1",

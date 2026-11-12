@@ -8,6 +8,7 @@ import { SUBJECT_COLORS, blankTask, defaultDueDate, sortSubjects } from '../lib/
 import { useSettings } from '../data/settings'
 import { Dialog, Seg, useToast } from './ui'
 import { Select } from './Select'
+import { DateField, DateTimeField } from './DateTime'
 
 export function SubjectSelect({ value, onChange, noneLabel = 'No subject', className }: { value: string | null; onChange: (id: string | null) => void; noneLabel?: string; className?: string }) {
   const { items: subjects } = useRecords('subject')
@@ -83,7 +84,7 @@ export function TaskDialog({
           </div>
           <div>
             <label className="field-label" htmlFor="task-due">Due</label>
-            <input id="task-due" type="date" value={t.due ?? ''} onChange={(e) => set({ due: e.target.value || null })} />
+            <DateField id="task-due" label="Due" value={t.due} onChange={(due) => set({ due })} />
           </div>
         </div>
         <div className="field">
@@ -95,7 +96,7 @@ export function TaskDialog({
             Remind me
           </label>
           <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-            <input id="task-remind" type="datetime-local" style={{ width: 220 }} value={t.remindAt ?? ''} onChange={(e) => set({ remindAt: e.target.value || null })} />
+            <DateTimeField id="task-remind" label="Remind me" value={t.remindAt ?? null} onChange={(remindAt) => set({ remindAt })} />
             {t.due && (
               <>
                 <button type="button" className="btn ghost sm" onClick={() => set({ remindAt: `${shiftDay(t.due!, -1)}T19:00` })}>

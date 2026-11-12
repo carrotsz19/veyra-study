@@ -4,6 +4,14 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 0.2.9
+
+- **Fixed: updates on Windows could fail and leave Veyra unable to open.** Versions 0.2.6 to 0.2.8 accidentally included some Android files buried so deep that Windows couldn't move them during an update ("Failed to uninstall old application files" or "Veyra Study cannot be closed"), and since Veyra installs waiting updates as it starts, it could get stuck there. The files are gone, the installer now clears them out of older versions and closes any copy of Veyra still running in the tray, and if an update ever fails to install, Veyra opens as it was and says so in Settings → Software update instead of trying again every time.
+- **Fixed on Android: deleting didn't work.** Deleting a task, note or subject on the phone was quietly undone. It sticks now.
+- **Swipe tasks on your phone:** right to tick one off, left to delete it (with Undo). The row follows your finger, resists past the end, and a quick flick is enough.
+- **Date and time pickers that match Veyra:** a month calendar with Today, Tomorrow and Next week, and a time list you can also type into ("7:45 pm"). For due dates, reminders, group deadlines and reminder times in Settings.
+- **Smoother movement:** screens crossfade into each other; on the phone, notes, settings pages and groups slide in from the right and back out; dialogs, sheets and the search box sink away when closed instead of vanishing.
+
 ## 0.2.8
 
 - **Drop-downs that match Veyra.** Every drop-down (text style, subject, repeat, sort, settings) is now Veyra's own instead of the system one, which showed a white list with faint text in dark mode. On the computer it springs open under the button with a tick by your choice; arrow keys, typing a letter, Enter and Esc all work. On phones it's a sheet from the bottom that you can swipe away.

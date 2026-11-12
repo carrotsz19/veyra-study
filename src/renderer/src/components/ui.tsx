@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
+import { useExit } from '../lib/motion'
 
 export function Dialog({
   title,
@@ -17,8 +18,11 @@ export function Dialog({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+  // However it's closed, it sinks away instead of vanishing.
+  const ref = useRef<HTMLDivElement>(null)
+  useExit(ref)
   return (
-    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div ref={ref} className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="dialog" role="dialog" aria-modal="true" aria-label={title} style={width ? { maxWidth: width } : undefined}>
         <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 14 }}>{title}</h3>
         {children}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { NavId, ThemeMode } from '@shared/settings'
 import { SettingsProvider, useSettings } from './data/settings'
 import { phaseLabel } from './components/timer'
@@ -28,6 +28,7 @@ import { Palette } from './components/Palette'
 import { emptyOldTrash } from './lib/notes'
 import { onAndroid, usePhone } from './lib/phone'
 import { startSegments } from './lib/segments'
+import { transition } from './lib/motion'
 
 startSegments()
 
@@ -235,6 +236,14 @@ function Shell() {
   const [route, go] = useState<Route | null>(null)
   const signedIn = useAccount().state.mode === 'account'
   const phone = usePhone()
+  // Moving to another screen crossfades it in (the same screen again just updates).
+  const current = useRef(route)
+  current.current = route
+  const navigate = useCallback((r: Route) => {
+    const cur = current.current
+    if (cur && cur.name !== r.name) transition(() => go(r))
+    else go(r)
+  }, [])
   // Group work loads in the background, so the tab opens ready.
   useEffect(() => (signedIn ? prefetchGroups() : undefined), [signedIn])
   // Notes back up to Google Drive (when it's connected and backup is on).
@@ -271,9 +280,9 @@ function Shell() {
   if (!route) return null
   return (
     <TimerProvider>
-      <NavCtx.Provider value={{ route, go }}>
+      <NavCtx.Provider value={{ route, go: navigate }}>
         <div className={`shell ${phone ? 'phone-shell' : ''}`} data-route={route.name}>
-          {phone ? <PhoneNav route={route} go={go} /> : <Sidebar route={route} go={go} />}
+          {phone ? <PhoneNav route={route} go={navigate} /> : <Sidebar route={route} go={navigate} />}
           <UpdatedNotice />
           <VoiceSetupHost />
           <Palette />

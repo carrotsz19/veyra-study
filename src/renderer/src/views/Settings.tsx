@@ -11,6 +11,7 @@ import { Bar, useToast } from '../components/ui'
 import { VeyraMark } from '../components/account'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { onAndroid, usePhone } from '../lib/phone'
+import { transition } from '../lib/motion'
 import { NOTE_COVERS } from '../components/notes/NoteEditor'
 import { AccountSection, AiAppsSection, DriveSection, GoogleSection } from './Connections'
 import { LocalAiSetup } from '../components/LocalAiSetup'
@@ -19,6 +20,7 @@ import { sortSubjects } from '../lib/subjects'
 import { SubjectDialog } from '../components/editors'
 import type { AiProvider, AiState, Rec, UpdateState } from '@shared/types'
 import { Select as Dropdown } from '../components/Select'
+import { TimeField } from '../components/DateTime'
 
 /* =====================================================================
    Settings: categories on the left, one category at a time on the
@@ -446,13 +448,13 @@ function Tasks() {
           <>
             <Row label="Morning summary" hint="What’s due today and anything overdue." keywords="daily digest morning">
               <div className="row" style={{ gap: 8 }}>
-                <input className="set-input" type="time" style={{ width: 120 }} value={s.morningTime} disabled={!s.remindMorning} onChange={(e) => e.target.value && set({ morningTime: e.target.value })} aria-label="Morning summary time" />
+                <TimeField className="set-sel set-time" label="Morning summary time" value={s.morningTime} disabled={!s.remindMorning} onChange={(morningTime) => set({ morningTime })} />
                 <Toggle label="Morning summary" on={s.remindMorning} onChange={(remindMorning) => set({ remindMorning })} />
               </div>
             </Row>
             <Row label="Evening heads-up" hint="What’s due tomorrow, so nothing sneaks up on you." keywords="tomorrow evening">
               <div className="row" style={{ gap: 8 }}>
-                <input className="set-input" type="time" style={{ width: 120 }} value={s.eveningTime} disabled={!s.remindEvening} onChange={(e) => e.target.value && set({ eveningTime: e.target.value })} aria-label="Evening heads-up time" />
+                <TimeField className="set-sel set-time" label="Evening heads-up time" value={s.eveningTime} disabled={!s.remindEvening} onChange={(eveningTime) => set({ eveningTime })} />
                 <Toggle label="Evening heads-up" on={s.remindEvening} onChange={(remindEvening) => set({ remindEvening })} />
               </div>
             </Row>
@@ -1110,9 +1112,13 @@ export function Settings({ initial }: { initial?: string }) {
   // On a phone the list of sections comes first; a section opens full-screen.
   const [phoneOpen, setPhoneOpen] = useState(false)
   const go = (id: SectionId) => {
-    setQ('')
-    setSection(id)
-    setPhoneOpen(true)
+    const open = () => {
+      setQ('')
+      setSection(id)
+      setPhoneOpen(true)
+    }
+    if (phone) transition(open, 'push')
+    else open()
   }
 
   return (
@@ -1147,10 +1153,12 @@ export function Settings({ initial }: { initial?: string }) {
         {phone && (
           <button
             className="phone-back"
-            onClick={() => {
-              setQ('')
-              setPhoneOpen(false)
-            }}
+            onClick={() =>
+              transition(() => {
+                setQ('')
+                setPhoneOpen(false)
+              }, 'pop')
+            }
           >
             <ChevronLeft size={18} /> Settings
           </button>

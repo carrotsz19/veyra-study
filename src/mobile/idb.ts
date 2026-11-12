@@ -104,7 +104,10 @@ export async function remove(id: string): Promise<void> {
   const existing = await get(id)
   if (!existing) return
   const now = stamp(existing.updatedAt)
-  await done((await store('records', 'readwrite')).put({ ...existing, deletedAt: now, updatedAt: now, deviceId: await deviceId() }))
+  // Everything is worked out before the write starts: waiting on anything else
+  // in between lets IndexedDB close the transaction, and the delete is lost.
+  const rec = { ...existing, deletedAt: now, updatedAt: now, deviceId: await deviceId() }
+  await done((await store('records', 'readwrite')).put(rec))
 }
 
 export async function changesSince(since: number): Promise<Rec[]> {

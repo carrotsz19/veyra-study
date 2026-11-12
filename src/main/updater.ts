@@ -15,7 +15,7 @@
  */
 import { app, BrowserWindow, nativeTheme, type WebContents } from 'electron'
 import type { UpdateState } from '../shared/types'
-import { existsSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import splashPath from '../../resources/splash.html?asset'
@@ -27,12 +27,46 @@ export type StartResult = 'open' | 'installing'
 /** Updates work in the installed app (or against a test feed). */
 export const canUpdate = () => (app.isPackaged || !!process.env['VEYRA_UPDATE_URL']) && !process.env['VEYRA_NO_UPDATE']
 
+/*
+ * Never stuck on a broken update: before installing, Veyra notes which version
+ * it's installing from and to. Starting up again still on the old version
+ * means that install failed, so it isn't tried again by itself (not at start,
+ * not on close, not on quit) and Veyra simply opens. Settings → Software
+ * update says so and can try again.
+ */
+const ATTEMPT = () => join(app.getPath('userData'), 'update-attempt.json')
+function lastAttempt(): { from: string; to: string; at: number } | null {
+  try {
+    const a = JSON.parse(readFileSync(ATTEMPT(), 'utf8'))
+    // On a newer version now: that install worked.
+    if (a.from !== app.getVersion()) {
+      unlinkSync(ATTEMPT())
+      return null
+    }
+    return a
+  } catch {
+    return null
+  }
+}
+/** True if installing this version was already tried and didn't work. */
+export const failedBefore = (version?: string): boolean => !!version && lastAttempt()?.to === version
+function install(version: string | undefined) {
+  try {
+    writeFileSync(ATTEMPT(), JSON.stringify({ from: app.getVersion(), to: version ?? '', at: Date.now() }))
+  } catch {
+    /* installs anyway */
+  }
+  setImmediate(() => autoUpdater.quitAndInstall(true, true))
+}
+const FAILED = (v: string) => `Veyra Study ${v} didn’t install last time, so Veyra opened as it was. Try again here, or download it from GitHub.`
+
 let configured = false
 function configure() {
   if (configured) return
   configured = true
   autoUpdater.autoDownload = false
-  autoUpdater.autoInstallOnAppQuit = true
+  // Installing when Veyra quits, unless that already failed for the waiting version.
+  autoUpdater.autoInstallOnAppQuit = !lastAttempt()
   autoUpdater.logger = null
   const testFeed = process.env['VEYRA_UPDATE_URL']
   if (testFeed) {
@@ -93,6 +127,14 @@ export async function updateAtStart(checkAtStart = true): Promise<StartResult> {
       close()
       return 'open'
     }
+    // This version already failed to install: open as it is (Settings → Software update can retry).
+    if (failedBefore(info.version)) {
+      publish({ error: FAILED(info.version) })
+      set({ step: 'starting', note: 'Opening Veyra Study…' })
+      await new Promise((r) => setTimeout(r, 300))
+      close()
+      return 'open'
+    }
 
     // Downloading update…
     set({ step: 'downloading', next: info.version, done: 0, total: 0 })
@@ -108,7 +150,7 @@ export async function updateAtStart(checkAtStart = true): Promise<StartResult> {
     }
     await new Promise((r) => setTimeout(r, 900))
     // Quietly, then open the new version.
-    setImmediate(() => autoUpdater.quitAndInstall(true, true))
+    install(info.version)
     return 'installing'
   } catch {
     // Offline, GitHub trouble, a download that broke: open the app as it is; the next start tries again.
@@ -140,7 +182,7 @@ function publish(s: Partial<UpdateState>) {
   for (const wc of watchers) if (!wc.isDestroyed()) wc.send('update:state', state)
 }
 function remember(info: { version: string; releaseNotes?: unknown; releaseDate?: string }, available: boolean) {
-  publish({ checkedAt: Date.now(), latest: info.version, notes: notes(info.releaseNotes), releaseDate: info.releaseDate, status: available ? 'available' : 'up-to-date', error: undefined })
+  publish({ checkedAt: Date.now(), latest: info.version, notes: notes(info.releaseNotes), releaseDate: info.releaseDate, status: available ? 'available' : 'up-to-date', error: available && failedBefore(info.version) ? FAILED(info.version) : undefined })
 }
 
 export function updateState(wc?: WebContents): UpdateState {
@@ -185,11 +227,11 @@ export async function downloadNow(): Promise<UpdateState> {
   return state
 }
 
-/** Restart into the downloaded version. */
+/** Restart into the downloaded version (also a retry after a failed install: you asked for it). */
 export function installNow(): void {
   if (state.status !== 'ready') return
   if (process.env['VEYRA_UPDATE_DRYRUN']) return
-  setImmediate(() => autoUpdater.quitAndInstall(true, true))
+  install(state.latest)
 }
 
 /* ---------- staying up to date while Veyra keeps running ---------- */
@@ -226,12 +268,14 @@ export function keepUpToDate(on: () => boolean): void {
 /** Installs a downloaded update now; `hidden` brings Veyra back in the tray. False if there's none. */
 export function installReady(hidden: boolean): boolean {
   if (state.status !== 'ready' || process.env['VEYRA_UPDATE_DRYRUN']) return false
+  // Not by itself again after it failed.
+  if (failedBefore(state.latest)) return false
   try {
     if (hidden) writeFileSync(HIDDEN_FLAG(), '1')
   } catch {
     /* comes back with its window instead */
   }
-  setImmediate(() => autoUpdater.quitAndInstall(true, true))
+  install(state.latest)
   return true
 }
 
