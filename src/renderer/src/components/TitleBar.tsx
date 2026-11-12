@@ -263,7 +263,7 @@ export function TitleBar() {
   }
 
   return (
-    <div ref={bar} className="titlebar" onKeyDown={onKey}>
+    <div ref={bar} className={`titlebar ${window.veyra.app.windowButtons === 'windows' ? 'native-buttons' : ''}`} onKeyDown={onKey}>
       <div className="wb-brand">
         <span className="wb-mark">
           <GraduationCap size={13} strokeWidth={2.2} />
@@ -331,7 +331,7 @@ export function TitleBar() {
         ))}
       </nav>
       <div className="wb-drag" />
-      <WindowDots />
+      {window.veyra.app.windowButtons !== 'windows' && <WindowDots />}
       {newTask && <TaskDialog onClose={() => setNewTask(false)} />}
     </div>
   )

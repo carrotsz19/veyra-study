@@ -148,14 +148,28 @@ const friendly = async <T>(fn: () => Promise<T>): Promise<T> => {
 type Material = 'solid' | 'acrylic' | 'mica'
 const materialSupported = process.platform === 'win32' && Number(release().split('.')[2] ?? 0) >= 22621
 const prefsFile = () => join(app.getPath('userData'), 'window.json')
-function windowPrefs(): { material: Material; theme: 'system' | 'light' | 'dark' } {
+type WindowPrefs = { material: Material; theme: 'system' | 'light' | 'dark'; buttons: 'dots' | 'windows' }
+function windowPrefs(): WindowPrefs {
   try {
     const j = JSON.parse(readFileSync(prefsFile(), 'utf8'))
-    return { material: ['solid', 'acrylic', 'mica'].includes(j.material) ? j.material : 'acrylic', theme: ['light', 'dark'].includes(j.theme) ? j.theme : 'system' }
+    return {
+      material: ['solid', 'acrylic', 'mica'].includes(j.material) ? j.material : 'acrylic',
+      theme: ['light', 'dark'].includes(j.theme) ? j.theme : 'system',
+      buttons: j.buttons === 'windows' ? 'windows' : 'dots'
+    }
   } catch {
-    return { material: 'acrylic', theme: 'system' }
+    return { material: 'acrylic', theme: 'system', buttons: 'dots' }
   }
 }
+function savePrefs(p: Partial<WindowPrefs>): void {
+  try {
+    writeFileSync(prefsFile(), JSON.stringify({ ...windowPrefs(), ...p }))
+  } catch {
+    /* not fatal */
+  }
+}
+/** The window buttons this window was made with (Windows only lets its own be added when the window is created). */
+let windowButtons: 'dots' | 'windows' = 'dots'
 /*
  * Veyra draws its own title bar (the app's name and menus); Windows keeps
  * drawing just the minimise / maximise / close buttons (so Snap layouts still
@@ -170,7 +184,7 @@ function overlay(): Electron.TitleBarOverlayOptions {
   return { color: glass ? '#00000000' : dark ? '#15140f' : '#f3f1ec', symbolColor: dark ? '#e9e5dc' : '#2c2a26', height: TITLE_BAR_H }
 }
 function refreshTitleBar(): void {
-  if (!ownTitleBar) return
+  if (!ownTitleBar || windowButtons !== 'windows') return
   for (const w of BrowserWindow.getAllWindows()) {
     try {
       w.setTitleBarOverlay(overlay())
@@ -205,9 +219,11 @@ function createWindow(): void {
     })(),
     autoHideMenuBar: true,
     ...(ownTitleBar ? (() => {
-      barMaterial = windowPrefs().material
-      // Veyra draws its own window buttons (the Mac-style dots in its title bar), so no Windows overlay.
-      return { titleBarStyle: 'hidden' as const }
+      const p = windowPrefs()
+      barMaterial = p.material
+      windowButtons = p.buttons
+      // Mac-style dots: Veyra draws them in its title bar. Windows: its own buttons, coloured to match.
+      return p.buttons === 'windows' ? { titleBarStyle: 'hidden' as const, titleBarOverlay: overlay() } : { titleBarStyle: 'hidden' as const }
     })() : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -423,16 +439,20 @@ app.whenReady().then(async () => {
   ipcMain.handle('app:setMaterial', (_e, material: Material, theme: 'system' | 'light' | 'dark') => {
     const m: Material = ['solid', 'acrylic', 'mica'].includes(material) ? material : 'acrylic'
     nativeTheme.themeSource = ['light', 'dark'].includes(theme) ? theme : 'system'
-    try {
-      writeFileSync(prefsFile(), JSON.stringify({ material: m, theme: nativeTheme.themeSource }))
-    } catch {
-      /* not fatal */
-    }
+    savePrefs({ material: m, theme: nativeTheme.themeSource })
     for (const w of BrowserWindow.getAllWindows()) applyMaterial(w, m)
     barMaterial = m
     refreshTitleBar()
   })
   ipcMain.on('app:titleBar', (e) => (e.returnValue = ownTitleBar ? TITLE_BAR_H : 0))
+  // Which window buttons this window has, and choosing them for the next start.
+  ipcMain.on('app:windowButtons', (e) => (e.returnValue = windowButtons))
+  ipcMain.on('app:windowButtonsChoice', (e) => (e.returnValue = windowPrefs().buttons))
+  ipcMain.handle('app:setWindowButtons', (_e, b: string) => savePrefs({ buttons: b === 'windows' ? 'windows' : 'dots' }))
+  ipcMain.handle('app:relaunch', () => {
+    app.relaunch()
+    app.quit()
+  })
   ipcMain.on('win:state', (e) => {
     const w = BrowserWindow.fromWebContents(e.sender)
     e.returnValue = { focused: !!w?.isFocused(), maximized: !!w?.isMaximized() }

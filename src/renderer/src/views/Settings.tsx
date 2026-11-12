@@ -205,6 +205,7 @@ function Appearance() {
             <Choice label="Window background" value={s.material} onChange={(material) => set({ material })} options={[['solid', 'Solid'], ['acrylic', 'Acrylic'], ['mica', 'Mica']]} />
           </Row>
         )}
+        {window.veyra.app.titleBar ? <WindowButtonsRow /> : null}
       </Group>
       <Group footer="Used for buttons, highlights and the selected screen.">
         <Row label="Accent colour" stack keywords="color tint highlight custom">
@@ -1371,5 +1372,42 @@ function SoftwareUpdate() {
         </Row>
       </Group>
     </>
+  )
+}
+
+/** Windows: Mac-style dots drawn by Veyra, or Windows' own buttons. Saved per computer; applies on the next start. */
+function WindowButtonsRow(): ReactNode {
+  const running = window.veyra.app.windowButtons ?? 'dots'
+  const [choice, setChoice] = useState<'dots' | 'windows'>(() => window.veyra.app.windowButtonsChoice?.() ?? running)
+  return (
+    <Row
+      label="Window buttons"
+      hint={
+        choice === 'windows'
+          ? 'Windows’ own minimise, maximise and close, with Snap layouts when you point at maximise.'
+          : 'Three coloured dots like a Mac: minimise, maximise, close. Their symbols show when you point at them.'
+      }
+      keywords="minimise maximise close traffic lights mac windows snap title bar"
+    >
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <Choice
+          label="Window buttons"
+          value={choice}
+          onChange={(b) => {
+            setChoice(b)
+            void window.veyra.app.setWindowButtons?.(b)
+          }}
+          options={[
+            ['dots', 'Mac-style'],
+            ['windows', 'Windows']
+          ]}
+        />
+        {choice !== running && (
+          <button className="btn sm" onClick={() => void window.veyra.app.relaunch?.()}>
+            Restart now
+          </button>
+        )}
+      </div>
+    </Row>
   )
 }

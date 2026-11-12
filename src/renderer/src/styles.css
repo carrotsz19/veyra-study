@@ -1017,3 +1017,5 @@ html.dark .shell.side-hidden aside.side, html.dark.material .shell.side-hidden a
 .wb-dot:hover { filter: brightness(1.04); }
 .wb-dot:active { transform: scale(0.88); filter: brightness(0.9); }
 .wb-dots.inactive:not(:hover) .wb-dot { background: color-mix(in srgb, var(--ink) 22%, transparent); box-shadow: none; }
+/* Windows' own buttons: leave room on the right for them. */
+.titlebar.native-buttons { padding-right: calc(100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px)); }

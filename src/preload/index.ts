@@ -52,6 +52,12 @@ const appApi = {
   titleBar: ipcRenderer.sendSync('app:titleBar') as number,
   /** The title bar's menu commands. */
   win: (cmd: 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'fullscreen' | 'close' | 'quit' | 'minimize' | 'maximize') => ipcRenderer.invoke('win:cmd', cmd),
+  /** The window buttons this window has ('dots' drawn by Veyra, or Windows' own), and choosing them for next time. */
+  windowButtons: ipcRenderer.sendSync('app:windowButtons') as 'dots' | 'windows',
+  /** The buttons chosen for the next start (can differ from windowButtons until Veyra restarts). */
+  windowButtonsChoice: () => ipcRenderer.sendSync('app:windowButtonsChoice') as 'dots' | 'windows',
+  setWindowButtons: (b: 'dots' | 'windows') => ipcRenderer.invoke('app:setWindowButtons', b),
+  relaunch: () => ipcRenderer.invoke('app:relaunch'),
   /** Whether the window is active and maximised (for the title bar's buttons). */
   winState: () => ipcRenderer.sendSync('win:state') as { focused: boolean; maximized: boolean },
   onWinState: (cb: (s: { focused: boolean; maximized: boolean }) => void) => {
