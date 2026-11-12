@@ -252,10 +252,10 @@ let lastLook = 0
 let allowed: () => boolean = () => true
 const HIDDEN_FLAG = () => join(app.getPath('userData'), 'relaunch-hidden')
 
-/** Look for an update (at most every half hour) and download it if there is one. */
+/** Look for an update (at most every 5 minutes) and download it if there is one. */
 export async function lookForUpdate(force = false): Promise<void> {
   if (!canUpdate() || !allowed()) return
-  if (!force && Date.now() - lastLook < 30 * 60_000) return
+  if (!force && Date.now() - lastLook < 5 * 60_000) return
   if (state.status === 'checking' || state.status === 'downloading' || state.status === 'ready') return
   lastLook = Date.now()
   configure()
@@ -263,12 +263,12 @@ export async function lookForUpdate(force = false): Promise<void> {
   if (s.status === 'available') await downloadNow()
 }
 
-/** Every few hours while running. `on` says whether automatic updates are switched on. */
+/** Every 10 minutes while running. `on` says whether automatic updates are switched on. */
 export function keepUpToDate(on: () => boolean): void {
   allowed = on
   if (!canUpdate()) return
   lastLook = Date.now() // the start-up check just happened
-  setInterval(() => void lookForUpdate(), 3 * 3600_000).unref?.()
+  setInterval(() => void lookForUpdate(), 10 * 60_000).unref?.()
 }
 
 /** Installs a downloaded update now; `hidden` brings Veyra back in the tray. False if there's none. */

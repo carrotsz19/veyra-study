@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, GraduationCap, PanelLeftClose, PanelLeftDashed, PanelLeftOpen } from 'lucide-react'
+import { ArrowDownToLine, Check, GraduationCap, PanelLeftClose, PanelLeftDashed, PanelLeftOpen, RotateCw } from 'lucide-react'
+import type { UpdateState } from '@shared/types'
 import type { NavId, ThemeMode } from '@shared/settings'
 import { useSettings } from '../data/settings'
 import { useNav, type Route } from '../nav'
@@ -330,9 +331,56 @@ export function TitleBar() {
           </div>
         ))}
       </nav>
+      <UpdatePill />
       <div className="wb-drag" />
       {window.veyra.app.windowButtons !== 'windows' && <WindowDots />}
       {newTask && <TaskDialog onClose={() => setNewTask(false)} />}
     </div>
   )
+}
+
+/**
+ * An update, right there in the title bar: downloading (with its progress),
+ * then "Restart to update". Found but not downloaded (automatic updates off):
+ * "Update", which opens Settings → Software update.
+ */
+function UpdatePill() {
+  const [u, setU] = useState<UpdateState | null>(null)
+  const { go } = useNav()
+  useEffect(() => {
+    void window.veyra.update.state().then(setU)
+    return window.veyra.update.onState(setU)
+  }, [])
+  if (!u?.supported || !u.latest) return null
+  const openSettings = () => {
+    sessionStorage.setItem('veyra.settingsSection', 'updates')
+    go({ name: 'settings' })
+  }
+  if (u.status === 'ready')
+    return (
+      <button className="wb-update ready" title={`Veyra Study ${u.latest} is downloaded. Restart to install it.`} onClick={() => void window.veyra.update.install()}>
+        <RotateCw size={13} strokeWidth={2.4} />
+        Restart to update
+      </button>
+    )
+  if (u.status === 'downloading') {
+    const p = Math.max(0, Math.min(1, u.progress ?? 0))
+    return (
+      <button className="wb-update" title={`Downloading Veyra Study ${u.latest}… ${Math.round(p * 100)}%`} onClick={openSettings}>
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+          <circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
+          <circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={`${p * 34.56} 34.56`} transform="rotate(-90 7 7)" />
+        </svg>
+        Updating
+      </button>
+    )
+  }
+  if (u.status === 'available')
+    return (
+      <button className="wb-update" title={`Veyra Study ${u.latest} is available`} onClick={openSettings}>
+        <ArrowDownToLine size={13} strokeWidth={2.4} />
+        Update
+      </button>
+    )
+  return null
 }

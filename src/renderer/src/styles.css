@@ -1019,3 +1019,16 @@ html.dark .shell.side-hidden aside.side, html.dark.material .shell.side-hidden a
 .wb-dots.inactive:not(:hover) .wb-dot { background: color-mix(in srgb, var(--ink) 22%, transparent); box-shadow: none; }
 /* Windows' own buttons: leave room on the right for them. */
 .titlebar.native-buttons { padding-right: calc(100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px)); }
+
+/* Title bar: an update that's on its way / ready (TitleBar.tsx UpdatePill). */
+.wb-update {
+  -webkit-app-region: no-drag; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; margin-left: 8px;
+  border: 0; border-radius: 99px; font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap;
+  background: var(--tint-soft); color: var(--tint);
+  animation: wbUpdateIn 0.45s var(--spring-spatial) both; transition: filter 0.12s, transform 0.12s;
+}
+.wb-update:hover { filter: brightness(1.06); }
+.wb-update:active { transform: scale(0.96); }
+.wb-update.ready { background: var(--tint); color: #fff; }
+@keyframes wbUpdateIn { from { opacity: 0; transform: scale(0.8); } }
+@media (prefers-reduced-motion: reduce) { .wb-update { animation: none; } }

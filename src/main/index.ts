@@ -66,7 +66,7 @@ function showWindow(screen?: string): void {
   w.show()
   w.focus()
   if (screen) w.webContents.send('app:nav', screen)
-  // Back from the tray: a good moment to look for an update (at most every half hour).
+  // Back from the tray: a good moment to look for an update (at most every 5 minutes).
   void lookForUpdate()
 }
 
@@ -198,6 +198,8 @@ nativeTheme.on('updated', refreshTitleBar)
 function applyMaterial(win: BrowserWindow, material: Material): void {
   barMaterial = material
   if (!materialSupported) return
+  // Windows flickers acrylic/mica on a full-screen window, so full screen is always solid.
+  if (win.isFullScreen()) material = 'solid'
   win.setBackgroundMaterial(material === 'solid' ? 'none' : material)
   win.setBackgroundColor(material === 'solid' ? (nativeTheme.shouldUseDarkColors ? '#15140f' : '#f7f7f5') : '#00000000')
 }
@@ -236,6 +238,11 @@ function createWindow(): void {
   // The title bar's window buttons dim when Veyra isn't the active window, and show restore when maximised.
   const sendState = () => !win.isDestroyed() && win.webContents.send('win:state', { focused: win.isFocused(), maximized: win.isMaximized() })
   for (const ev of ['focus', 'blur', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'] as const) win.on(ev as 'focus', sendState)
+  // Full screen: solid background (acrylic flickers there); back to the chosen glass on leaving.
+  // Coming back to Veyra: look for an update too (at most every 5 minutes).
+  win.on('focus', () => void lookForUpdate())
+  win.on('enter-full-screen', () => applyMaterial(win, barMaterial))
+  win.on('leave-full-screen', () => applyMaterial(win, barMaterial))
   // Veyra Study Dev: a violet dot on its taskbar icon, so it's never mistaken for the real app.
   if (IS_DEV && process.platform === 'win32') win.once('ready-to-show', () => win.setOverlayIcon(nativeImage.createFromPath(devBadgePath), 'Veyra Study Dev (test build)'))
   // Started with Windows: wait in the tray until asked for.
