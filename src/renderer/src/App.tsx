@@ -6,7 +6,7 @@ import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Monitor, Moon, 
 import { useRecords } from './data/store'
 import { clock, isOverdue } from './lib/dates'
 import { sortSubjects } from './lib/subjects'
-import { NavCtx, type Route } from './nav'
+import { NavCtx, useNav, type Route } from './nav'
 import { ToastProvider, useToast } from './components/ui'
 import { AccountGate, Avatar, useAccount } from './components/account'
 import { Settings } from './views/Settings'
@@ -157,6 +157,29 @@ function Screen({ route }: { route: Route }) {
   }
 }
 
+/** The first start after an update: say so, and offer what's new. */
+function UpdatedNotice() {
+  const toast = useToast()
+  const { go } = useNav()
+  useEffect(() => {
+    try {
+      const seen = localStorage.getItem('veyra.seenVersion')
+      localStorage.setItem('veyra.seenVersion', __APP_VERSION__)
+      if (seen && seen !== __APP_VERSION__)
+        toast(`Veyra Study updated to ${__APP_VERSION__}`, {
+          label: 'What’s new',
+          run: () => {
+            sessionStorage.setItem('veyra.settingsSection', 'updates')
+            go({ name: 'settings' })
+          }
+        })
+    } catch {
+      /* storage unavailable */
+    }
+  }, [toast, go])
+  return null
+}
+
 /** After the first sign-in moved this computer's data into the account. */
 function MovedNotice() {
   const toast = useToast()
@@ -214,6 +237,7 @@ function Shell() {
       <NavCtx.Provider value={{ route, go }}>
         <div className={`shell ${phone ? 'phone-shell' : ''}`} data-route={route.name}>
           {phone ? <PhoneNav route={route} go={go} /> : <Sidebar route={route} go={go} />}
+          <UpdatedNotice />
           <VoiceSetupHost />
           <main className={`main ${route.name === 'settings' ? 'main-settings' : ''}`}>
             <Screen key={route.name + ('id' in route ? route.id : '')} route={route} />

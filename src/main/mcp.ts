@@ -15,7 +15,7 @@ import { createServer, type Server } from 'node:http'
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import type { Kind, Rec, Task } from '../shared/types'
+import type { GoogleEvent, Kind, Rec, Task } from '../shared/types'
 import type { Store } from './db'
 import { docPlain, markdownToDoc, noteMarkdown } from './notetext'
 
@@ -27,6 +27,10 @@ interface Hooks {
   allowWrites: () => boolean
   /** A write happened: refresh the screens, sync, Google. */
   changed: (kinds: Kind[], ids: string[]) => void
+  /** Calendar events (Google, calendar links, group deadlines). */
+  events?: (fromIso: string, toIso: string) => Promise<{ events: GoogleEvent[] }>
+  /** One request to the group server (group work). */
+  group?: (method: string, path: string, body?: unknown) => Promise<any>
 }
 
 class ToolError extends Error {}
@@ -135,7 +139,7 @@ export class McpServer {
           if (tool.write && !this.hooks.allowWrites()) throw new ToolError('Changes from AI apps are turned off. The user can allow them in Veyra Study → Settings → Connections.')
           const st = this.hooks.store()
           if (!st) throw new ToolError('Veyra Study is still opening. Try again in a moment.')
-          const out = tool.run(st, msg.params?.arguments ?? {}, this.hooks)
+          const out = await tool.run(st, msg.params?.arguments ?? {}, this.hooks)
           return ok({ content: [{ type: 'text', text: typeof out === 'string' ? out : JSON.stringify(out, null, 2) }] })
         } catch (e) {
           return ok({ content: [{ type: 'text', text: e instanceof ToolError ? e.message : 'Something went wrong in Veyra Study.' }], isError: true })
@@ -154,7 +158,7 @@ interface Tool {
   description: string
   inputSchema: Record<string, unknown>
   write?: boolean
-  run: (st: Store, a: Args, hooks: Hooks) => unknown
+  run: (st: Store, a: Args, hooks: Hooks) => unknown | Promise<unknown>
 }
 
 const isDay = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
@@ -168,7 +172,7 @@ function subjectId(st: Store, name: unknown): string | null {
   if (name === undefined || name === null || name === '') return null
   const n = String(name).trim().toLowerCase()
   const s = subjects(st).find((x) => x.data.name.toLowerCase() === n) ?? subjects(st).find((x) => x.data.name.toLowerCase().includes(n))
-  if (!s) throw new ToolError(`No subject called “${name}”. Subjects: ${subjects(st).map((x) => x.data.name).join(', ') || 'none yet'}.`)
+  if (!s) throw new ToolError(`No subject called “${name}”. Subjects: ${subjects(st).map((x) => x.data.name).join(', ') || 'none yet'}. Use create_subject to add it.`)
   return s.id
 }
 const taskView = (st: Store, t: Rec<'task'>) => ({
@@ -187,6 +191,31 @@ const noteFind = (st: Store, id: unknown) => {
   return n
 }
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '')
+
+const PALETTE = ['#b3492b', '#2f5f8a', '#3f6b4a', '#7a4f9a', '#a86f1d', '#2f7d7a', '#9a3f63', '#5b5a55']
+/** A subject by name (or id), archived ones too when asked. */
+function findSubject(st: Store, name: unknown, includeArchived = false): Rec<'subject'> {
+  const n = String(name ?? '').trim().toLowerCase()
+  const all = (st.list('subject') as Rec<'subject'>[]).filter((s) => includeArchived || !s.data.archived)
+  const s = all.find((x) => x.id === name) ?? all.find((x) => x.data.name.toLowerCase() === n) ?? all.find((x) => x.data.name.toLowerCase().includes(n))
+  if (!s) throw new ToolError(`No subject called “${name}”. Subjects: ${all.map((x) => x.data.name).join(', ') || 'none yet'}. Use create_subject to add it.`)
+  return s
+}
+async function groupCall(h: Hooks, method: string, path: string, body?: unknown) {
+  if (!h.group) throw new ToolError('Group work isn’t available here.')
+  try {
+    return await h.group(method, path, body)
+  } catch (e) {
+    throw new ToolError(e instanceof Error ? e.message : 'The group server didn’t answer.')
+  }
+}
+async function findGroup(h: Hooks, name: unknown): Promise<{ id: string; name: string }> {
+  const { groups } = await groupCall(h, 'GET', '/groups')
+  const n = String(name ?? '').trim().toLowerCase()
+  const g = groups.find((x: any) => x.id === name) ?? groups.find((x: any) => x.name.toLowerCase() === n) ?? groups.find((x: any) => x.name.toLowerCase().includes(n))
+  if (!g) throw new ToolError(`No group called “${name}”. Groups: ${groups.map((x: any) => x.name).join(', ') || 'none yet'}.`)
+  return g
+}
 
 const TOOLS: Tool[] = [
   {
@@ -370,6 +399,230 @@ const TOOLS: Tool[] = [
       }
       const round = (o: Record<string, number>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Math.round(v)]))
       return { days, totalMinutes: Math.round(sessions.reduce((m, s) => m + s.data.durationSec / 60, 0)), sessions: sessions.length, minutesByDay: round(byDay), minutesBySubject: round(bySubject) }
+    }
+  },
+  /* ---------- subjects ---------- */
+  {
+    name: 'create_subject',
+    description: 'Add a subject (course). Returns it; notes and tasks can then go in it. Archived ones with the same name come back instead of duplicating.',
+    write: true,
+    inputSchema: { type: 'object', required: ['name'], properties: { name: { type: 'string' }, color: { type: 'string', description: 'A #rrggbb colour (optional; one is picked otherwise).' } } },
+    run: (st, a, h) => {
+      const name = str(a.name, 80).trim()
+      if (!name) throw new ToolError('A subject needs a name.')
+      const all = st.list('subject') as Rec<'subject'>[]
+      const same = all.find((s) => s.data.name.toLowerCase() === name.toLowerCase())
+      if (same && !same.data.archived) return { exists: { name: same.data.name, id: same.id } }
+      const color = /^#[0-9a-f]{6}$/i.test(a.color ?? '') ? a.color : PALETTE[all.length % PALETTE.length]
+      const rec = same ? (st.put('subject', { ...same.data, archived: false }, same.id) as Rec<'subject'>) : (st.put('subject', { name, color, order: all.length }) as Rec<'subject'>)
+      h.changed(['subject'], [rec.id])
+      return { created: { name: rec.data.name, id: rec.id, color: rec.data.color } }
+    }
+  },
+  {
+    name: 'update_subject',
+    description: 'Rename, recolour, archive (hide) or bring back a subject, found by its current name.',
+    write: true,
+    inputSchema: { type: 'object', required: ['subject'], properties: { subject: { type: 'string', description: 'Current name.' }, new_name: { type: 'string' }, color: { type: 'string' }, archived: { type: 'boolean' } } },
+    run: (st, a, h) => {
+      const s = findSubject(st, a.subject, true)
+      const d = { ...s.data }
+      if (typeof a.new_name === 'string' && a.new_name.trim()) d.name = a.new_name.trim().slice(0, 80)
+      if (/^#[0-9a-f]{6}$/i.test(a.color ?? '')) d.color = a.color
+      if (typeof a.archived === 'boolean') d.archived = a.archived
+      st.put('subject', d, s.id)
+      h.changed(['subject'], [s.id])
+      return { updated: { name: d.name, color: d.color, archived: !!d.archived } }
+    }
+  },
+  {
+    name: 'delete_subject',
+    description: 'Delete a subject. Its notes and tasks are kept and become "no subject" (or are deleted too with delete_contents).',
+    write: true,
+    inputSchema: { type: 'object', required: ['subject'], properties: { subject: { type: 'string' }, delete_contents: { type: 'boolean' } } },
+    run: (st, a, h) => {
+      const s = findSubject(st, a.subject, true)
+      const ids: string[] = [s.id]
+      for (const kind of ['task', 'note'] as const) {
+        for (const r of st.list(kind) as Rec<'task' | 'note'>[]) {
+          if (r.data.subjectId !== s.id) continue
+          if (a.delete_contents) st.remove(r.id)
+          else st.put(kind, { ...r.data, subjectId: null } as never, r.id)
+          ids.push(r.id)
+        }
+      }
+      st.remove(s.id)
+      h.changed(['subject', 'task', 'note'], ids)
+      return { deleted: s.data.name, [a.delete_contents ? 'alsoDeleted' : 'movedToNoSubject']: ids.length - 1 }
+    }
+  },
+
+  /* ---------- tasks ---------- */
+  {
+    name: 'delete_task',
+    description: 'Delete a task (by id from list_tasks).',
+    write: true,
+    inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
+    run: (st, a, h) => {
+      const t = (st.list('task') as Rec<'task'>[]).find((x) => x.id === a.id)
+      if (!t) throw new ToolError('No task with that id. Use list_tasks to find it.')
+      st.remove(t.id)
+      h.changed(['task'], [t.id])
+      return { deleted: t.data.title }
+    }
+  },
+
+  /* ---------- notes ---------- */
+  {
+    name: 'update_note',
+    description:
+      'Change a note: rename it, replace its whole text with new Markdown, move it to a subject (null: none), set its tags, pin or archive it. Only what you pass changes. To add text, append_to_note keeps what is there.',
+    write: true,
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string' },
+        title: { type: 'string' },
+        markdown: { type: 'string', description: 'Replaces the note’s text.' },
+        subject: { type: ['string', 'null'] },
+        tags: { type: 'array', items: { type: 'string' } },
+        pinned: { type: 'boolean' },
+        archived: { type: 'boolean' },
+        icon: { type: 'string', description: 'An emoji.' }
+      }
+    },
+    run: (st, a, h) => {
+      const n = noteFind(st, a.id)
+      const d = { ...n.data }
+      if (typeof a.title === 'string') d.title = a.title.trim().slice(0, 200)
+      if (typeof a.markdown === 'string') {
+        d.content = markdownToDoc(str(a.markdown, 200_000))
+        d.excerpt = docPlain(d.content).slice(0, 300)
+      }
+      if (a.subject === null) d.subjectId = null
+      else if (a.subject !== undefined) d.subjectId = subjectId(st, a.subject)
+      if (Array.isArray(a.tags)) d.tags = a.tags.map((t: unknown) => String(t).toLowerCase().replace(/^#/, '').trim().slice(0, 40)).filter(Boolean).slice(0, 30)
+      if (typeof a.pinned === 'boolean') d.pinned = a.pinned
+      if (typeof a.archived === 'boolean') d.archived = a.archived
+      if (typeof a.icon === 'string') d.icon = a.icon.slice(0, 8)
+      st.put('note', d, n.id)
+      h.changed(['note'], [n.id])
+      return { updated: { id: n.id, title: d.title || 'Untitled', subject: subjectName(st, d.subjectId) } }
+    }
+  },
+  {
+    name: 'delete_note',
+    description: 'Delete a note (by id from search_notes). archived notes can be found with search_notes include_archived.',
+    write: true,
+    inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
+    run: (st, a, h) => {
+      const n = noteFind(st, a.id)
+      st.remove(n.id)
+      h.changed(['note'], [n.id])
+      return { deleted: n.data.title || 'Untitled' }
+    }
+  },
+
+  /* ---------- study time ---------- */
+  {
+    name: 'log_study_session',
+    description: 'Record study time (as if the focus timer had run): minutes, optional subject, and when it ended (default now).',
+    write: true,
+    inputSchema: { type: 'object', required: ['minutes'], properties: { minutes: { type: 'number' }, subject: { type: 'string' }, ended_at: { type: 'string', description: 'Local time, YYYY-MM-DDTHH:MM.' }, label: { type: 'string' } } },
+    run: (st, a, h) => {
+      const minutes = Math.round(Number(a.minutes))
+      if (!(minutes > 0 && minutes <= 24 * 60)) throw new ToolError('Minutes must be between 1 and 1440.')
+      const end = typeof a.ended_at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(a.ended_at) ? new Date(a.ended_at).getTime() : Date.now()
+      const rec = st.put('session', { subjectId: subjectId(st, a.subject), startedAt: end - minutes * 60_000, endedAt: end, durationSec: minutes * 60, ...(a.label ? { label: str(a.label, 120) } : {}) })
+      h.changed(['session'], [rec.id])
+      return { logged: { minutes, subject: subjectName(st, (rec.data as { subjectId: string | null }).subjectId) } }
+    }
+  },
+
+  /* ---------- calendar ---------- */
+  {
+    name: 'list_calendar',
+    description: 'Events in the user’s calendars (Google Calendar, calendar links and group deadlines) between two days, plus tasks due then.',
+    inputSchema: { type: 'object', properties: { from: { type: 'string', description: 'YYYY-MM-DD (default today).' }, to: { type: 'string', description: 'YYYY-MM-DD (default a week on).' } } },
+    run: async (st, a, h) => {
+      const from = isDay(a.from) ? a.from : today()
+      const end = new Date((isDay(a.to) ? a.to : '') || new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10))
+      const to = isDay(a.to) ? a.to : end.toISOString().slice(0, 10)
+      const r = h.events ? await h.events(new Date(from + 'T00:00:00').toISOString(), new Date(to + 'T23:59:59').toISOString()) : { events: [] }
+      const tasks = (st.list('task') as Rec<'task'>[]).filter((t) => t.data.due && t.data.due >= from && t.data.due <= to && !t.data.done).map((t) => taskView(st, t))
+      return {
+        from,
+        to,
+        events: r.events.map((e) => ({ title: e.title, calendar: e.calendar, start: e.start, end: e.end, allDay: e.allDay, location: e.location || undefined })),
+        tasksDue: tasks
+      }
+    }
+  },
+
+  /* ---------- group work ---------- */
+  {
+    name: 'list_groups',
+    description: 'The user’s group-work groups, with their members.',
+    inputSchema: { type: 'object', properties: {} },
+    run: async (_st, _a, h) => {
+      const r = await groupCall(h, 'GET', '/groups')
+      return r.groups.map((g: any) => ({ id: g.id, name: g.name, role: g.role, members: g.members.map((m: any) => `${m.displayName} (@${m.username})`) }))
+    }
+  },
+  {
+    name: 'list_group_items',
+    description: 'What is in a group: its tasks, shared notes (as Markdown), chat messages and deadlines. Filter by kind.',
+    inputSchema: { type: 'object', required: ['group'], properties: { group: { type: 'string', description: 'Group name or id.' }, kind: { type: 'string', enum: ['task', 'note', 'message', 'event'] } } },
+    run: async (_st, a, h) => {
+      const g = await findGroup(h, a.group)
+      const r = await groupCall(h, 'GET', `/groups/${encodeURIComponent(g.id)}/items`)
+      return r.items
+        .filter((i: any) => !a.kind || i.kind === a.kind)
+        .map((i: any) => ({
+          id: i.id,
+          kind: i.kind,
+          by: i.createdBy,
+          at: new Date(i.updatedAt).toISOString().slice(0, 16),
+          ...(i.kind === 'note' ? { title: i.data.title, markdown: noteMarkdown(i.data) } : i.data)
+        }))
+    }
+  },
+  {
+    name: 'add_to_group',
+    description: 'Add to a group: a task (title, due, assignee @username), a shared note (title + markdown), a chat message (text), or a deadline (title, date, time).',
+    write: true,
+    inputSchema: {
+      type: 'object',
+      required: ['group', 'kind'],
+      properties: {
+        group: { type: 'string' },
+        kind: { type: 'string', enum: ['task', 'note', 'message', 'event'] },
+        title: { type: 'string' },
+        markdown: { type: 'string' },
+        text: { type: 'string' },
+        due: { type: 'string' },
+        assignee: { type: 'string' },
+        date: { type: 'string' },
+        time: { type: 'string', description: 'HH:MM' },
+        details: { type: 'string' }
+      }
+    },
+    run: async (_st, a, h) => {
+      const g = await findGroup(h, a.group)
+      const data =
+        a.kind === 'task'
+          ? { title: str(a.title, 300), details: str(a.details, 4000), assignee: a.assignee ? String(a.assignee).replace(/^@/, '').toLowerCase() : null, due: isDay(a.due) ? a.due : null, done: false, doneBy: null, doneAt: null, priority: 'normal' }
+          : a.kind === 'note'
+            ? (() => {
+                const content = markdownToDoc(str(a.markdown, 200_000))
+                return { title: str(a.title, 200), icon: '', content, excerpt: docPlain(content).slice(0, 300) }
+              })()
+            : a.kind === 'message'
+              ? { text: str(a.text, 4000) }
+              : { title: str(a.title, 200), date: isDay(a.date) ? a.date : null, time: /^\d{2}:\d{2}$/.test(a.time ?? '') ? a.time : null, details: str(a.details, 2000) }
+      const r = await groupCall(h, 'POST', `/groups/${encodeURIComponent(g.id)}/items`, { kind: a.kind, data })
+      return { added: { group: g.name, kind: a.kind, id: r.item.id } }
     }
   }
 ]

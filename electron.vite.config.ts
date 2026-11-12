@@ -27,6 +27,7 @@ export default defineConfig({
     resolve: {
       alias: { '@shared': resolve('src/shared') }
     },
-    plugins: [react()]
+    plugins: [react()],
+    define: { __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync('package.json', 'utf8')).version) }
   }
 })

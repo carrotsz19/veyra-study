@@ -128,6 +128,13 @@ const voice: Veyra['voice'] = {
   onTranscribing: unsub,
   saveRecording: (name, mime, bytes) => phoneFiles.save(name, mime, bytes)
 }
+const update: Veyra['update'] = {
+  state: async () => ({ supported: false, current: __APP_VERSION__, status: 'idle' }),
+  check: async () => ({ supported: false, current: __APP_VERSION__, status: 'idle' }),
+  download: async () => ({ supported: false, current: __APP_VERSION__, status: 'idle' }),
+  install: async () => {},
+  onState: unsub
+}
 const mcp: Veyra['mcp'] = {
   state: async () => ({ running: false, port: 0, command: '', args: [], claude: { path: '', added: false }, gemini: { path: '', added: false } }),
   apply: async () => ({ running: false, port: 0, command: '', args: [], claude: { path: '', added: false }, gemini: { path: '', added: false } }),
@@ -140,7 +147,7 @@ const appApi: Veyra['app'] = {
   importData: onComputer('Import'),
   openDataFolder: async () => {},
   exportNotes: onComputer('Exporting notes'),
-  version: async () => '1.0.0',
+  version: async () => __APP_VERSION__,
   materialSupported: false,
   setMaterial: async () => {},
   setStartup: async () => false,
@@ -162,6 +169,7 @@ export async function installBridge(): Promise<void> {
     sync,
     voice,
     mcp,
+    update,
     app: appApi,
     // No synchronous saving on Android; the editor saves when the app is put away instead.
     saveNow: () => {},

@@ -1,13 +1,15 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
-  ArrowDown, ArrowUp, CalendarDays, Check, ChevronLeft, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, NotebookPen,
+  ArrowDown, ArrowUp, CalendarDays, Check, ChevronLeft, Download, ExternalLink, RefreshCw, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, NotebookPen,
   LayoutGrid, Palette, Play, Plus, RotateCcw, Shapes, Sparkles, Trash2, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
 } from 'lucide-react'
 import { ACCENTS, DEFAULT_SETTINGS, NAV_LABELS, defaultLayout, type AppSettings, type NavId } from '@shared/settings'
 import { useNav } from '../nav'
 import { useSettings } from '../data/settings'
 import { playSound } from '../components/timer'
-import { useToast } from '../components/ui'
+import { Bar, useToast } from '../components/ui'
+import { VeyraMark } from '../components/account'
+import { formatDistanceToNowStrict } from 'date-fns'
 import { onAndroid, usePhone } from '../lib/phone'
 import { NOTE_COVERS } from '../components/notes/NoteEditor'
 import { AccountSection, AiAppsSection, DriveSection, GoogleSection } from './Connections'
@@ -15,14 +17,14 @@ import { LocalAiSetup } from '../components/LocalAiSetup'
 import { db, useRecords } from '../data/store'
 import { sortSubjects } from '../lib/subjects'
 import { SubjectDialog } from '../components/editors'
-import type { AiProvider, AiState, Rec } from '@shared/types'
+import type { AiProvider, AiState, Rec, UpdateState } from '@shared/types'
 
 /* =====================================================================
    Settings: categories on the left, one category at a time on the
    right, and a search that finds any option across all of them.
 ===================================================================== */
 
-type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data'
+type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data' | 'updates'
 
 const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; keys?: (keyof AppSettings)[] }[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal, hint: 'Your name, start screen, week and time', keys: ['name', 'greeting', 'startScreen', 'weekStart', 'timeFormat'] },
@@ -37,7 +39,8 @@ const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; 
   { id: 'ai', label: 'AI', icon: Sparkles, hint: 'Local AI or your own Claude, Gemini or OpenAI key' },
   { id: 'account', label: 'Account', icon: UserRound, hint: 'Your Veyra account' },
   { id: 'connections', label: 'Connections', icon: Link2, hint: 'Google Calendar, Google Drive, calendar links and AI apps' },
-  { id: 'data', label: 'Data & privacy', icon: Database, hint: 'Export, where data lives, and resets' }
+  { id: 'data', label: 'Data & privacy', icon: Database, hint: 'Export, where data lives, and resets' },
+  { id: 'updates', label: 'Software update', icon: Download, hint: 'Your version, updates, and what’s new', keys: ['checkUpdatesAtStart'] }
 ]
 
 /* ---------- building blocks ---------- */
@@ -954,6 +957,8 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
           <AiAppsSection />
         </>
       )
+    case 'updates':
+      return <SoftwareUpdate />
     case 'data':
       return <DataPrivacy />
   }
@@ -963,7 +968,8 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
 /** Pages that are cards rather than rows: search shows a shortcut to them. */
 const JUMPS: { id: SectionId; words: string }[] = [
   { id: 'account', words: 'account sign in sign out log out veyra username email password profile photo' },
-  { id: 'connections', words: 'connected calendars google calendar drive backup docs mcp claude gemini chatgpt codex ai apps connector ical ics link sync outlook icloud events connect' }
+  { id: 'connections', words: 'connected calendars google calendar drive backup docs mcp claude gemini chatgpt codex ai apps connector ical ics link sync outlook icloud events connect' },
+  { id: 'updates', words: 'update updates version software new release download install restart about changelog what’s new github report problem bug' }
 ]
 
 /** Computer-only sections, hidden in the Android app. */
@@ -1087,3 +1093,120 @@ export function Settings({ initial }: { initial?: string }) {
   )
 }
 
+/* ---------- Software update ---------- */
+const RELEASES = 'https://github.com/carrotsz19/veyra-study/releases'
+
+function SoftwareUpdate() {
+  const { s, set } = useSettings()
+  const [u, setU] = useState<UpdateState | null>(null)
+  const [, tick] = useState(0)
+  useEffect(() => {
+    void window.veyra.update.state().then(setU)
+    const off = window.veyra.update.onState(setU)
+    const t = setInterval(() => tick((n) => n + 1), 30_000) // keeps "checked 2 minutes ago" fresh
+    return () => {
+      off()
+      clearInterval(t)
+    }
+  }, [])
+  if (!u) return null
+  const mb = (b?: number) => ((b ?? 0) / 1048576).toFixed(0)
+  const android = onAndroid()
+
+  const status =
+    u.status === 'checking'
+      ? 'Checking for updates…'
+      : u.status === 'available'
+        ? `Version ${u.latest} is available`
+        : u.status === 'downloading'
+          ? `Downloading version ${u.latest}… ${mb(u.transferred)} of ${mb(u.total)} MB`
+          : u.status === 'ready'
+            ? `Version ${u.latest} is ready to install`
+            : u.status === 'error'
+              ? u.error ?? 'Couldn’t check for updates.'
+              : u.status === 'up-to-date'
+                ? 'Veyra Study is up to date'
+                : u.supported
+                  ? 'Not checked yet'
+                  : android
+                    ? 'New Android versions are on GitHub'
+                    : 'Development build: updates come to the installed app'
+
+  return (
+    <>
+      <Group>
+        <div className="upd-card">
+          <VeyraMark size={42} />
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div className="upd-name">Veyra Study</div>
+            <div className="sm dim">Version {u.current || __APP_VERSION__}{android ? ' for Android' : ''}</div>
+            <div className={`upd-status ${u.status}`}>
+              {u.status === 'checking' && <RefreshCw size={13} className="spin" />}
+              {u.status === 'up-to-date' && <Check size={13} />}
+              {status}
+            </div>
+            {u.checkedAt && u.status !== 'checking' && u.status !== 'downloading' && <div className="xs tert">Checked {formatDistanceToNowStrict(u.checkedAt, { addSuffix: true })}</div>}
+          </div>
+          <div className="upd-actions">
+            {u.supported && (u.status === 'available' ? (
+              <button className="btn" onClick={() => void window.veyra.update.download().then(setU)}>
+                <Download size={15} /> Download and install
+              </button>
+            ) : u.status === 'ready' ? (
+              <button className="btn" onClick={() => void window.veyra.update.install()}>
+                <RotateCcw size={15} /> Restart to update
+              </button>
+            ) : (
+              <button className="btn sec" disabled={u.status === 'checking' || u.status === 'downloading'} onClick={() => void window.veyra.update.check().then(setU)}>
+                <RefreshCw size={15} className={u.status === 'checking' ? 'spin' : ''} /> Check for updates
+              </button>
+            ))}
+            {!u.supported && (
+              <button className="btn sec" onClick={() => void window.veyra.open(RELEASES)}>
+                <ExternalLink size={14} /> {android ? 'Get the latest' : 'All releases'}
+              </button>
+            )}
+          </div>
+        </div>
+        {u.status === 'downloading' && (
+          <div className="upd-progress">
+            <Bar pct={Math.round((u.progress ?? 0) * 100)} />
+            <span className="xs dim">{u.speed ? `${(u.speed / 1048576).toFixed(1)} MB/s` : ''}</span>
+          </div>
+        )}
+      </Group>
+
+      {u.notes && (u.status === 'available' || u.status === 'downloading' || u.status === 'ready' || u.status === 'up-to-date') && (
+        <Group title={u.status === 'up-to-date' ? 'What’s new in this version' : `What’s new in ${u.latest}`}>
+          <div className="upd-notes">{u.notes}</div>
+        </Group>
+      )}
+
+      {!android && (
+        <Group title="Automatic updates">
+          <Row label="Check for updates when Veyra starts" hint="A small window checks GitHub before the app opens and installs a new version if there is one. Off: check here whenever you like." keywords="automatic update startup check version">
+            <Toggle label="Check for updates when Veyra starts" on={s.checkUpdatesAtStart} onChange={(checkUpdatesAtStart) => set({ checkUpdatesAtStart })} />
+          </Row>
+        </Group>
+      )}
+
+      <Group title="About">
+        <Row label="All versions and what changed" keywords="releases changelog history">
+          <button className="btn ghost sm" onClick={() => void window.veyra.open(RELEASES)}>
+            <ExternalLink size={13} /> Releases on GitHub
+          </button>
+        </Row>
+        <Row label="Report a problem or ask for something" hint="Opens a new issue on GitHub (a free GitHub account is needed)." keywords="bug feedback issue help support">
+          <button className="btn ghost sm" onClick={() => void window.veyra.open('https://github.com/carrotsz19/veyra-study/issues/new')}>
+            <ExternalLink size={13} /> Report a problem
+          </button>
+        </Row>
+        <Row label="Source code" hint="Veyra Study is open source." keywords="github code open source">
+          <button className="btn ghost sm" onClick={() => void window.veyra.open('https://github.com/carrotsz19/veyra-study')}>
+            <ExternalLink size={13} /> carrotsz19/veyra-study
+          </button>
+        </Row>
+      </Group>
+    </>
+  )
+}

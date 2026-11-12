@@ -464,3 +464,27 @@ export interface McpApi {
   apply(): Promise<McpState>
   add(client: 'claude' | 'gemini'): Promise<McpState & { file: string }>
 }
+
+/* ---------- software updates (Settings → Software update) ---------- */
+export interface UpdateState {
+  /** Updates work here (the installed Windows app). */
+  supported: boolean
+  current: string
+  status: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'error'
+  latest?: string
+  notes?: string
+  releaseDate?: string
+  checkedAt?: number
+  progress?: number
+  transferred?: number
+  total?: number
+  speed?: number
+  error?: string
+}
+export interface UpdateApi {
+  state(): Promise<UpdateState>
+  check(): Promise<UpdateState>
+  download(): Promise<UpdateState>
+  install(): Promise<void>
+  onState(cb: (s: UpdateState) => void): () => void
+}

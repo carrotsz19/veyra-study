@@ -102,6 +102,18 @@ const groupApi = {
   }
 }
 
+const updateApi = {
+  state: () => ipcRenderer.invoke('update:state'),
+  check: () => ipcRenderer.invoke('update:check'),
+  download: () => ipcRenderer.invoke('update:download'),
+  install: () => ipcRenderer.invoke('update:install'),
+  onState: (cb: (s: unknown) => void) => {
+    const h = (_: unknown, s: unknown) => cb(s)
+    ipcRenderer.on('update:state', h)
+    return () => void ipcRenderer.removeListener('update:state', h)
+  }
+}
+
 const mcpApi = {
   state: () => ipcRenderer.invoke('mcp:state'),
   apply: () => ipcRenderer.invoke('mcp:apply'),
@@ -169,4 +181,4 @@ const filesApi = {
 /** Saves right away, blocking: only for the moment the window closes. */
 const saveNow = (kind: string, data: unknown, id: string) => ipcRenderer.sendSync('db:putSync', kind, data, id)
 
-contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, voice: voiceApi, mcp: mcpApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })
+contextBridge.exposeInMainWorld('veyra', { db, account, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, voice: voiceApi, mcp: mcpApi, update: updateApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })

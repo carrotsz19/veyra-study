@@ -7,10 +7,14 @@
  * Only in the installed app. Being offline (or GitHub being slow) never
  * holds the app up for more than a few seconds.
  *
+ * Settings → Software update can also check, download and install at any
+ * time (and turn the start-up check off).
+ *
  * Dev checks: VEYRA_UPDATE_URL points at a stand-in update server (latest.yml
  * plus the installer); VEYRA_UPDATE_DRYRUN downloads but doesn't install.
  */
-import { app, BrowserWindow, nativeTheme } from 'electron'
+import { app, BrowserWindow, nativeTheme, type WebContents } from 'electron'
+import type { UpdateState } from '../shared/types'
 import { autoUpdater } from 'electron-updater'
 import splashPath from '../../resources/splash.html?asset'
 
@@ -18,17 +22,30 @@ const CHECK_TIMEOUT = 8000
 
 export type StartResult = 'open' | 'installing'
 
-export async function updateAtStart(): Promise<StartResult> {
-  const testFeed = process.env['VEYRA_UPDATE_URL']
-  if (!app.isPackaged && !testFeed) return 'open'
-  if (process.env['VEYRA_NO_UPDATE']) return 'open'
+/** Updates work in the installed app (or against a test feed). */
+export const canUpdate = () => (app.isPackaged || !!process.env['VEYRA_UPDATE_URL']) && !process.env['VEYRA_NO_UPDATE']
 
+let configured = false
+function configure() {
+  if (configured) return
+  configured = true
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.logger = null
+  const testFeed = process.env['VEYRA_UPDATE_URL']
   if (testFeed) {
     autoUpdater.forceDevUpdateConfig = true
     autoUpdater.setFeedURL({ provider: 'generic', url: testFeed })
+  }
+}
+
+export async function updateAtStart(checkAtStart = true): Promise<StartResult> {
+  if (!canUpdate()) return 'open'
+  configure()
+  // Turned off in Settings: just remember what's out there, for Settings → Software update.
+  if (!checkAtStart) {
+    void checkNow().catch(() => {})
+    return 'open'
   }
 
   // Started with Windows (quietly, into the tray): no window; fetch any update now, install it when Veyra quits.
@@ -67,6 +84,7 @@ export async function updateAtStart(): Promise<StartResult> {
   try {
     const found = await Promise.race([autoUpdater.checkForUpdates(), new Promise<null>((r) => setTimeout(() => r(null), CHECK_TIMEOUT))])
     const info = found?.updateInfo
+    if (found) remember(found.updateInfo, found.isUpdateAvailable)
     if (!found || !info || !found.isUpdateAvailable) {
       set({ step: 'starting', note: 'Up to date. Opening Veyra Study…' })
       await new Promise((r) => setTimeout(r, 350))
@@ -97,4 +115,76 @@ export async function updateAtStart(): Promise<StartResult> {
     close()
     return 'open'
   }
+}
+
+/* ---------- Settings → Software update ---------- */
+let state: UpdateState = { supported: false, current: '', status: 'idle' }
+const watchers = new Set<WebContents>()
+const notes = (n: unknown): string =>
+  (Array.isArray(n) ? n.map((x: { note?: string }) => x.note ?? '').join('\n') : String(n ?? ''))
+    .replace(/<\/(p|li|h\d)>/gi, '\n')
+    .replace(/<li>/gi, '• ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+function publish(s: Partial<UpdateState>) {
+  state = { ...state, ...s }
+  for (const wc of watchers) if (!wc.isDestroyed()) wc.send('update:state', state)
+}
+function remember(info: { version: string; releaseNotes?: unknown; releaseDate?: string }, available: boolean) {
+  publish({ checkedAt: Date.now(), latest: info.version, notes: notes(info.releaseNotes), releaseDate: info.releaseDate, status: available ? 'available' : 'up-to-date', error: undefined })
+}
+
+export function updateState(wc?: WebContents): UpdateState {
+  if (wc && !watchers.has(wc)) {
+    watchers.add(wc)
+    wc.once('destroyed', () => watchers.delete(wc))
+  }
+  state = { ...state, supported: canUpdate(), current: app.getVersion() }
+  return state
+}
+
+export async function checkNow(): Promise<UpdateState> {
+  if (!canUpdate()) return updateState()
+  configure()
+  if (state.status === 'downloading' || state.status === 'ready') return state
+  publish({ status: 'checking', error: undefined })
+  try {
+    const r = await autoUpdater.checkForUpdates()
+    if (!r) publish({ status: 'up-to-date', checkedAt: Date.now() })
+    else remember(r.updateInfo, r.isUpdateAvailable)
+  } catch (e) {
+    publish({ status: 'error', error: /ENOTFOUND|ECONN|ETIMEDOUT|net::/i.test(String(e)) ? 'Can’t reach GitHub. Check your connection.' : 'Couldn’t check for updates. Try again later.' })
+  }
+  return state
+}
+
+export async function downloadNow(): Promise<UpdateState> {
+  if (!canUpdate() || state.status !== 'available') return state
+  publish({ status: 'downloading', progress: 0 })
+  const onProgress = (p: { percent: number; transferred: number; total: number; bytesPerSecond: number }) =>
+    publish({ progress: p.percent / 100, transferred: p.transferred, total: p.total, speed: p.bytesPerSecond })
+  autoUpdater.on('download-progress', onProgress)
+  try {
+    await autoUpdater.downloadUpdate()
+    publish({ status: 'ready', progress: 1 })
+  } catch {
+    publish({ status: 'available', error: 'The download didn’t finish. Try again.' })
+  } finally {
+    autoUpdater.removeListener('download-progress', onProgress)
+  }
+  return state
+}
+
+/** Restart into the downloaded version. */
+export function installNow(): void {
+  if (state.status !== 'ready') return
+  if (process.env['VEYRA_UPDATE_DRYRUN']) return
+  setImmediate(() => autoUpdater.quitAndInstall(true, true))
 }

@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, sh
 import iconPath from '../../resources/icon.png?asset'
 import trayPath from '../../resources/tray@2x.png?asset'
 import { Reminders } from './reminders'
-import { updateAtStart } from './updater'
+import { checkNow, downloadNow, installNow, updateAtStart, updateState } from './updater'
 import { withDefaults } from '../shared/settings'
 import { release } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -371,6 +371,10 @@ app.whenReady().then(async () => {
     }
     for (const w of BrowserWindow.getAllWindows()) applyMaterial(w, m)
   })
+  ipcMain.handle('update:state', (e) => updateState(e.sender))
+  ipcMain.handle('update:check', () => checkNow())
+  ipcMain.handle('update:download', () => downloadNow())
+  ipcMain.handle('update:install', () => installNow())
   ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('data:openFolder', () => shell.openPath(dirname(db().path)))
   ipcMain.handle('data:export', async () => {
@@ -438,7 +442,7 @@ app.whenReady().then(async () => {
   // Check for an update first (the installed app); one being installed means this copy is closing.
   nativeTheme.themeSource = windowPrefs().theme
   // Anything going wrong in the check still opens the app.
-  if ((await updateAtStart().catch(() => 'open' as const)) === 'installing') return
+  if ((await updateAtStart(appSettings().checkUpdatesAtStart).catch(() => 'open' as const)) === 'installing') return
   createWindow()
   startingUp = false
   if (!process.env['VEYRA_SCREENSHOT']) {
@@ -465,6 +469,18 @@ app.whenReady().then(async () => {
       for (const w of BrowserWindow.getAllWindows()) if (!w.webContents.isDestroyed()) w.webContents.send('db:external', { kinds, ids })
       sync?.schedule()
       if (kinds.includes('task') || kinds.includes('subject')) google?.schedulePush()
+    },
+    events: async (from, to) => {
+      const [g, f, shared] = await Promise.all([
+        google?.events(from, to).catch(() => ({ events: [] })) ?? { events: [] },
+        feeds?.events(from, to).catch(() => ({ events: [] })) ?? { events: [] },
+        group?.deadlines(from, to).catch(() => []) ?? []
+      ])
+      return { events: [...g.events, ...f.events, ...shared].sort((a, b) => (a.start < b.start ? -1 : 1)) }
+    },
+    group: (method, path, body) => {
+      if (!group) throw new Error('Sign in to your Veyra account to use group work.')
+      return group.call(method, path, body)
     }
   })
   let mcpError = ''

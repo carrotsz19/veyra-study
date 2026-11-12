@@ -260,3 +260,15 @@ main.main.main-settings { padding: 0; overflow: hidden; }
 .mcp-apps .ig-row { align-items: flex-start; }
 .mcp-apps .ig-row + .ig-row::before { left: 14px; }
 .mcp-code { display: block; margin-top: 6px; padding: 6px 8px; border-radius: 8px; background: var(--panel-2); font-size: 11.5px; white-space: pre-wrap; word-break: break-all; color: var(--dim); }
+
+/* Software update */
+.upd-card { display: flex; align-items: center; gap: 16px; padding: 18px; flex-wrap: wrap; }
+.upd-name { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; }
+.upd-status { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-weight: 600; font-size: 13.5px; }
+.upd-status.up-to-date { color: var(--ok); }
+.upd-status.available, .upd-status.ready { color: var(--accent); }
+.upd-status.error { color: var(--bad); }
+.upd-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.upd-progress { display: flex; align-items: center; gap: 12px; padding: 0 18px 16px; }
+.upd-progress .bar { flex: 1; }
+.upd-notes { padding: 14px 16px; white-space: pre-wrap; line-height: 1.55; font-size: 13.5px; }

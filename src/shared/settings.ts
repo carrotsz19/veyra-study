@@ -74,6 +74,8 @@ export interface AppSettings {
   /** AI apps (MCP) can read Veyra; and, separately, change it. */
   mcpEnabled: boolean
   mcpAllowWrites: boolean
+  /** Check for a new version each time Veyra starts (the installed app). */
+  checkUpdatesAtStart: boolean
   /* notes */
   noteTemplate: NoteTemplate
   noteFont: NoteFont
@@ -169,6 +171,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   voiceUseSubtitleMaker: true,
   mcpEnabled: false,
   mcpAllowWrites: false,
+  checkUpdatesAtStart: true,
   noteTemplate: 'page',
   noteFont: 'sans',
   noteCover: 'none',
