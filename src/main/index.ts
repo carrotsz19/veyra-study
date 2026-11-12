@@ -1,9 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron'
 import iconPath from '../../resources/icon.png?asset'
 import trayPath from '../../resources/tray@2x.png?asset'
+import devBadgePath from '../../resources/dev-badge.png?asset'
 import { Reminders } from './reminders'
 import { checkNow, downloadNow, installNow, installReady, keepUpToDate, lookForUpdate, takeHiddenFlag, updateAtStart, updateState } from './updater'
 import { withDefaults } from '../shared/settings'
+import { APP_NAME, IS_DEV } from '../shared/channel'
 import { release } from 'node:os'
 import { dirname, join } from 'node:path'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -27,8 +29,11 @@ if (process.env['VEYRA_FAKE_MIC']) app.commandLine.appendSwitch('use-fake-device
 // Dev checks: run on a separate profile (sign-in, settings and data).
 // Otherwise always %APPDATA%eyra-study: the installed app is named "Veyra Study", and its data
 // must stay where the app has always kept it.
+// Veyra Study Dev (and running the code with npm run dev) keeps its data apart from the real app's.
+const devData = IS_DEV || !app.isPackaged
 if (process.env['VEYRA_USERDATA']) app.setPath('userData', process.env['VEYRA_USERDATA'])
-else app.setPath('userData', join(app.getPath('appData'), 'veyra-study'))
+else app.setPath('userData', join(app.getPath('appData'), devData ? 'veyra-study-dev' : 'veyra-study'))
+app.setName(APP_NAME)
 
 // One Veyra at a time: opening it again shows the one already running (in the tray, say).
 if (!app.requestSingleInstanceLock()) app.quit()
@@ -38,7 +43,7 @@ app.on('second-instance', () => {
   showWindow()
 })
 // Packaged builds have a Start menu shortcut with this id, which Windows needs for notifications.
-if (app.isPackaged && process.platform === 'win32') app.setAppUserModelId('app.veyra.study')
+if (app.isPackaged && process.platform === 'win32') app.setAppUserModelId(IS_DEV ? 'app.veyra.study.dev' : 'app.veyra.study')
 
 let mainWin: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -191,7 +196,7 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 600,
     show: false,
-    title: 'Veyra',
+    title: APP_NAME,
     // See-through (acrylic / mica) when chosen in Appearance; the page paints the tint.
     ...(() => {
       const p = windowPrefs()
@@ -211,6 +216,8 @@ function createWindow(): void {
   })
 
   mainWin = win
+  // Veyra Study Dev: a violet dot on its taskbar icon, so it's never mistaken for the real app.
+  if (IS_DEV && process.platform === 'win32') win.once('ready-to-show', () => win.setOverlayIcon(nativeImage.createFromPath(devBadgePath), 'Veyra Study Dev (test build)'))
   // Started with Windows: wait in the tray until asked for.
   // (or an update was installed while the window was closed: come back the same way)
   const hidden = (process.argv.includes('--hidden') || takeHiddenFlag()) && !process.env['VEYRA_SCREENSHOT']
@@ -514,14 +521,14 @@ app.whenReady().then(async () => {
   keepUpToDate(() => appSettings().checkUpdatesAtStart)
   if (!process.env['VEYRA_SCREENSHOT']) {
     tray = new Tray(nativeImage.createFromPath(trayPath).resize({ width: 16, height: 16 }))
-    tray.setToolTip('Veyra Study')
+    tray.setToolTip(APP_NAME)
     tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: 'Open Veyra Study', click: () => showWindow() },
+        { label: `Open ${APP_NAME}`, click: () => showWindow() },
         { label: 'Today', click: () => showWindow('today') },
         { label: 'Tasks', click: () => showWindow('tasks') },
         { type: 'separator' },
-        { label: 'Quit Veyra Study', click: () => app.quit() }
+        { label: `Quit ${APP_NAME}`, click: () => app.quit() }
       ])
     )
     tray.on('click', () => showWindow())

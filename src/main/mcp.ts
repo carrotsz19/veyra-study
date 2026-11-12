@@ -10,6 +10,7 @@
  * pages (an Origin header, or a Host that isn't 127.0.0.1) are refused.
  */
 import { app } from 'electron'
+import { IS_DEV } from '../shared/channel'
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -21,6 +22,8 @@ import type { Store } from './db'
 import { docPlain, markdownToDoc, noteMarkdown } from './notetext'
 
 export const MCP_PORT = Number(process.env['VEYRA_MCP_PORT'] || 47821)
+/** How AI apps list Veyra: the Dev app has its own entry, so it never replaces the real one. */
+const MCP_NAME = IS_DEV ? 'veyra-study-dev' : 'veyra-study'
 const VERSION = '1.0.0'
 
 interface Hooks {
@@ -125,7 +128,7 @@ export class McpServer {
         return ok({
           protocolVersion: typeof msg.params?.protocolVersion === 'string' ? msg.params.protocolVersion : '2025-06-18',
           capabilities: { tools: {} },
-          serverInfo: { name: 'veyra-study', version: VERSION },
+          serverInfo: { name: MCP_NAME, version: VERSION },
           instructions:
             'Veyra Study is the user’s study app: subjects, tasks with due dates, notes and focus-timer study sessions. Dates are local, YYYY-MM-DD. Read before you change anything, and tell the user what you changed.'
         })
@@ -694,7 +697,7 @@ async function handle(msg) {
   if (msg.id === undefined || msg.id === null) return
   if (r) return out(r)
   // Veyra isn't running: still introduce ourselves, and explain on tool calls.
-  if (msg.method === 'initialize') return out({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'veyra-study', version: '${VERSION}' } } })
+  if (msg.method === 'initialize') return out({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: (msg.params && msg.params.protocolVersion) || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: '${MCP_NAME}', version: '${VERSION}' } } })
   if (msg.method === 'ping') return out({ jsonrpc: '2.0', id: msg.id, result: {} })
   if (msg.method === 'tools/list') return out({ jsonrpc: '2.0', id: msg.id, result: { tools: TOOLS_WHEN_CLOSED } })
   if (msg.method === 'tools/call') return out({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: 'Open Veyra Study first (and turn on Settings → Connections → AI apps), then try again.' }], isError: true } })
@@ -741,7 +744,7 @@ export function clientConfigPath(client: McpClient): string {
 
 export function clientHasVeyra(client: McpClient): boolean {
   try {
-    return !!JSON.parse(readFileSync(clientConfigPath(client), 'utf8'))?.mcpServers?.['veyra-study']
+    return !!JSON.parse(readFileSync(clientConfigPath(client), 'utf8'))?.mcpServers?.[MCP_NAME]
   } catch {
     return false
   }
@@ -761,7 +764,7 @@ export function addToClient(client: McpClient): string {
     copyFileSync(file, file + '.veyra-backup')
   } else mkdirSync(dirname(file), { recursive: true })
   if (typeof cfg !== 'object' || Array.isArray(cfg) || cfg === null) throw new Error(`${file} isn’t a settings file Veyra understands, so it wasn’t changed.`)
-  cfg.mcpServers = { ...(cfg.mcpServers ?? {}), 'veyra-study': mcpEntry() }
+  cfg.mcpServers = { ...(cfg.mcpServers ?? {}), [MCP_NAME]: mcpEntry() }
   writeFileSync(file, JSON.stringify(cfg, null, 2))
   return file
 }

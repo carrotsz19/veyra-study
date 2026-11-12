@@ -7,6 +7,7 @@ import '@fontsource/inter/800.css'
 import './auth.css'
 import { onAndroid } from '../lib/phone'
 import type { AccountState } from '@shared/types'
+import { IS_DEV } from '@shared/channel'
 
 const api = window.veyra.account
 
@@ -196,6 +197,12 @@ export function Welcome({
             {up ? 'Create your Veyra account' : 'Welcome back'}
           </h1>
           <p className="lede">{up ? 'One account for Veyra Study, IronLog and Cashline.' : 'Log in to open Veyra Study.'}</p>
+          {IS_DEV && (
+            <p className="dev-warn">
+              <b>This is Veyra Study Dev, a test build.</b> Signing in uses your real account: anything a test build changes syncs to
+              your other devices and your groups.
+            </p>
+          )}
           <form id="auth-form" onSubmit={submit} noValidate>
             <div className="fields">
               <div className="field">

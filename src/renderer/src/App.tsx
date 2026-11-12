@@ -30,6 +30,7 @@ import { emptyOldTrash } from './lib/notes'
 import { onAndroid, usePhone } from './lib/phone'
 import { startSegments } from './lib/segments'
 import { transition } from './lib/motion'
+import { IS_DEV } from '@shared/channel'
 
 startSegments()
 
@@ -68,6 +69,7 @@ function Sidebar({ route, go }: { route: Route; go: (r: Route) => void }) {
             <GraduationCap size={18} />
           </div>
           <b>Veyra Study</b>
+          {IS_DEV && <span className="dev-pill">DEV</span>}
         </div>
       )}
       <button className="side-search" onClick={() => window.dispatchEvent(new Event('veyra:palette'))} title="Search everything and run commands">

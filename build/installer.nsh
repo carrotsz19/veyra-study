@@ -12,10 +12,10 @@
 !macroend
 
 !macro customInit
-  ; 1. Close every running copy of Veyra Study: the window, the copy waiting in
+  ; 1. Close every running copy of this app (Veyra Study, or Veyra Study Dev for a Dev build): the window, the copy waiting in
   ;    the tray, and any AI-app helper (MCP bridge) started from the same exe,
   ;    so Windows lets go of the old files.
-  nsExec::Exec 'taskkill /F /T /IM "Veyra Study.exe"'
+  nsExec::Exec 'taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}"'
   Pop $0
   Sleep 1200
 

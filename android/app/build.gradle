@@ -1,17 +1,22 @@
 apply plugin: 'com.android.application'
 
 // The version comes from package.json, like the desktop app's (0.2.2 → code 202).
-def appVersion = new groovy.json.JsonSlurper().parse(file('../../package.json')).version
+// Veyra Study Dev (VEYRA_CHANNEL=dev, see tools/release-android.mjs --dev) is a separate app: its own id, name and version.
+def devBuild = System.getenv('VEYRA_CHANNEL') == 'dev'
+def appVersion = System.getenv('VEYRA_VERSION') ?: new groovy.json.JsonSlurper().parse(file('../../package.json')).version
 def appVersionCode = appVersion.tokenize('.').collect { it.replaceAll('[^0-9]', '') as int }.with { it[0] * 10000 + it[1] * 100 + it[2] }
 
 android {
     namespace = "app.veyra.study"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "app.veyra.study"
+        applicationId devBuild ? "app.veyra.study.dev" : "app.veyra.study"
+        resValue "string", "app_name", devBuild ? "Veyra Dev" : "Veyra Study"
+        resValue "string", "title_activity_main", devBuild ? "Veyra Dev" : "Veyra Study"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode appVersionCode
+        // Dev builds count up by the minute, so each test build installs over the last.
+        versionCode devBuild ? (int) (System.currentTimeMillis() / 60000L - 29000000L) : appVersionCode
         versionName appVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

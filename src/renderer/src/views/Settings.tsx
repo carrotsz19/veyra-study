@@ -21,6 +21,7 @@ import { SubjectDialog } from '../components/editors'
 import type { AiProvider, AiState, Rec, UpdateState } from '@shared/types'
 import { Select as Dropdown } from '../components/Select'
 import { TimeField } from '../components/DateTime'
+import { IS_DEV } from '@shared/channel'
 
 /* =====================================================================
    Settings: categories on the left, one category at a time on the
@@ -1266,8 +1267,11 @@ function SoftwareUpdate() {
         <div className="upd-card">
           <VeyraMark size={42} />
           <div className="grow" style={{ minWidth: 0 }}>
-            <div className="upd-name">Veyra Study</div>
+            <div className="upd-name">
+              Veyra Study {IS_DEV && <span className="dev-pill">DEV</span>}
+            </div>
             <div className="sm dim">Version {u.current || __APP_VERSION__}{android ? ' for Android' : ''}</div>
+            {IS_DEV && <div className="xs dim">A test build. Updates come from the newest test build, not from the public releases.</div>}
             <div className={`upd-status ${u.status}`}>
               {u.status === 'checking' && <RefreshCw size={13} className="spin" />}
               {u.status === 'up-to-date' && <Check size={13} />}

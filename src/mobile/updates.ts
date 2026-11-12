@@ -18,6 +18,8 @@ const Installer = registerPlugin<{
   install(o: { path: string }): Promise<void>
 }>('UpdateInstaller')
 
+import { DEV_RELEASE, IS_DEV } from '../shared/channel'
+
 const REPO = 'https://github.com/carrotsz19/veyra-study'
 const current = __APP_VERSION__
 
@@ -55,6 +57,21 @@ const toText = (html: string) =>
 export async function check(): Promise<UpdateState> {
   if (state.status === 'downloading' || state.status === 'ready') return state
   publish({ status: 'checking', error: undefined })
+  // Veyra Study Dev: only the newest test build counts (dev-latest/android-dev.json), never the public releases.
+  if (IS_DEV) {
+    try {
+      const r = await CapacitorHttp.request({ method: 'GET', url: `${DEV_RELEASE}/android-dev.json?t=${Date.now()}`, connectTimeout: 15000, readTimeout: 15000 })
+      if (r.status !== 200) throw new Error(`GitHub answered ${r.status}`)
+      const j = (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as { version: string; notes?: string; date?: string }
+      if (j.version && j.version !== current) {
+        apk = `${DEV_RELEASE}/Veyra-Study-Dev.apk`
+        publish({ status: 'available', latest: j.version, notes: j.notes ?? '', releaseDate: j.date, checkedAt: Date.now() })
+      } else publish({ status: 'up-to-date', latest: current, notes: undefined, checkedAt: Date.now() })
+    } catch (e) {
+      publish({ status: 'error', error: /timeout|host|network|connect/i.test(String(e)) ? 'Can’t reach GitHub. Check your connection.' : 'Couldn’t check for test builds. Try again later.' })
+    }
+    return state
+  }
   try {
     const r = await CapacitorHttp.request({ method: 'GET', url: `${REPO}/releases.atom`, headers: { Accept: 'application/atom+xml' }, connectTimeout: 15000, readTimeout: 15000 })
     if (r.status !== 200) throw new Error(`GitHub answered ${r.status}`)

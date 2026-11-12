@@ -6,6 +6,7 @@ import { useNav, type Route } from '../nav'
 import { newNote } from '../views/Notes'
 import { TaskDialog } from './editors'
 import { useToast } from './ui'
+import { IS_DEV } from '@shared/channel'
 
 /**
  * Veyra's own title bar on Windows: the app's mark and name, then File, Edit,
@@ -231,6 +232,7 @@ export function TitleBar() {
           <GraduationCap size={13} strokeWidth={2.2} />
         </span>
         <b>Veyra Study</b>
+        {IS_DEV && <span className="dev-pill" title="A test build: its own app and data, separate from the real Veyra Study.">DEV</span>}
       </div>
       <nav className="wb-menus" aria-label="Menu">
         {menus.map(([name, list]) => (

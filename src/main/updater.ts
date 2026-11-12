@@ -18,6 +18,7 @@ import type { UpdateState } from '../shared/types'
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
+import { APP_NAME } from '../shared/channel'
 import splashPath from '../../resources/splash.html?asset'
 
 const CHECK_TIMEOUT = 8000
@@ -100,7 +101,7 @@ export async function updateAtStart(checkAtStart = true): Promise<StartResult> {
     frame: false,
     show: false,
     center: true,
-    title: 'Veyra Study',
+    title: APP_NAME,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#15140f' : '#f3f1ec',
     webPreferences: { sandbox: true, contextIsolation: true }
   })

@@ -6,6 +6,10 @@ import './account.css'
 import './settings.css'
 import './phone.css'
 import { startScrollbars } from './lib/scrollbars'
+import { APP_NAME } from '@shared/channel'
+
+// The name in the taskbar and Alt+Tab: Veyra Study, or Veyra Study Dev for a test build.
+document.title = APP_NAME
 
 // Apply the saved theme before anything renders (the sign-in screen has no sidebar).
 {

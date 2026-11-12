@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { addDays, addMonths, endOfMonth, endOfWeek, format, isSameMonth, startOfMonth, startOfWeek } from 'date-fns'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Rec } from '@shared/types'
@@ -38,23 +38,44 @@ export function Calendar() {
   const color = (t: Rec<'task'>) => subjects.find((s) => s.id === t.data.subjectId)?.data.color ?? 'var(--label-tertiary)'
   const today = todayKey()
 
+  // How many entries fit in a day: the month fills the window, so it depends on the window's height.
+  const grid = useRef<HTMLDivElement>(null)
+  const [fit, setFit] = useState(3)
+  const weeks = Math.ceil(days.length / 7)
+  useEffect(() => {
+    const el = grid.current
+    if (!el) return
+    const measure = () => {
+      const head = el.querySelector<HTMLElement>('.dow')?.offsetHeight ?? 28
+      const row = (el.clientHeight - head) / weeks
+      // day number ~28px, each line ~19px
+      setFit(Math.max(1, Math.floor((row - 30) / 19)))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [weeks])
+
   return (
-    <div className="view" style={{ maxWidth: 1300, margin: '0 auto' }}>
-      <div className="topbar">
-        <h1>{format(month, 'MMMM yyyy')}</h1>
-        <div className="row">
-          <button className="btn sec sm" onClick={() => setMonth(startOfMonth(new Date()))}>
+    <div className="view cal-view">
+      <div className="topbar cal-top">
+        <h1>
+          {format(month, 'MMMM')} <span className="cal-year">{format(month, 'yyyy')}</span>
+        </h1>
+        <div className="cal-nav" role="group" aria-label="Month">
+          <button className="cal-nav-btn" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))}>
+            <ChevronLeft size={16} />
+          </button>
+          <button className="cal-nav-btn today" onClick={() => setMonth(startOfMonth(new Date()))}>
             Today
           </button>
-          <button className="iconbtn" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))}>
-            <ChevronLeft size={17} />
-          </button>
-          <button className="iconbtn" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))}>
-            <ChevronRight size={17} />
+          <button className="cal-nav-btn" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))}>
+            <ChevronRight size={16} />
           </button>
         </div>
       </div>
-      <div className="cal">
+      <div className="cal" ref={grid}>
         {days.slice(0, 7).map((d) => format(d, 'EEE')).map((d) => (
           <div key={d} className="dow">
             {d}
@@ -64,7 +85,13 @@ export function Calendar() {
           const key = dayKey(d)
           const list = byDay.get(key) ?? []
           const dayEvents = eventsByDay.get(key) ?? []
-          const hidden = Math.max(0, dayEvents.length - 3) + Math.max(0, list.length - 4)
+          // All-day first, then by time, then tasks; as many as fit (keeping a line for "+ more").
+          const ordered = [...dayEvents].sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.start.localeCompare(b.start))
+          const total = ordered.length + list.length
+          const room = total > fit ? Math.max(0, fit - 1) : fit
+          const shownEvents = ordered.slice(0, room)
+          const shownTasks = list.slice(0, Math.max(0, room - shownEvents.length))
+          const hidden = total - shownEvents.length - shownTasks.length
           return (
             <div
               key={key}
@@ -82,31 +109,35 @@ export function Calendar() {
               aria-label={`${format(d, 'd MMMM')}: ${list.length} tasks, ${dayEvents.length} events. Press Enter to see the day.`}
             >
               <span className="d">{format(d, 'd')}</span>
-              {dayEvents.slice(0, 3).map((e) => (
+              {shownEvents.map((e) => (
                 <span
                   key={e.id}
-                  className={`chip gev ${e.allDay ? 'allday' : ''}`}
+                  className={`chip ev-line ${e.allDay ? 'allday' : ''}`}
                   style={{ ['--ev' as string]: e.color }}
-                  title={`${e.title} · ${e.calendar}`}
+                  title={`${e.allDay ? '' : fmtTime(new Date(e.start)) + ' '}${e.title} · ${e.calendar}`}
                   onClick={(ev) => {
                     ev.stopPropagation()
                     setOpenEvent(e)
                   }}
                 >
-                  {!e.allDay && <b>{fmtTime(new Date(e.start))}</b>} {e.title}
+                  {!e.allDay && <i className="ev-dot" />}
+                  <span className="ev-title">{e.title}</span>
+                  {!e.allDay && <span className="ev-time">{fmtTime(new Date(e.start))}</span>}
                 </span>
               ))}
-              {list.slice(0, 4).map((t) => (
+              {shownTasks.map((t) => (
                 <span
                   key={t.id}
-                  className={`chip ${t.data.done ? 'done' : ''}`}
-                  style={{ borderLeftColor: color(t) }}
+                  className={`chip ev-line task ${t.data.done ? 'done' : ''}`}
+                  style={{ ['--ev' as string]: color(t) }}
+                  title={t.data.title}
                   onClick={(e) => {
                     e.stopPropagation()
                     setEditing(t)
                   }}
                 >
-                  {t.data.title}
+                  <i className="ev-box" />
+                  <span className="ev-title">{t.data.title}</span>
                 </span>
               ))}
               {hidden > 0 && (
@@ -124,11 +155,7 @@ export function Calendar() {
           )
         })}
       </div>
-      <p className="sm dim cal-hint">
-        Click a day to add a task due then, or “+ more” to see everything on it.{' '}
-        {s.calendarShowEvents && events.length > 0 && 'Google Calendar events show in their calendar’s colour.'}
-        {error && <span style={{ color: 'var(--bad)' }}> {error}</span>}
-      </p>
+      {error && <p className="sm cal-hint" style={{ color: 'var(--bad)' }}>{error}</p>}
       {openEvent && <EventDialog event={openEvent} onClose={() => setOpenEvent(null)} />}
       {openDay && (
         <Dialog title={format(new Date(openDay + 'T00:00:00'), 'EEEE d MMMM')} onClose={() => setOpenDay(null)}>

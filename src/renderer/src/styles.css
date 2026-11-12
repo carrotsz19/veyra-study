@@ -804,3 +804,72 @@ html.menu-window body { display: inline-block; }
 }
 html.dark .menu-win { background: color-mix(in srgb, var(--bg-elevated) 30%, transparent); }
 .menu-win .wb-menu-item { font-size: 13px; }
+
+/* ---------- calendar on a computer: the month fills the window, entries read as clean lines ---------- */
+.shell:not(.phone-shell) main.main-calendar { overflow: hidden; display: flex; flex-direction: column; padding-bottom: 20px; }
+.shell:not(.phone-shell) .cal-view { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; max-width: 1400px; margin: 0 auto; }
+.cal-top { flex-shrink: 0; align-items: center; }
+.cal-top h1 { margin: 0; }
+.cal-year { color: var(--label-tertiary); font-weight: 600; }
+.cal-nav { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: var(--r-control); background: var(--panel-2); }
+.cal-nav-btn {
+  border: 0; background: transparent; color: var(--ink); height: 28px; min-width: 30px; padding: 0 8px; border-radius: calc(var(--r-control) - 3px);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 650;
+  transition: background-color 0.12s, transform var(--spring-snappy-ms) var(--spring-snappy);
+}
+.cal-nav-btn:hover { background: var(--fill-tertiary); }
+.cal-nav-btn:active { transform: scale(0.94); }
+.cal-nav-btn.today { padding: 0 12px; }
+
+.shell:not(.phone-shell) .cal {
+  flex: 1; min-height: 0; grid-template-rows: auto; grid-auto-rows: minmax(0, 1fr);
+  gap: 0; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--elev-1);
+}
+.shell:not(.phone-shell) .cal .dow {
+  background: transparent; padding: 9px 10px 7px; font-size: 11px; letter-spacing: 0.06em; color: var(--label-tertiary);
+  border-bottom: 1px solid var(--line); text-align: right;
+}
+.shell:not(.phone-shell) .cal .cell {
+  min-height: 0; overflow: hidden; background: transparent; padding: 4px 6px 6px; gap: 2px;
+  border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  transition: background-color 0.12s;
+}
+.shell:not(.phone-shell) .cal .cell:nth-child(7n) { border-right: 0; }
+.shell:not(.phone-shell) .cal .cell:nth-last-child(-n + 7) { border-bottom: 0; }
+.shell:not(.phone-shell) .cal .cell:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.shell:not(.phone-shell) .cal .cell.out { background: color-mix(in srgb, var(--ink) 2.5%, transparent); color: var(--label-tertiary); }
+.shell:not(.phone-shell) .cal .cell .d { align-self: flex-end; font-size: 12.5px; font-weight: 650; width: 24px; height: 24px; margin-bottom: 1px; font-variant-numeric: tabular-nums; }
+.shell:not(.phone-shell) .cal .cell.today .d { background: var(--accent); color: var(--on-tint); font-weight: 800; }
+
+/* One entry per line: a dot in its calendar's colour, the title, the time on the right. */
+.shell:not(.phone-shell) .cal .chip.ev-line {
+  display: flex; align-items: center; gap: 6px; min-height: 19px; padding: 0 5px; border: 0; border-radius: 5px;
+  background: transparent; font-size: 11.5px; line-height: 19px; color: var(--ink); cursor: pointer; flex-shrink: 0;
+}
+.shell:not(.phone-shell) .cal .chip.ev-line:hover { background: color-mix(in srgb, var(--ev) 14%, transparent); }
+.cal .ev-dot { width: 7px; height: 7px; border-radius: 99px; background: var(--ev); flex-shrink: 0; }
+.cal .ev-box { width: 9px; height: 9px; border-radius: 3px; border: 1.5px solid var(--ev); flex-shrink: 0; }
+.cal .chip.done .ev-box { background: var(--ev); }
+.cal .ev-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.cal .ev-time { flex-shrink: 0; color: var(--label-tertiary); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+/* All-day: a soft bar tinted with its colour. */
+.shell:not(.phone-shell) .cal .chip.ev-line.allday {
+  background: color-mix(in srgb, var(--ev) 20%, transparent); color: color-mix(in srgb, var(--ev) 55%, var(--ink)); font-weight: 600;
+}
+.shell:not(.phone-shell) .cal .chip.ev-line.allday:hover { background: color-mix(in srgb, var(--ev) 28%, transparent); }
+.shell:not(.phone-shell) .cal .chip.done .ev-title { text-decoration: line-through; color: var(--label-tertiary); }
+.shell:not(.phone-shell) .cal .more-chip { align-self: flex-start; font-size: 11px; font-weight: 650; color: var(--dim); padding: 0 5px; line-height: 18px; }
+.shell:not(.phone-shell) .cal .more-chip:hover { color: var(--accent); background: var(--accent-soft); }
+.shell:not(.phone-shell) .cal-hint { margin: 8px 2px 0; flex-shrink: 0; }
+/* Phone: entries stay thin coloured bars. */
+.phone-shell .cal .cell .chip.ev-line { background: color-mix(in srgb, var(--ev) 85%, transparent); border: 0; }
+
+/* ---------- Veyra Study Dev (test builds): never mistaken for the real app ---------- */
+.dev-pill {
+  display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 5px; margin-left: 2px;
+  background: #7c4dff; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 0.06em; vertical-align: middle;
+}
+.dev-warn {
+  margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.45;
+  background: color-mix(in srgb, #7c4dff 14%, transparent); border: 1px solid color-mix(in srgb, #7c4dff 35%, transparent);
+}
