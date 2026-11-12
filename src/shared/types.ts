@@ -93,7 +93,9 @@ export interface StudySession {
   startedAt: number
   endedAt: number
   durationSec: number
+  /** What it was spent on (the task's title, when you focused on a task). */
   label?: string
+  taskId?: string | null
 }
 
 export interface DataByKind {
