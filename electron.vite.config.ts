@@ -4,7 +4,15 @@ import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 
 // Which Veyra this build is (src/shared/channel.ts): "dev" for Veyra Study Dev test builds and npm run dev.
-const channel = { __CHANNEL__: JSON.stringify(process.env.VEYRA_CHANNEL === 'dev' || process.env.npm_lifecycle_event === 'dev' ? 'dev' : 'prod') }
+const isDev = process.env.VEYRA_CHANNEL === 'dev' || process.env.npm_lifecycle_event === 'dev'
+const channel = { __CHANNEL__: JSON.stringify(isDev ? 'dev' : 'prod') }
+// Dev builds only: the read-only token for the private repo test builds live in (never in Prod).
+function devFeedToken(): string {
+  if (!isDev) return ''
+  if (process.env.VEYRA_DEV_FEED_TOKEN) return process.env.VEYRA_DEV_FEED_TOKEN.trim()
+  const file = process.env.VEYRA_DEV_FEED_TOKEN_FILE || 'C:/dev/tools/veyra-dev-feed.token'
+  return existsSync(file) ? readFileSync(file, 'utf8').trim() : ''
+}
 
 // The app's own Google OAuth client (Desktop app), from google-client.json
 // (downloaded from Google Cloud, never committed) or from the environment.
@@ -22,7 +30,7 @@ function googleClient(): { id: string; secret: string; apiKey: string } {
 
 export default defineConfig({
   main: {
-    define: { __GOOGLE_CLIENT__: JSON.stringify(googleClient()), ...channel },
+    define: { __GOOGLE_CLIENT__: JSON.stringify(googleClient()), ...channel, __DEV_FEED_TOKEN__: JSON.stringify(devFeedToken()) },
     build: { rollupOptions: { external: ['node:sqlite'] } }
   },
   preload: { define: channel },

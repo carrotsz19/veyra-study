@@ -1219,7 +1219,8 @@ export function Settings({ initial }: { initial?: string }) {
 }
 
 /* ---------- Software update ---------- */
-const RELEASES = 'https://github.com/carrotsz19/veyra-study/releases'
+// Dev builds list the private test-build releases instead of the public ones.
+const RELEASES = IS_DEV ? 'https://github.com/carrotsz19/veyra-study-dev/releases' : 'https://github.com/carrotsz19/veyra-study/releases'
 
 function SoftwareUpdate() {
   const { s, set } = useSettings()

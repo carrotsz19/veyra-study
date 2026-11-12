@@ -18,7 +18,7 @@ import type { UpdateState } from '../shared/types'
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
-import { APP_NAME } from '../shared/channel'
+import { APP_NAME, DEV_FEED_TOKEN, DEV_REPO, IS_DEV } from '../shared/channel'
 import splashPath from '../../resources/splash.html?asset'
 
 const CHECK_TIMEOUT = 8000
@@ -70,6 +70,11 @@ function configure() {
   autoUpdater.autoInstallOnAppQuit = !lastAttempt()
   autoUpdater.logger = null
   const testFeed = process.env['VEYRA_UPDATE_URL']
+  // Veyra Study Dev: the newest release in the private test-build repo (latest.yml there).
+  if (IS_DEV && !testFeed) {
+    autoUpdater.allowPrerelease = false
+    autoUpdater.setFeedURL({ provider: 'github', owner: DEV_REPO.owner, repo: DEV_REPO.repo, private: true, token: DEV_FEED_TOKEN })
+  }
   if (testFeed) {
     autoUpdater.forceDevUpdateConfig = true
     autoUpdater.setFeedURL({ provider: 'generic', url: testFeed })

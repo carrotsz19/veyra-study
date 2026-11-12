@@ -13,18 +13,22 @@
  *  Dev: "Veyra Study Dev", a test build that installs next to the real app
  *  (its own name, data and updates), for trying changes before they go out.
  *   npm run release:dev     (no version bump or changelog needed; uncommitted work is fine)
- *  It's versioned <next version>-dev.<date and time> and replaces the files of
- *  one GitHub pre-release, "dev-latest". Only Veyra Study Dev looks there.
+ *  It's versioned <next version>-dev.<date and time> and published as a release in
+ *  the private repo carrotsz19/veyra-study-dev (only you can see it; the newest 10
+ *  are kept). Veyra Study Dev reads it with a read-only token built into Dev
+ *  builds (C:dev	oolseyra-dev-feed.token); Prod never sees it.
  *
  * Android builds are published separately (tools/release-android.mjs) and always
  * as pre-releases, so the Windows updater (which follows the latest full release)
  * never mistakes one for a Windows update.
  */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const REPO = 'carrotsz19/veyra-study'
+/** Private: Dev test builds (only you can see them). */
+const DEV_REPO = 'carrotsz19/veyra-study-dev'
 const dev = process.argv.includes('--dev')
 const run = (cmd, args, env = process.env) => {
   const r = spawnSync(cmd, args, { stdio: 'inherit', env, shell: process.platform === 'win32' })
@@ -57,26 +61,23 @@ if (dev) {
   run('npx', ['electron-vite', 'build'], env)
   run('npx', ['electron-builder', '--win', '--publish', 'never', '--config', 'electron-builder.dev.cjs'], env)
 
-  // One pre-release, "dev-latest", whose files are replaced each time.
-  try {
-    gh(['release', 'view', 'dev-latest', '--repo', REPO], ghEnv)
-  } catch {
-    gh(['release', 'create', 'dev-latest', '--repo', REPO, '--prerelease', '--title', 'Veyra Study Dev (test builds)', '--notes', 'Test builds.'], ghEnv)
-  }
-  const files = readdirSync('release-dev')
-    .filter((f) => (f.endsWith('.yml') && f !== 'builder-debug.yml') || f.startsWith('Veyra-Study-Dev-Setup'))
-    .map((f) => join('release-dev', f))
-  execFileSync('gh', ['release', 'upload', 'dev-latest', ...files, '--clobber', '--repo', REPO], { stdio: 'inherit', env: ghEnv })
-  // Then the Android test build, with the same version (unless --windows-only).
-  const android = !process.argv.includes('--windows-only')
-  if (android) run('node', ['tools/release-android.mjs', '--dev'], { ...env, GH_TOKEN: token })
+  // A release in the private test-build repo (only you can see it), marked newest:
+  // Dev apps read it with their read-only token. Windows looks for latest.yml there.
+  copyFileSync(join('release-dev', 'dev.yml'), join('release-dev', 'latest.yml'))
+  const tag = `dev-${devVersion}`
   const notesFile = join('release-dev', 'notes.md')
-  writeFileSync(
-    notesFile,
-    `**Test builds, not for everyday use.** Veyra Study Dev installs next to Veyra Study, with its own data, and updates itself from here.\n\n- Version ${devVersion} (${commit})\n\n**Install:** on Windows, Veyra-Study-Dev-Setup.exe${android ? '; on Android, Veyra-Study-Dev.apk ("Veyra Dev")' : ''}.`
-  )
-  execFileSync('gh', ['release', 'edit', 'dev-latest', '--repo', REPO, '--prerelease', '--notes-file', notesFile], { stdio: 'inherit', env: ghEnv })
-  console.log(`\nDone: Veyra Study Dev ${devVersion}\nhttps://github.com/${REPO}/releases/tag/dev-latest`)
+  writeFileSync(notesFile, `Test build from ${commit}.\n\nWindows: Veyra-Study-Dev-Setup.exe · Android: Veyra-Study-Dev.apk ("Veyra Dev"). Installed Dev apps update themselves.`)
+  const files = ['Veyra-Study-Dev-Setup.exe', 'Veyra-Study-Dev-Setup.exe.blockmap', 'latest.yml', 'dev.yml'].map((f) => join('release-dev', f))
+  execFileSync('gh', ['release', 'create', tag, ...files, '--repo', DEV_REPO, '--title', `Veyra Study Dev ${devVersion}`, '--notes-file', notesFile, '--latest'], { stdio: 'inherit', env: ghEnv })
+  // Then the Android test build, onto the same release (unless --windows-only).
+  if (!process.argv.includes('--windows-only')) run('node', ['tools/release-android.mjs', '--dev'], { ...env, GH_TOKEN: token, VEYRA_DEV_TAG: tag })
+  // Keep the newest 10 test builds.
+  const old = gh(['release', 'list', '--repo', DEV_REPO, '--limit', '100', '--json', 'tagName', '--jq', '.[].tagName'], ghEnv)
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .slice(10)
+  for (const t of old) execFileSync('gh', ['release', 'delete', t, '--repo', DEV_REPO, '--cleanup-tag', '--yes'], { stdio: 'inherit', env: ghEnv })
+  console.log(`\nDone: Veyra Study Dev ${devVersion}\nhttps://github.com/${DEV_REPO}/releases/tag/${tag}`)
   process.exit(0)
 }
 

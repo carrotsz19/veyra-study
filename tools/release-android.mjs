@@ -11,8 +11,8 @@
  *
  *  Dev: npm run release:dev (with the Windows Dev build), or this with --dev
  *   Builds "Veyra Dev" (app.veyra.study.dev: installs next to the real app,
- *   with its own data) and puts Veyra-Study-Dev.apk and android-dev.json on
- *   the dev-latest pre-release, replacing the last test build.
+ *   with its own data) and adds Veyra-Study-Dev.apk to the test build's release
+ *   in the private repo carrotsz19/veyra-study-dev.
  *
  *  --install also puts the build on the phone plugged in by USB (with USB debugging on).
  */
@@ -21,6 +21,8 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const REPO = 'carrotsz19/veyra-study'
+/** Private: Dev test builds (only you can see them). */
+const DEV_REPO = 'carrotsz19/veyra-study-dev'
 const dev = process.argv.includes('--dev')
 const install = process.argv.includes('--install')
 const git = (...a) => execFileSync('git', a, { encoding: 'utf8' }).trim()
@@ -54,18 +56,12 @@ const built = join('android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-de
 mkdirSync('release-android', { recursive: true })
 
 if (dev) {
+  // Onto the test build's release in the private repo: the one release:dev just made, or else the newest.
   const apk = join('release-android', 'Veyra-Study-Dev.apk')
-  const info = join('release-android', 'android-dev.json')
   copyFileSync(built, apk)
-  const commit = git('rev-parse', '--short', 'HEAD') + (git('status', '--porcelain') ? ' + uncommitted changes' : '')
-  writeFileSync(info, JSON.stringify({ version: appVersion, notes: `Test build from ${commit}.`, date: new Date().toISOString() }))
-  try {
-    execFileSync('gh', ['release', 'view', 'dev-latest', '--repo', REPO], { env: ghEnv, stdio: 'ignore' })
-  } catch {
-    gh(['release', 'create', 'dev-latest', '--repo', REPO, '--prerelease', '--title', 'Veyra Study Dev (test builds)', '--notes', 'Test builds.'])
-  }
-  gh(['release', 'upload', 'dev-latest', apk, info, '--clobber', '--repo', REPO])
-  console.log(`\nDone: Veyra Dev ${appVersion} for Android\nhttps://github.com/${REPO}/releases/tag/dev-latest`)
+  const tag = process.env.VEYRA_DEV_TAG || execFileSync('gh', ['release', 'view', '--repo', DEV_REPO, '--json', 'tagName', '--jq', '.tagName'], { encoding: 'utf8', env: ghEnv }).trim()
+  gh(['release', 'upload', tag, apk, '--clobber', '--repo', DEV_REPO])
+  console.log(`\nDone: Veyra Dev ${appVersion} for Android\nhttps://github.com/${DEV_REPO}/releases/tag/${tag}`)
 } else {
   const apk = join('release-android', `Veyra-Study-${version}.apk`)
   copyFileSync(built, apk)

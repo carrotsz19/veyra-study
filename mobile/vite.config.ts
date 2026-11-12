@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -12,7 +12,13 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(process.env.VEYRA_VERSION || JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf8')).version),
     // Which Veyra this build is (src/shared/channel.ts).
-    __CHANNEL__: JSON.stringify(process.env.VEYRA_CHANNEL === 'dev' ? 'dev' : 'prod')
+    __CHANNEL__: JSON.stringify(process.env.VEYRA_CHANNEL === 'dev' ? 'dev' : 'prod'),
+    // Dev builds only: the read-only token for the private repo test builds live in (never in Prod).
+    __DEV_FEED_TOKEN__: JSON.stringify(
+      process.env.VEYRA_CHANNEL !== 'dev'
+        ? ''
+        : (process.env.VEYRA_DEV_FEED_TOKEN || (existsSync('C:/dev/tools/veyra-dev-feed.token') ? readFileSync('C:/dev/tools/veyra-dev-feed.token', 'utf8') : '')).trim()
+    )
   },
   build: { outDir: resolve(__dirname, 'www'), emptyOutDir: true, target: 'es2022' }
 })

@@ -18,13 +18,14 @@ const Installer = registerPlugin<{
   install(o: { path: string }): Promise<void>
 }>('UpdateInstaller')
 
-import { DEV_RELEASE, IS_DEV } from '../shared/channel'
+import { DEV_FEED_TOKEN, DEV_REPO, IS_DEV } from '../shared/channel'
 
 const REPO = 'https://github.com/carrotsz19/veyra-study'
 const current = __APP_VERSION__
 
 let state: UpdateState = { supported: true, current, status: 'idle' }
 let apk = '' // download address of the newer APK
+let apkAuth = false // Dev: the address is the private repo's (needs the token, then a short-lived link)
 let file = '' // where it was downloaded
 const subs = new Set<(s: UpdateState) => void>()
 function publish(s: Partial<UpdateState>) {
@@ -57,15 +58,25 @@ const toText = (html: string) =>
 export async function check(): Promise<UpdateState> {
   if (state.status === 'downloading' || state.status === 'ready') return state
   publish({ status: 'checking', error: undefined })
-  // Veyra Study Dev: only the newest test build counts (dev-latest/android-dev.json), never the public releases.
+  // Veyra Study Dev: the newest release in the private test-build repo (read with its read-only token).
   if (IS_DEV) {
     try {
-      const r = await CapacitorHttp.request({ method: 'GET', url: `${DEV_RELEASE}/android-dev.json?t=${Date.now()}`, connectTimeout: 15000, readTimeout: 15000 })
+      if (!DEV_FEED_TOKEN) throw new Error('no token')
+      const r = await CapacitorHttp.request({
+        method: 'GET',
+        url: `https://api.github.com/repos/${DEV_REPO.owner}/${DEV_REPO.repo}/releases/latest`,
+        headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${DEV_FEED_TOKEN}` },
+        connectTimeout: 15000,
+        readTimeout: 15000
+      })
       if (r.status !== 200) throw new Error(`GitHub answered ${r.status}`)
-      const j = (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as { version: string; notes?: string; date?: string }
-      if (j.version && j.version !== current) {
-        apk = `${DEV_RELEASE}/Veyra-Study-Dev.apk`
-        publish({ status: 'available', latest: j.version, notes: j.notes ?? '', releaseDate: j.date, checkedAt: Date.now() })
+      const rel = (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as { tag_name: string; body?: string; published_at?: string; assets: { name: string; url: string }[] }
+      const version = rel.tag_name.replace(/^dev-/, '')
+      const asset = rel.assets.find((x) => x.name === 'Veyra-Study-Dev.apk')
+      if (asset && version !== current) {
+        apk = asset.url
+        apkAuth = true
+        publish({ status: 'available', latest: version, notes: rel.body ?? '', releaseDate: rel.published_at, checkedAt: Date.now() })
       } else publish({ status: 'up-to-date', latest: current, notes: undefined, checkedAt: Date.now() })
     } catch (e) {
       publish({ status: 'error', error: /timeout|host|network|connect/i.test(String(e)) ? 'Can’t reach GitHub. Check your connection.' : 'Couldn’t check for test builds. Try again later.' })
@@ -104,7 +115,22 @@ export async function download(): Promise<UpdateState> {
   try {
     // (straight into the cache folder: downloadFile doesn't create folders)
     const path = `Veyra-Study-${state.latest}.apk`
-    const r = await Filesystem.downloadFile({ url: apk, path, directory: Directory.Cache, progress: true, connectTimeout: 20000, readTimeout: 60000 })
+    let url = apk
+    if (apkAuth) {
+      // The private repo hands out a short-lived download link for the token; the file itself needs no token.
+      const r = await CapacitorHttp.request({
+        method: 'GET',
+        url: apk,
+        headers: { Accept: 'application/octet-stream', Authorization: `Bearer ${DEV_FEED_TOKEN}` },
+        disableRedirects: true,
+        connectTimeout: 20000,
+        readTimeout: 20000
+      })
+      const to = r.headers?.Location ?? r.headers?.location
+      if (!to) throw new Error(`no download link (${r.status})`)
+      url = to
+    }
+    const r = await Filesystem.downloadFile({ url, path, directory: Directory.Cache, progress: true, connectTimeout: 20000, readTimeout: 60000 })
     file = r.path ?? (await Filesystem.getUri({ path, directory: Directory.Cache })).uri
     publish({ status: 'ready', progress: 1 })
   } catch {

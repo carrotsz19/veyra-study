@@ -100,7 +100,7 @@ export function TitleBar() {
         { label: 'Check for updates', run: () => (settings('updates'), void window.veyra.update.check()) },
         'sep',
         { label: 'Report a problem', run: () => void window.veyra.open(`${REPO}/issues/new`) },
-        { label: 'All versions on GitHub', run: () => void window.veyra.open(`${REPO}/releases`) },
+        { label: IS_DEV ? 'Test builds on GitHub' : 'All versions on GitHub', run: () => void window.veyra.open(IS_DEV ? 'https://github.com/carrotsz19/veyra-study-dev/releases' : `${REPO}/releases`) },
         'sep',
         { label: `About Veyra Study ${__APP_VERSION__}`, run: () => settings('updates') }
       ]
