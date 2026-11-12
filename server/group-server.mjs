@@ -898,9 +898,12 @@ setInterval(backup, 3600_000).unref()
 /* ---------- the tunnel: start cloudflared, publish its address ---------- */
 let tunnelUrl = ''
 let tunnelChild = null
+let publishSeq = 0
 async function publish(addr) {
   if (!RELAY_URL || !RELAY_SECRET) return log('RELAY_URL or RELAY_SECRET not set: the address was not published.')
-  for (let i = 0; i < 5; i++) {
+  const seq = ++publishSeq
+  // Keep trying until the relay has it (the network may be down for a while), unless a newer address came along.
+  for (let i = 0; seq === publishSeq; i++) {
     try {
       const r = await fetch(`${RELAY_URL}/server`, {
         method: 'PUT',
@@ -911,43 +914,74 @@ async function publish(addr) {
       log('relay refused the address:', r.status, await r.text())
       return
     } catch (e) {
-      log('could not reach the relay, retrying:', e.message)
-      await new Promise((r) => setTimeout(r, 5000 * (i + 1)))
+      if (i < 3 || i % 30 === 0) log('could not reach the relay, retrying:', e.message)
+      await new Promise((r) => setTimeout(r, Math.min(60_000, 5000 * (i + 1))))
     }
   }
 }
 
+let tunnelAttempt = 0
+let restartTimer = null
+function scheduleTunnel(wait) {
+  if (restartTimer) return
+  restartTimer = setTimeout(() => {
+    restartTimer = null
+    startTunnel(tunnelAttempt + 1)
+  }, wait)
+}
 function startTunnel(attempt = 0) {
-  const child = spawn(CLOUDFLARED, ['tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${PORT}`], { stdio: ['ignore', 'pipe', 'pipe'] })
+  tunnelAttempt = attempt
+  let child
+  try {
+    child = spawn(CLOUDFLARED, ['tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${PORT}`], { stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (e) {
+    log('could not start cloudflared:', e.message)
+    return scheduleTunnel(Math.min(15 * 60_000, 10_000 * 2 ** attempt))
+  }
   tunnelChild = child
   let limited = false
+  // The phone itself is offline (no DNS, no route): Cloudflare never saw the request.
+  let offline = false
   const onData = (buf) => {
     const text = String(buf)
     for (const line of text.split('\n')) if (/\bERR\b|failed/i.test(line)) log('cloudflared:', line.replace(/^\S+\s+/, '').slice(0, 300))
     if (/status 429/.test(text)) limited = true
+    if (/no such host|network is unreachable|connection refused/i.test(text)) offline = true
     // cloudflared's own errors mention api.trycloudflare.com: that's not a tunnel address.
     const m = text.match(/https:\/\/(?!api\.)[a-z0-9-]+\.trycloudflare\.com/)
     if (m && m[0] !== tunnelUrl) {
       tunnelUrl = m[0]
       attempt = 0
+      tunnelAttempt = 0
       publish(tunnelUrl)
     }
   }
   child.stdout.on('data', onData)
   child.stderr.on('data', onData)
-  child.on('error', (e) => log('could not start cloudflared:', e.message, '(install it with: pkg install cloudflared)'))
-  child.on('exit', (code) => {
+  let ended = false
+  child.on('error', (e) => {
+    log('cloudflared error:', e.message, '(if it is missing: pkg install cloudflared)')
+    // A failed start never sends 'exit': clean up and try again here.
+    if (child.pid === undefined) end(null)
+  })
+  child.on('exit', (code) => end(code))
+  function end(code) {
+    if (ended) return
+    ended = true
     // Cloudflare limits how often a quick tunnel can be requested (429), and quick retries keep
     // the limit in place, so back off hard: 10 s, 20 s, 40 s … up to 15 minutes.
-    const wait = limited ? 5 * 60_000 : Math.min(15 * 60_000, 10_000 * 2 ** attempt)
+    // While the phone is offline, try every 30 s, so it's back soon after the internet is.
+    const wait = limited ? 5 * 60_000 : offline && !tunnelUrl ? 30_000 : Math.min(15 * 60_000, 10_000 * 2 ** attempt)
+    if (offline && !limited && !tunnelUrl) tunnelAttempt = Math.min(tunnelAttempt, 2)
     limited = false
+    offline = false
     log(`tunnel stopped (code ${code}); restarting in ${wait / 1000}s`)
     // Tell the relay the old address is gone, so apps say "offline" instead of trying it.
     if (tunnelUrl) publish('')
     tunnelUrl = ''
     if (tunnelChild === child) tunnelChild = null
-    setTimeout(() => startTunnel(attempt + 1), wait)
-  })
+    scheduleTunnel(wait)
+  }
 }
 if (TUNNEL) {
   publish('') // until the tunnel is up, the old address (if any) is gone
@@ -964,6 +998,10 @@ if (TUNNEL) {
 function watchTunnel() {
   let misses = 0
   setInterval(async () => {
+    if (!tunnelChild && !restartTimer) {
+      log('no tunnel running and none on the way; starting one')
+      return startTunnel(tunnelAttempt + 1)
+    }
     if (!tunnelUrl || !tunnelChild) return
     try {
       const r = await fetch(`${tunnelUrl}/health`, { signal: AbortSignal.timeout(15_000) })
