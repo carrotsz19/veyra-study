@@ -292,3 +292,65 @@ test('relay: a signed-in Veyra user gets a pass the server accepts', async () =>
   assert.equal(s.body.me.verified, true)
   assert.equal(s.body.me.photoUrl, '', 'non-https photo dropped')
 })
+
+/* ---------------- the owner's view: users, groups, moderation ---------------- */
+test('only an owner can use /admin; it lists users and groups and can moderate', async () => {
+  const boss = await login('carrotsz19') // the default owner
+  const mia = await login('mia')
+  const leo = await login('leo')
+
+  // Not for anyone else.
+  assert.equal((await api(mia, 'GET', '/admin/overview')).status, 403)
+  assert.equal((await api(mia, 'GET', '/admin/users')).status, 403)
+  assert.equal((await api(mia, 'POST', '/admin/users/leo/block', {})).status, 403)
+  assert.equal((await api(boss, 'GET', '/me')).body.owner, true)
+  assert.equal((await api(mia, 'GET', '/me')).body.owner, false)
+
+  // A group with a message and a task, to moderate.
+  const g = (await api(mia, 'POST', '/groups', { name: 'Chem lab' })).body.group
+  const code = g.inviteCode
+  await api(leo, 'POST', `/join/${code}`)
+  const msg = (await api(leo, 'POST', `/groups/${g.id}/items`, { kind: 'message', data: { text: 'rude message' } })).body.item
+  await api(mia, 'POST', `/groups/${g.id}/items`, { kind: 'task', data: { title: 'Write the method' } })
+
+  const over = (await api(boss, 'GET', '/admin/overview')).body
+  assert.ok(over.users >= 3 && over.groups >= 1 && over.items.messages >= 1)
+
+  const users = (await api(boss, 'GET', '/admin/users')).body.users
+  const leoRow = users.find((u) => u.username === 'leo')
+  assert.equal(leoRow.groups, 1)
+  assert.equal(leoRow.blocked, null)
+  assert.equal(users.find((u) => u.username === 'carrotsz19').owner, true)
+
+  const groups = (await api(boss, 'GET', '/admin/groups')).body.groups
+  const row = groups.find((x) => x.id === g.id)
+  assert.equal(row.members, 2)
+  assert.equal(row.messages, 1)
+
+  const detail = (await api(boss, 'GET', `/admin/groups/${g.id}`)).body
+  assert.equal(detail.members.length, 2)
+  assert.equal(detail.items.find((i) => i.id === msg.id).text, 'rude message')
+
+  // Delete the message: gone for the group too.
+  assert.equal((await api(boss, 'DELETE', `/admin/groups/${g.id}/items/${msg.id}`)).status, 200)
+  const seen = (await api(mia, 'GET', `/groups/${g.id}/items`)).body.items
+  assert.equal(seen.some((i) => i.id === msg.id), false)
+
+  // Block leo: his session stops working, and he can't sign in again.
+  assert.equal((await api(boss, 'POST', '/admin/users/carrotsz19/block', {})).status, 400) // not an owner
+  assert.equal((await api(boss, 'POST', '/admin/users/leo/block', { reason: 'spam' })).status, 200)
+  assert.equal((await api(leo, 'GET', '/groups')).status, 401) // signed out everywhere
+  const again = await api(null, 'POST', '/session', { pass: pass('leo') })
+  assert.equal(again.status, 403)
+  assert.equal((await api(boss, 'GET', '/admin/users')).body.users.find((u) => u.username === 'leo').blocked.reason, 'spam')
+
+  // Unblock: he can come back.
+  assert.equal((await api(boss, 'DELETE', '/admin/users/leo/block')).status, 200)
+  assert.equal((await api(null, 'POST', '/session', { pass: pass('leo') })).status, 200)
+
+  // Remove the group's owner: the next member takes over. Then delete the group.
+  assert.equal((await api(boss, 'DELETE', `/admin/groups/${g.id}/members/mia`)).status, 200)
+  assert.equal((await api(boss, 'GET', `/admin/groups/${g.id}`)).body.group.owner, 'leo')
+  assert.equal((await api(boss, 'DELETE', `/admin/groups/${g.id}`)).status, 200)
+  assert.equal((await api(boss, 'GET', `/admin/groups/${g.id}`)).status, 404)
+})

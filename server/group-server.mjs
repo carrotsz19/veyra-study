@@ -28,13 +28,14 @@ import { createServer } from 'node:http'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs'
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 import { createGzip } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION = '1.2.4'
+const VERSION = '1.3.0'
+const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
 /* ---------- settings ---------- */
@@ -51,6 +52,8 @@ const RELAY_SECRET = process.env.RELAY_SECRET || ''
 const PORT = Number(process.env.PORT || 8790)
 const DATA_DIR = process.env.DATA_DIR || join(HERE, 'veyra-group-data')
 const TUNNEL = (process.env.TUNNEL || 'on').toLowerCase() !== 'off'
+/** Who can open the Owner section (users, groups, moderation): Veyra usernames, comma-separated. */
+const OWNERS = (process.env.OWNERS || 'carrotsz19').split(',').map((u) => u.trim().toLowerCase()).filter(Boolean)
 const CLOUDFLARED = process.env.CLOUDFLARED || 'cloudflared'
 if (SIGNING_KEY.length < 32) {
   console.error('SIGNING_KEY is missing or too short (32+ characters). See the setup steps.')
@@ -95,6 +98,8 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS items_group_seq ON items(group_id, seq);
   CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  -- People the owner has blocked from Group work and sync (the Owner section in the app).
+  CREATE TABLE IF NOT EXISTS blocked (username TEXT PRIMARY KEY, at INTEGER NOT NULL, by TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '');
   -- Personal sync: each person's own records (tasks, notes, subjects, study time), never shared.
   CREATE TABLE IF NOT EXISTS personal (
     username TEXT NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL,
@@ -156,6 +161,11 @@ function verifyPass(pass) {
 
 const userCard = (u) => (u ? { username: u.username, displayName: u.display_name, photoUrl: u.photo_url, verified: !!u.verified } : null)
 const getUser = (username) => q('SELECT * FROM users WHERE username = ?').get(username)
+const isBlocked = (username) => !!q('SELECT 1 FROM blocked WHERE username = ?').get(username)
+const isOwner = (username) => OWNERS.includes(String(username).toLowerCase())
+function requireAdmin(username) {
+  if (!isOwner(username)) throw new HttpError(403, 'Only the owner of Veyra Study can do that.')
+}
 const membership = (groupId, username) => q('SELECT role FROM members WHERE group_id = ? AND username = ?').get(groupId, username)
 
 /** The one gate for every group route: 404 (not 403) so group ids can't be probed. */
@@ -299,6 +309,7 @@ route(
   ({ body, ip }) => {
     limit(`session:${ip}`, 20, 60_000)
     const p = verifyPass(body?.pass)
+    if (isBlocked(p.u)) throw new HttpError(403, 'This account can’t use Group work or sync. Contact the owner if you think that’s a mistake.')
     const t = now()
     const existing = getUser(p.u)
     if (existing) q('UPDATE users SET display_name = ?, photo_url = ?, verified = ?, seen_at = ? WHERE username = ?').run(p.n, p.p, p.v ? 1 : 0, t, p.u)
@@ -316,7 +327,7 @@ route('DELETE', '/session', ({ token }) => {
   return { ok: true }
 })
 
-route('GET', '/me', ({ me }) => ({ me: userCard(getUser(me)) }))
+route('GET', '/me', ({ me }) => ({ me: userCard(getUser(me)), owner: isOwner(me) }))
 
 // Find people (only those who've opened Group work at least once).
 route('GET', '/users/search', ({ me, url }) => {
@@ -518,6 +529,168 @@ route('DELETE', '/groups/:id/items/:item', ({ me, params }) => {
   return { ok: true }
 })
 
+/* ---------- the owner's view: users, groups and moderation (Settings → Owner in the app) ---------- */
+// /me also says whether you're an owner, so the app knows to show the Owner section.
+route('GET', '/admin/overview', ({ me }) => {
+  requireAdmin(me)
+  const week = now() - 7 * 86400_000
+  const kinds = Object.fromEntries(q('SELECT kind, count(*) AS n FROM items WHERE deleted = 0 GROUP BY kind').all().map((r) => [r.kind, r.n]))
+  const personal = q('SELECT count(*) AS n, coalesce(sum(length(data)), 0) AS bytes FROM personal WHERE deleted_at IS NULL').get()
+  let dbBytes = 0
+  try {
+    dbBytes = statSync(join(DATA_DIR, 'group.db')).size
+  } catch {}
+  return {
+    version: VERSION,
+    startedAt: STARTED,
+    users: q('SELECT count(*) AS n FROM users').get().n,
+    activeWeek: q('SELECT count(*) AS n FROM users WHERE seen_at > ?').get(week).n,
+    newWeek: q('SELECT count(*) AS n FROM users WHERE created_at > ?').get(week).n,
+    blocked: q('SELECT count(*) AS n FROM blocked').get().n,
+    groups: q('SELECT count(*) AS n FROM groups_').get().n,
+    items: { tasks: kinds.task ?? 0, messages: kinds.message ?? 0, notes: kinds.note ?? 0, deadlines: kinds.event ?? 0 },
+    synced: { records: personal.n, bytes: personal.bytes },
+    dbBytes
+  }
+})
+
+route('GET', '/admin/users', ({ me }) => {
+  requireAdmin(me)
+  const rows = q(`
+    SELECT u.*,
+      (SELECT count(*) FROM members m WHERE m.username = u.username) AS groups,
+      (SELECT count(*) FROM personal p WHERE p.username = u.username AND p.deleted_at IS NULL) AS records,
+      (SELECT coalesce(sum(length(p.data)), 0) FROM personal p WHERE p.username = u.username AND p.deleted_at IS NULL) AS bytes,
+      (SELECT count(DISTINCT p.device_id) FROM personal p WHERE p.username = u.username) AS devices,
+      b.at AS blocked_at, b.reason AS blocked_reason
+    FROM users u LEFT JOIN blocked b ON b.username = u.username
+    ORDER BY u.seen_at DESC`).all()
+  return {
+    users: rows.map((u) => ({
+      ...userCard(u),
+      createdAt: u.created_at,
+      seenAt: u.seen_at,
+      groups: u.groups,
+      records: u.records,
+      bytes: u.bytes,
+      devices: u.devices,
+      owner: isOwner(u.username),
+      blocked: u.blocked_at ? { at: u.blocked_at, reason: u.blocked_reason } : null
+    }))
+  }
+})
+
+route('GET', '/admin/groups', ({ me }) => {
+  requireAdmin(me)
+  const rows = q(`
+    SELECT g.*,
+      (SELECT count(*) FROM members m WHERE m.group_id = g.id) AS members,
+      (SELECT count(*) FROM items i WHERE i.group_id = g.id AND i.deleted = 0 AND i.kind = 'task') AS tasks,
+      (SELECT count(*) FROM items i WHERE i.group_id = g.id AND i.deleted = 0 AND i.kind = 'message') AS messages,
+      (SELECT count(*) FROM items i WHERE i.group_id = g.id AND i.deleted = 0 AND i.kind = 'note') AS notes,
+      (SELECT count(*) FROM items i WHERE i.group_id = g.id AND i.deleted = 0 AND i.kind = 'event') AS deadlines,
+      (SELECT max(updated_at) FROM items i WHERE i.group_id = g.id) AS last_active
+    FROM groups_ g ORDER BY coalesce(last_active, g.created_at) DESC`).all()
+  return {
+    groups: rows.map((g) => ({
+      id: g.id, name: g.name, color: g.color, owner: g.owner, createdAt: g.created_at, members: g.members,
+      tasks: g.tasks, messages: g.messages, notes: g.notes, deadlines: g.deadlines, lastActive: g.last_active ?? g.created_at
+    }))
+  }
+})
+
+/** One line to show for an item in the Owner view. */
+function itemSummary(r) {
+  let d = {}
+  try {
+    d = JSON.parse(r.data)
+  } catch {}
+  if (r.kind === 'message') return d.text ?? ''
+  if (r.kind === 'note') return d.title || 'Untitled note'
+  if (r.kind === 'event') return `${d.title ?? ''} (${d.date ?? ''}${d.time ? ' ' + d.time : ''})`
+  return d.title ?? ''
+}
+route('GET', '/admin/groups/:id', ({ me, params }) => {
+  requireAdmin(me)
+  const g = q('SELECT * FROM groups_ WHERE id = ?').get(params.id)
+  if (!g) throw new HttpError(404, 'That group no longer exists.')
+  const members = q('SELECT m.*, u.display_name, u.photo_url, u.verified FROM members m LEFT JOIN users u ON u.username = m.username WHERE m.group_id = ? ORDER BY m.joined_at').all(params.id)
+  // Everything but chat, plus the latest 300 messages.
+  const items = [
+    ...q("SELECT * FROM items WHERE group_id = ? AND deleted = 0 AND kind != 'message' ORDER BY updated_at DESC").all(params.id),
+    ...q("SELECT * FROM items WHERE group_id = ? AND deleted = 0 AND kind = 'message' ORDER BY created_at DESC LIMIT 300").all(params.id)
+  ]
+  return {
+    group: { id: g.id, name: g.name, color: g.color, owner: g.owner, createdAt: g.created_at },
+    members: members.map((m) => ({ username: m.username, displayName: m.display_name ?? m.username, photoUrl: m.photo_url ?? '', role: m.role, joinedAt: m.joined_at })),
+    items: items.map((r) => ({ id: r.id, kind: r.kind, text: itemSummary(r), createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at }))
+  }
+})
+
+route('DELETE', '/admin/groups/:id/items/:item', ({ me, params }) => {
+  requireAdmin(me)
+  const row = q('SELECT * FROM items WHERE id = ? AND group_id = ? AND deleted = 0').get(params.item, params.id)
+  if (!row) return { ok: true }
+  const s = touchGroup(params.id)
+  q('UPDATE items SET deleted = 1, data = ?, updated_by = ?, updated_at = ?, seq = ? WHERE id = ?').run('{}', me, now(), s, row.id)
+  log(`owner ${me} deleted a ${row.kind} by ${row.created_by} in group ${params.id}`)
+  return { ok: true }
+})
+
+route('DELETE', '/admin/groups/:id/members/:username', ({ me, params }) => {
+  requireAdmin(me)
+  const g = q('SELECT * FROM groups_ WHERE id = ?').get(params.id)
+  if (!g) return { ok: true }
+  if (g.owner === params.username) {
+    // Removing the group's owner: the longest-standing member takes over, or the group goes.
+    const next = q('SELECT username FROM members WHERE group_id = ? AND username != ? ORDER BY joined_at LIMIT 1').get(params.id, params.username)
+    if (!next) {
+      q('DELETE FROM groups_ WHERE id = ?').run(params.id)
+      nextSeq()
+      notify([params.username])
+      log(`owner ${me} removed ${params.username} and so deleted group ${params.id}`)
+      return { ok: true, deleted: true }
+    }
+    q('UPDATE members SET role = ? WHERE group_id = ? AND username = ?').run('owner', params.id, next.username)
+    q('UPDATE groups_ SET owner = ? WHERE id = ?').run(next.username, params.id)
+  }
+  q('DELETE FROM members WHERE group_id = ? AND username = ?').run(params.id, params.username)
+  touchGroup(params.id)
+  notify([params.username])
+  log(`owner ${me} removed ${params.username} from group ${params.id}`)
+  return { ok: true }
+})
+
+route('DELETE', '/admin/groups/:id', ({ me, params }) => {
+  requireAdmin(me)
+  const who = membersOf(params.id)
+  q('DELETE FROM groups_ WHERE id = ?').run(params.id)
+  nextSeq()
+  notify(who)
+  log(`owner ${me} deleted group ${params.id}`)
+  return { ok: true }
+})
+
+route('POST', '/admin/users/:username/block', ({ me, params, body }) => {
+  requireAdmin(me)
+  const u = String(params.username).toLowerCase()
+  if (isOwner(u)) throw new HttpError(400, 'You can’t block an owner.')
+  if (!getUser(u)) throw new HttpError(404, 'No one by that name has used Group work or sync.')
+  q('INSERT INTO blocked (username, at, by, reason) VALUES (?, ?, ?, ?) ON CONFLICT(username) DO UPDATE SET at = excluded.at, by = excluded.by, reason = excluded.reason').run(u, now(), me, str(body?.reason, 300))
+  // Signed out of Group work and sync on every device straight away.
+  q('DELETE FROM sessions WHERE username = ?').run(u)
+  notify([u])
+  log(`owner ${me} blocked ${u}`)
+  return { ok: true }
+})
+
+route('DELETE', '/admin/users/:username/block', ({ me, params }) => {
+  requireAdmin(me)
+  q('DELETE FROM blocked WHERE username = ?').run(String(params.username).toLowerCase())
+  log(`owner ${me} unblocked ${params.username}`)
+  return { ok: true }
+})
+
 /* ---------- personal sync (only ever your own records) ---------- */
 const SYNC_KINDS = new Set(['subject', 'task', 'note', 'session'])
 const SYNC_MAX_RECORD = 1_500_000
@@ -625,6 +798,7 @@ function sessionUser(req) {
   if (!m) throw new HttpError(401, 'Sign in first.')
   const s = q('SELECT username, expires_at FROM sessions WHERE hash = ?').get(sha(m[1]))
   if (!s || s.expires_at < now()) throw new HttpError(401, 'Your group session has ended. Reconnecting…')
+  if (isBlocked(s.username)) throw new HttpError(403, 'This account can’t use Group work or sync. Contact the owner if you think that’s a mistake.')
   q('UPDATE users SET seen_at = ? WHERE username = ?').run(now(), s.username)
   return { me: s.username, token: m[1] }
 }

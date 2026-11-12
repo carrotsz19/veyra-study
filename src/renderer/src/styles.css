@@ -901,3 +901,22 @@ html.material .beta-notice { background: color-mix(in srgb, var(--bg-elevated) 9
   background: color-mix(in srgb, #c9871a 10%, transparent); color: var(--ink);
 }
 .beta-note svg { color: #c9871a; vertical-align: -2px; margin-right: 6px; }
+
+/* ---------- Settings → Owner (views/Owner.tsx) ---------- */
+.owner-head { margin-bottom: 14px; }
+.owner-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); grid-auto-rows: 1fr; gap: 10px; }
+.owner-tile { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; }
+.owner-tile-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); }
+.owner-tile b { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+.owner-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.owner-search { display: flex; align-items: center; gap: 8px; flex: 1; max-width: 320px; padding: 0 10px; border-radius: var(--r-control); background: var(--panel-2); margin: 0; text-transform: none; letter-spacing: 0; }
+.owner-search input { border: 0; background: transparent; padding: 7px 0; font-size: 13.5px; }
+.owner-search input:focus { border: 0; }
+.owner-user.is-blocked { opacity: 0.75; }
+.owner-user .pill svg { vertical-align: -1px; }
+.owner-problem { display: flex; align-items: center; gap: 12px; padding: 12px 14px; color: var(--bad); }
+.owner-loading { padding: 16px 4px; }
+.owner-group-name { display: flex; align-items: center; gap: 10px; font-size: 20px; margin: 4px 0 6px; text-transform: none; letter-spacing: -0.01em; color: var(--ink); }
+.owner-sub { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); margin: 18px 4px 8px; }
+.owner-item-text { font-size: 13.5px; white-space: pre-wrap; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.danger-text { color: var(--bad) !important; }

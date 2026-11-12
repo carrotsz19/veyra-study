@@ -1,8 +1,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
   ArrowDown, ArrowUp, CalendarDays, Smartphone, Minus as MinusIcon, Plus as PlusIcon, Check, ChevronLeft, Download, ExternalLink, RefreshCw, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, NotebookPen,
-  LayoutGrid, Palette, Play, Plus, RotateCcw, Shapes, Sparkles, Trash2, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
+  LayoutGrid, Palette, Play, Plus, RotateCcw, Shapes, ShieldCheck, Sparkles, Trash2, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
 } from 'lucide-react'
+import { OwnerSection, useIsOwner } from './Owner'
+import { useAccount } from '../components/account'
 import { ACCENTS, DEFAULT_SETTINGS, NAV_LABELS, defaultLayout, type AppSettings, type NavId } from '@shared/settings'
 import { useNav } from '../nav'
 import { useSettings } from '../data/settings'
@@ -29,7 +31,7 @@ import { BetaNote } from '../components/BetaNotice'
    right, and a search that finds any option across all of them.
 ===================================================================== */
 
-type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data' | 'updates' | 'phone'
+type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data' | 'updates' | 'phone' | 'owner'
 
 export const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; keys?: (keyof AppSettings)[] }[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal, hint: 'Your name, start screen, week and time', keys: ['name', 'greeting', 'startScreen', 'weekStart', 'timeFormat'] },
@@ -46,7 +48,9 @@ export const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: s
   { id: 'account', label: 'Account', icon: UserRound, hint: 'Your Veyra account' },
   { id: 'connections', label: 'Connections', icon: Link2, hint: 'Google Calendar, Google Drive, calendar links and AI apps' },
   { id: 'data', label: 'Data & privacy', icon: Database, hint: 'Export, where data lives, and resets' },
-  { id: 'updates', label: 'Software update', icon: Download, hint: 'Your version, updates, and what’s new', keys: ['checkUpdatesAtStart'] }
+  { id: 'updates', label: 'Software update', icon: Download, hint: 'Your version, updates, and what’s new', keys: ['checkUpdatesAtStart'] },
+  // Only shown to the owner of Veyra Study (the group server says who that is).
+  { id: 'owner', label: 'Owner', icon: ShieldCheck, hint: 'Who uses Group work and sync, every group, and moderation' }
 ]
 
 /* ---------- building blocks ---------- */
@@ -1063,6 +1067,8 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
       )
     case 'updates':
       return <SoftwareUpdate />
+    case 'owner':
+      return <OwnerSection />
     case 'data':
       return <DataPrivacy />
   }
@@ -1086,6 +1092,7 @@ const SEARCHABLE: SectionId[] = ['general', 'appearance', 'phone', 'sidebar', 's
 
 export function Settings({ initial }: { initial?: string }) {
   const { reset, s } = useSettings()
+  const isOwner = useIsOwner(useAccount().state.mode === 'account')
   const [section, setSection] = useState<SectionId>(() => {
     const want = (initial ?? sessionStorage.getItem('veyra.settingsSection')) as SectionId | null
     return want && SECTIONS.some((x) => x.id === want) ? want : 'general'
@@ -1137,9 +1144,9 @@ export function Settings({ initial }: { initial?: string }) {
           )}
         </div>
         <nav>
-          {SECTIONS.filter((x) => here(x.id)).map((x) => (
+          {SECTIONS.filter((x) => here(x.id) && (x.id !== 'owner' || isOwner)).map((x) => (
             <div key={x.id}>
-              {(x.id === 'account' || x.id === 'data') && <div className="set-nav-sep" />}
+              {(x.id === 'account' || x.id === 'data' || x.id === 'owner') && <div className="set-nav-sep" />}
               <button className="set-nav-item" aria-current={!q && section === x.id} onClick={() => go(x.id)}>
                 <span className="set-nav-icon">
                   <x.icon size={15} />

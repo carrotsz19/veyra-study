@@ -153,7 +153,7 @@ export function Palette() {
 
     // Settings sections (only when searching)
     if (terms.length)
-      for (const sec of SECTIONS.filter((x) => here(x.id))) {
+      for (const sec of SECTIONS.filter((x) => here(x.id) && x.id !== 'owner')) {
         const sc = score(terms, `${sec.label} settings`, sec.hint)
         if (sc)
           out.push({
