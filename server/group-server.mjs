@@ -32,7 +32,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:f
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION = '1.1.0'
+const VERSION = '1.2.2'
 const HERE = dirname(fileURLToPath(import.meta.url))
 
 /* ---------- settings ---------- */
@@ -678,6 +678,7 @@ setInterval(backup, 3600_000).unref()
 
 /* ---------- the tunnel: start cloudflared, publish its address ---------- */
 let tunnelUrl = ''
+let tunnelChild = null
 async function publish(addr) {
   if (!RELAY_URL || !RELAY_SECRET) return log('RELAY_URL or RELAY_SECRET not set: the address was not published.')
   for (let i = 0; i < 5; i++) {
@@ -699,8 +700,14 @@ async function publish(addr) {
 
 function startTunnel(attempt = 0) {
   const child = spawn(CLOUDFLARED, ['tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${PORT}`], { stdio: ['ignore', 'pipe', 'pipe'] })
+  tunnelChild = child
+  let limited = false
   const onData = (buf) => {
-    const m = String(buf).match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/)
+    const text = String(buf)
+    for (const line of text.split('\n')) if (/\bERR\b|failed/i.test(line)) log('cloudflared:', line.replace(/^\S+\s+/, '').slice(0, 300))
+    if (/status 429/.test(text)) limited = true
+    // cloudflared's own errors mention api.trycloudflare.com: that's not a tunnel address.
+    const m = text.match(/https:\/\/(?!api\.)[a-z0-9-]+\.trycloudflare\.com/)
     if (m && m[0] !== tunnelUrl) {
       tunnelUrl = m[0]
       attempt = 0
@@ -711,14 +718,46 @@ function startTunnel(attempt = 0) {
   child.stderr.on('data', onData)
   child.on('error', (e) => log('could not start cloudflared:', e.message, '(install it with: pkg install cloudflared)'))
   child.on('exit', (code) => {
-    const wait = Math.min(60_000, 5000 * 2 ** attempt)
+    // Cloudflare limits how often a quick tunnel can be requested (429), and quick retries keep
+    // the limit in place, so back off hard: 10 s, 20 s, 40 s … up to 15 minutes.
+    const wait = limited ? 5 * 60_000 : Math.min(15 * 60_000, 10_000 * 2 ** attempt)
+    limited = false
     log(`tunnel stopped (code ${code}); restarting in ${wait / 1000}s`)
     tunnelUrl = ''
+    if (tunnelChild === child) tunnelChild = null
     setTimeout(() => startTunnel(attempt + 1), wait)
   })
 }
-if (TUNNEL) startTunnel()
-else log('TUNNEL=off: no public address (local testing).')
+if (TUNNEL) {
+  startTunnel()
+  watchTunnel()
+} else log('TUNNEL=off: no public address (local testing).')
+
+/*
+ * Quick tunnels can die quietly (the phone sleeps, Wi-Fi changes) while
+ * cloudflared keeps running, which leaves a dead address with the relay.
+ * Check the public address every 2 minutes; after 3 misses in a row, restart
+ * cloudflared so it gets (and publishes) a fresh address.
+ */
+function watchTunnel() {
+  let misses = 0
+  setInterval(async () => {
+    if (!tunnelUrl || !tunnelChild) return
+    try {
+      const r = await fetch(`${tunnelUrl}/health`, { signal: AbortSignal.timeout(15_000) })
+      if (!r.ok) throw new Error(`status ${r.status}`)
+      misses = 0
+    } catch (e) {
+      misses++
+      log(`tunnel check failed (${misses}/3):`, e.message)
+      if (misses >= 3) {
+        misses = 0
+        log('tunnel looks dead; restarting cloudflared for a new address')
+        tunnelChild.kill()
+      }
+    }
+  }, 120_000).unref()
+}
 
 process.on('SIGINT', () => process.exit(0))
 process.on('SIGTERM', () => process.exit(0))
