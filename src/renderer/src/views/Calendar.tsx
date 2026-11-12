@@ -124,7 +124,7 @@ export function Calendar() {
           )
         })}
       </div>
-      <p className="sm dim">
+      <p className="sm dim cal-hint">
         Click a day to add a task due then, or “+ more” to see everything on it.{' '}
         {s.calendarShowEvents && events.length > 0 && 'Google Calendar events show in their calendar’s colour.'}
         {error && <span style={{ color: 'var(--bad)' }}> {error}</span>}

@@ -6,6 +6,7 @@ import './notes.css'
 import './account.css'
 import './settings.css'
 import './phone.css'
+import { startScrollbars } from './lib/scrollbars'
 
 // Apply the saved theme before anything renders (the sign-in screen has no sidebar).
 {
@@ -28,6 +29,7 @@ import './phone.css'
   })
 }
 
+startScrollbars()
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

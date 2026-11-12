@@ -99,6 +99,28 @@ body {
 }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; }
+/* Computer app: overlay scroll bars (lib/scrollbars.ts). Native vertical bars are hidden; sideways ones stay, thin. */
+html.os-on ::-webkit-scrollbar { width: 0; height: 7px; }
+html.os-on ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ink) 22%, transparent); border-radius: 99px; }
+html.os-on ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--ink) 38%, transparent); }
+.os-bar {
+  position: fixed; left: 0; top: 0; width: 14px; z-index: 300; pointer-events: none; opacity: 0;
+  transition: opacity 0.3s var(--ease-standard);
+}
+.os-bar.on { opacity: 1; pointer-events: auto; }
+.os-bar::before {
+  content: ''; position: absolute; top: 0; bottom: 0; right: 2px; width: 10px; border-radius: 99px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent); opacity: 0; transition: opacity 0.2s var(--ease-standard);
+}
+.os-bar.wide::before { opacity: 1; }
+.os-thumb {
+  position: absolute; top: 0; right: 4px; width: 4px; border-radius: 99px; cursor: default;
+  background: color-mix(in srgb, var(--ink) 32%, transparent);
+  transition: width 0.22s var(--ease-out), right 0.22s var(--ease-out), background-color 0.2s;
+}
+.os-bar.wide .os-thumb { width: 8px; right: 3px; background: color-mix(in srgb, var(--ink) 46%, transparent); }
+.os-bar.dragging .os-thumb { background: color-mix(in srgb, var(--ink) 60%, transparent); }
+@media (prefers-reduced-motion: reduce) { .os-bar, .os-thumb { transition: none !important; } }
 .num { font-variant-numeric: tabular-nums; }
 .dim { color: var(--dim); }
 .tert { color: var(--label-tertiary); }

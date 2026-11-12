@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BarChart3, CalendarDays, Home, ListTodo, MoreHorizontal, NotebookPen, PenLine, Plus, Settings as SettingsIcon, Timer, Users, X } from 'lucide-react'
 import type { Route } from '../nav'
 import { useRecords } from '../data/store'
@@ -31,6 +31,26 @@ export function PhoneNav({ route, go }: { route: Route; go: (r: Route) => void }
     ['calendar', 'Calendar', CalendarDays]
   ]
   const inMore = !tabs.some(([n]) => n === route.name)
+  // While the keyboard is up the dock steps aside (instead of riding up on top of the keyboard).
+  useEffect(() => {
+    let full = window.innerHeight
+    const onResize = () => {
+      const h = window.innerHeight
+      if (h > full) full = h
+      // Rotating changes the full height too: only a big drop with a text field focused counts as the keyboard.
+      const typing = !!document.activeElement?.closest('input, textarea, [contenteditable="true"]')
+      document.body.classList.toggle('kb-open', typing && h < full * 0.78)
+    }
+    const onOrient = () => setTimeout(() => (full = window.innerHeight), 400)
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onOrient)
+    document.addEventListener('focusout', () => setTimeout(onResize, 250))
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onOrient)
+      document.body.classList.remove('kb-open')
+    }
+  }, [])
   const pick = (r: Route) => {
     setMore(false)
     go(r)
@@ -38,12 +58,11 @@ export function PhoneNav({ route, go }: { route: Route; go: (r: Route) => void }
 
   // What the compose button makes here.
   const subjectId = route.name === 'subject' ? route.id : null
+  // It's on every screen, so the dock never changes width as you move around.
   const compose: { label: string; icon: typeof Plus; run: () => void } | null =
     route.name === 'notes'
       ? { label: 'New note', icon: PenLine, run: () => void newNote(null, s).then((id) => go({ name: 'notes', noteId: id })) }
-      : ['today', 'tasks', 'calendar', 'subject'].includes(route.name)
-        ? { label: 'New task', icon: Plus, run: () => setNewTask(true) }
-        : null
+      : { label: 'New task', icon: Plus, run: () => setNewTask(true) }
 
   return (
     <>

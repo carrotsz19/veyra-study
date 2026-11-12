@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import {
   Check,
+  ChevronLeft,
   CalendarClock,
   Copy,
   Crown,
@@ -28,6 +29,7 @@ import { SlashMenu } from '../components/notes/SlashMenu'
 import { docText } from '../components/notes/extensions'
 import { useSettings } from '../data/settings'
 import { useNav } from '../nav'
+import { usePhone } from '../lib/phone'
 import { dueLabel, isOverdue, todayKey } from '../lib/dates'
 import {
   GROUP_COLORS,
@@ -63,6 +65,9 @@ export function Groups() {
   })
   const [dialog, setDialog] = useState<'new' | 'join' | null>(null)
   const toast = useToast()
+  // On a phone the list of groups comes first; tapping one opens it as its own page.
+  const phone = usePhone()
+  const [phoneOpen, setPhoneOpen] = useState(false)
 
   useEffect(() => {
     try {
@@ -133,7 +138,7 @@ export function Groups() {
   }
 
   return (
-    <div className="inner view grp">
+    <div className={`inner view grp ${phone && phoneOpen && open ? 'grp-phone-open' : ''}`}>
       <Header>
         <button className="btn ghost" onClick={() => setDialog('join')}>
           Join with a code
@@ -199,7 +204,15 @@ export function Groups() {
         <div className="grp-layout">
           <nav className="ig grp-list" aria-label="Your groups">
             {groups.map((g) => (
-              <button key={g.id} className="ig-row tap" aria-current={open?.id === g.id} onClick={() => setOpenId(g.id)}>
+              <button
+                key={g.id}
+                className="ig-row tap"
+                aria-current={!phone && open?.id === g.id}
+                onClick={() => {
+                  setOpenId(g.id)
+                  setPhoneOpen(true)
+                }}
+              >
                 <span className="grp-swatch" style={{ background: g.color }}>
                   {g.name.slice(0, 1).toUpperCase()}
                 </span>
@@ -212,11 +225,12 @@ export function Groups() {
               </button>
             ))}
           </nav>
-          {open && (
+          {open && (!phone || phoneOpen) && (
             <GroupPanel
               key={open.id}
               group={open}
               me={status?.me ?? null}
+              onBack={phone ? () => setPhoneOpen(false) : undefined}
               onChanged={(g) => setGroups((all) => all && all.map((x) => (x.id === g.id ? g : x)))}
               onGone={() => {
                 setOpenId(null)
@@ -263,7 +277,7 @@ function Header({ children }: { children?: React.ReactNode }) {
 }
 
 /* ---------- one group ---------- */
-function GroupPanel({ group, me, onChanged, onGone }: { group: Group; me: GroupUser | null; onChanged: (g: Group) => void; onGone: () => void }) {
+function GroupPanel({ group, me, onChanged, onGone, onBack }: { group: Group; me: GroupUser | null; onChanged: (g: Group) => void; onGone: () => void; onBack?: () => void }) {
   const [tab, setTab] = useState<Tab>(() => {
     try {
       return (localStorage.getItem('veyra.groupTab') as Tab) || 'tasks'
@@ -282,7 +296,12 @@ function GroupPanel({ group, me, onChanged, onGone }: { group: Group; me: GroupU
   const openTasks = items.list('task').filter((t) => !t.data.done).length
 
   return (
-    <section className="grp-panel" aria-label={group.name}>
+    <section className={`grp-panel tab-${tab}`} aria-label={group.name}>
+      {onBack && (
+        <button className="phone-back" onClick={onBack}>
+          <ChevronLeft size={20} /> Groups
+        </button>
+      )}
       <div className="between grp-head">
         <div className="row" style={{ minWidth: 0 }}>
           <span className="grp-swatch lg" style={{ background: group.color }}>
@@ -308,6 +327,8 @@ function GroupPanel({ group, me, onChanged, onGone }: { group: Group; me: GroupU
           ]}
         />
       </div>
+      {/* On a phone only this part scrolls (the chat scrolls its messages instead). */}
+      <div className="grp-body">
       {items.error && !items.loaded ? (
         <div className="card grp-status grp-offline">
           <WifiOff size={18} /> <span className="grow">{items.error}</span>
@@ -330,6 +351,7 @@ function GroupPanel({ group, me, onChanged, onGone }: { group: Group; me: GroupU
       ) : (
         <GroupMembers group={group} me={me} onChanged={onChanged} onGone={onGone} />
       )}
+      </div>
     </section>
   )
 }
