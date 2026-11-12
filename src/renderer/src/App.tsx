@@ -239,7 +239,7 @@ function Shell() {
           {phone ? <PhoneNav route={route} go={go} /> : <Sidebar route={route} go={go} />}
           <UpdatedNotice />
           <VoiceSetupHost />
-          <main className={`main ${route.name === 'settings' ? 'main-settings' : ''}`}>
+          <main className={`main ${route.name === 'settings' ? 'main-settings' : route.name === 'notes' ? 'main-notes' : ''}`}>
             <Screen key={route.name + ('id' in route ? route.id : '')} route={route} />
           </main>
         </div>

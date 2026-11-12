@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useEditorState, type Editor } from '@tiptap/react'
 import {
-  Bold, ChevronDown, Code, CodeSquare, Columns2, Highlighter, Italic, Link2, List, ListChecks, ListOrdered, ListCollapse, Mic, Minus, Paperclip, PenLine,
+  Bold, ChevronDown, Code, CodeSquare, Columns2, Highlighter, Italic, Link2, List, ListChecks, ListOrdered, ListCollapse, Mic, Minus, Paperclip, PenLine, Plus,
   Quote, Redo2, Rows2, Sparkles, Strikethrough, Table, Trash2, Underline, Undo2
 } from 'lucide-react'
 import { CALLOUTS, type CalloutTone } from './extensions'
@@ -31,7 +31,21 @@ function Btn({ label, active, disabled, onClick, children }: { label: string; ac
 /** A small dropdown that stays open until you pick something or click away. */
 function Menu({ label, button, children }: { label: string; button: ReactNode; children: (close: () => void) => ReactNode }) {
   const [open, setOpen] = useState(false)
+  const [at, setAt] = useState<React.CSSProperties>({})
   const ref = useRef<HTMLSpanElement>(null)
+  // The bar scrolls sideways, so the menu floats above the page instead of inside the bar.
+  const toggle = () => {
+    const r = ref.current?.getBoundingClientRect()
+    if (r && !open) {
+      const bottomBar = r.top > window.innerHeight / 2 // the phone keeps its bar at the bottom
+      setAt(
+        bottomBar
+          ? { position: 'fixed', left: 12, right: 12, bottom: window.innerHeight - r.top + 6, top: 'auto' }
+          : { position: 'fixed', top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 260)) }
+      )
+    }
+    setOpen(!open)
+  }
   useEffect(() => {
     if (!open) return
     const away = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as globalThis.Node) && setOpen(false)
@@ -40,11 +54,11 @@ function Menu({ label, button, children }: { label: string; button: ReactNode; c
   }, [open])
   return (
     <span className="tb-menu" ref={ref}>
-      <button type="button" className="tb-btn wide" title={label} aria-label={label} aria-expanded={open} onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen(!open)}>
+      <button type="button" className="tb-btn wide" title={label} aria-label={label} aria-expanded={open} onMouseDown={(e) => e.preventDefault()} onClick={toggle}>
         {button}
         <ChevronDown size={12} />
       </button>
-      {open && <div className="tb-pop" role="menu">{children(() => setOpen(false))}</div>}
+      {open && <div className="tb-pop" role="menu" style={at}>{children(() => setOpen(false))}</div>}
     </span>
   )
 }
@@ -82,13 +96,15 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
 
   return (
     <div className="note-toolbar" role="toolbar" aria-label="Formatting">
-      <Btn label="Undo (Ctrl+Z)" disabled={!s.canUndo} onClick={() => c().undo().run()}>
-        <Undo2 size={15} />
-      </Btn>
-      <Btn label="Redo (Ctrl+Y)" disabled={!s.canRedo} onClick={() => c().redo().run()}>
-        <Redo2 size={15} />
-      </Btn>
-      <span className="tb-sep" />
+      <span className="tb-undo">
+        <Btn label="Undo (Ctrl+Z)" disabled={!s.canUndo} onClick={() => c().undo().run()}>
+          <Undo2 size={15} />
+        </Btn>
+        <Btn label="Redo (Ctrl+Y)" disabled={!s.canRedo} onClick={() => c().redo().run()}>
+          <Redo2 size={15} />
+        </Btn>
+        <span className="tb-sep" />
+      </span>
       <select
         className="tb-select"
         aria-label="Text style"
@@ -183,65 +199,72 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
           </>
         )}
       </Menu>
-      <Btn label="Question toggle" onClick={() => c().setDetails().run()}>
-        <ListCollapse size={15} />
-      </Btn>
-      <Btn label="Quote" active={s.quote} onClick={() => c().toggleBlockquote().run()}>
-        <Quote size={15} />
-      </Btn>
-      <Btn label="Code block" active={s.codeBlock} onClick={() => c().toggleCodeBlock().run()}>
-        <CodeSquare size={15} />
-      </Btn>
-      <Btn label="Divider" onClick={() => c().setHorizontalRule().run()}>
-        <Minus size={15} />
-      </Btn>
-      {s.table ? (
-        <Menu label="Table" button={<Table size={15} />}>
-          {(close) => (
-            <>
-              {(
-                [
-                  ['Add row below', () => c().addRowAfter().run(), <Rows2 size={14} key="r" />],
-                  ['Add column right', () => c().addColumnAfter().run(), <Columns2 size={14} key="c" />],
-                  ['Delete row', () => c().deleteRow().run(), <Rows2 size={14} key="dr" />],
-                  ['Delete column', () => c().deleteColumn().run(), <Columns2 size={14} key="dc" />],
-                  ['Toggle header row', () => c().toggleHeaderRow().run(), <Table size={14} key="h" />],
-                  ['Delete table', () => c().deleteTable().run(), <Trash2 size={14} key="dt" />]
-                ] as [string, () => void, ReactNode][]
-              ).map(([label, run, icon]) => (
-                <button
-                  key={label}
-                  className="tb-item"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    run()
-                    close()
-                  }}
-                >
-                  <span>{icon}</span> {label}
-                </button>
-              ))}
-            </>
-          )}
-        </Menu>
-      ) : (
-        <Btn label="Table" onClick={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
-          <Table size={15} />
-        </Btn>
+      {s.table && (
+      <Menu label="Table" button={<Table size={15} />}>
+        {(close) => (
+          <>
+            {(
+              [
+                ['Add row below', () => c().addRowAfter().run(), <Rows2 size={14} key="r" />],
+                ['Add column right', () => c().addColumnAfter().run(), <Columns2 size={14} key="c" />],
+                ['Delete row', () => c().deleteRow().run(), <Rows2 size={14} key="dr" />],
+                ['Delete column', () => c().deleteColumn().run(), <Columns2 size={14} key="dc" />],
+                ['Toggle header row', () => c().toggleHeaderRow().run(), <Table size={14} key="h" />],
+                ['Delete table', () => c().deleteTable().run(), <Trash2 size={14} key="dt" />]
+              ] as [string, () => void, ReactNode][]
+            ).map(([label, run, icon]) => (
+              <button
+                key={label}
+                className="tb-item"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  run()
+                  close()
+                }}
+              >
+                <span>{icon}</span> {label}
+              </button>
+            ))}
+          </>
+        )}
+      </Menu>
       )}
-      <Btn label="Drawing (handwrite or sketch)" onClick={() => c().insertDrawing().run()}>
-        <PenLine size={15} />
-      </Btn>
-      {canAttach(editor) && (
-        <Btn label="Attach a file or image (or drop it in)" onClick={() => void attachFiles(editor!)}>
-          <Paperclip size={15} />
-        </Btn>
-      )}
-      {canAttach(editor) && (
-        <Btn label="Record a voice note" onClick={() => void startRecording(editor!)}>
-          <Mic size={15} />
-        </Btn>
-      )}
+      <Menu label="Insert a block" button={<><Plus size={15} /> <span className="tb-label">Insert</span></>}>
+        {(close) => (
+          <>
+            {(
+              [
+                ['Question toggle', () => c().setDetails().run(), <ListCollapse size={14} key="d" />, false],
+                ['Quote', () => c().toggleBlockquote().run(), <Quote size={14} key="q" />, s.quote],
+                ['Code block', () => c().toggleCodeBlock().run(), <CodeSquare size={14} key="c" />, s.codeBlock],
+                ['Divider', () => c().setHorizontalRule().run(), <Minus size={14} key="m" />, false],
+                ['Table', () => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(), <Table size={14} key="t" />, false],
+                ['Drawing or handwriting', () => c().insertDrawing().run(), <PenLine size={14} key="p" />, false],
+                ...(canAttach(editor)
+                  ? ([
+                      ['File or image', () => void attachFiles(editor), <Paperclip size={14} key="f" />, false],
+                      ['Voice recording', () => void startRecording(editor), <Mic size={14} key="v" />, false]
+                    ] as [string, () => void, ReactNode, boolean][])
+                  : [])
+              ] as [string, () => void, ReactNode, boolean][]
+            ).map(([label, run, icon, on]) => (
+              <button
+                key={label}
+                className="tb-item"
+                role="menuitemcheckbox"
+                aria-checked={on}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  run()
+                  close()
+                }}
+              >
+                <span>{icon}</span> {label}
+              </button>
+            ))}
+          </>
+        )}
+      </Menu>
       {ask && (
         <>
           <span className="tb-sep" />

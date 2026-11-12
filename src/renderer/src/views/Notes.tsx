@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { formatDistanceToNowStrict } from 'date-fns'
 import {
-  Archive, ArchiveRestore, CheckSquare, ChevronLeft, Copy, Download, FileText, FolderInput, HardDrive, NotebookPen, Pin, PinOff, Plus, Search, Square, Trash2, X
+  Archive, ArchiveRestore, ArrowUpDown, CheckSquare, ChevronLeft, Copy, Download, FileText, FolderInput, HardDrive, NotebookPen, Pin, PinOff, Plus, Search, Square, SquarePen, Trash2, X
 } from 'lucide-react'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, onExternalChange, useRecords } from '../data/store'
 import { Empty, useToast } from '../components/ui'
 import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../components/notes/NoteEditor'
 import { useSettings } from '../data/settings'
-import { SubjectSelect } from '../components/editors'
+import { preview, section, shortDate } from '../components/notes/listing'
 import { useNav } from '../nav'
 import { onAndroid, usePhone } from '../lib/phone'
 import { cleanError, importFromDrive, useDrive } from '../data/drive'
@@ -260,138 +259,197 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
 
   const ctxNote = ctx ? notes.find((n) => n.id === ctx.id) : null
 
+  // Notes fall into sections: Pinned, then by date (or one list when sorted A–Z).
+  const hour12 = settings.timeFormat === '12h'
+  const stampOf = (n: Rec<'note'>) => (settings.noteSort === 'created' ? n.createdAt : n.updatedAt)
+  const sections: [string, Rec<'note'>[]][] = []
+  for (const n of shown) {
+    const name = n.data.pinned ? 'Pinned' : settings.noteSort === 'title' ? 'Notes' : section(stampOf(n))
+    const last = sections[sections.length - 1]
+    if (last && last[0] === name) last[1].push(n)
+    else sections.push([name, [n]])
+  }
+  const activeSubjects = subjects.filter((x) => !x.data.archived)
+  const openOnPhone = phone && !!(current || (selecting && picked.size))
+
+  // On the phone an open note is its own page: the dock steps aside for the formatting bar.
+  useEffect(() => {
+    document.body.classList.toggle('note-open', !!(phone && current && !subjectFilter))
+    return () => document.body.classList.remove('note-open')
+  }, [phone, current, subjectFilter])
+
   return (
-    <div className={`${subjectFilter ? '' : 'view'} notes-page ${focus ? 'focus' : ''}`} style={subjectFilter ? undefined : { maxWidth: focus ? 'none' : 1400, margin: '0 auto' }}>
-      {!subjectFilter && !focus && (
-        <div className="topbar">
-          <div>
-            <h1>Notes</h1>
-            <p className="dim">
-              {plural(notes.filter((n) => !n.data.archived).length, 'note')}
-              {archivedCount ? ` · ${archivedCount} archived` : ''}
-            </p>
-          </div>
-          <div className="row">
-            <button className={`btn ${selecting ? 'sec' : 'ghost'}`} onClick={() => (selecting ? clearPick() : setSelecting(true))} title="Select several notes (or Ctrl-click them)">
-              <CheckSquare size={15} /> {selecting ? 'Cancel' : 'Select'}
-            </button>
-            {drive?.connected && drive.canPick && !onAndroid() && (
-              <button className="btn ghost" onClick={fromDrive} title={importing ? 'Closed the picker? Click to open it again.' : 'Open Google Docs and files from your Drive'}>
-                <HardDrive size={15} /> {importing ? 'Picking in browser…' : 'From Drive'}
-              </button>
-            )}
-            <button className="btn" onClick={create} title="New note (Ctrl+N)">
-              <Plus size={16} /> New note
-            </button>
-          </div>
-        </div>
-      )}
-      <div className={`notes-layout ${phone && (current || selecting) ? 'phone-open' : ''}`} style={subjectFilter && !phone ? { height: 680 } : undefined}>
+    <div className={`notes-page ${subjectFilter ? 'notes-embed' : 'view notes-full'} ${focus ? 'focus' : ''}`}>
+      <div className={`notes-layout ${openOnPhone ? 'phone-open' : ''}`}>
         {!focus && (
           <div className="notes-list">
-            <div className="card row notes-search">
-              <Search size={16} className="dim" />
-              <input ref={searchRef} style={{ border: 0 }} placeholder="Search notes and #tags" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search notes" />
-              {q && (
-                <button className="iconbtn plain" style={{ width: 24, height: 24 }} aria-label="Clear search" onClick={() => setQ('')}>
-                  <X size={13} />
+            <div className="np-head">
+              <div className="np-titlebar">
+                <div className="grow" style={{ minWidth: 0 }}>
+                  {subjectFilter ? <h2 className="np-title sm-title">Notes</h2> : <h1 className="np-title">Notes</h1>}
+                  <div className="np-count">
+                    {plural(notes.filter((n) => !n.data.archived && (!subjectFilter || n.data.subjectId === subjectFilter)).length, 'note')}
+                  </div>
+                </div>
+                <button
+                  className={`iconbtn plain ${selecting ? 'on' : ''}`}
+                  aria-pressed={selecting}
+                  onClick={() => (selecting ? clearPick() : setSelecting(true))}
+                  title={selecting ? 'Done selecting' : 'Select several notes (or Ctrl-click them)'}
+                  aria-label={selecting ? 'Done selecting' : 'Select notes'}
+                >
+                  <CheckSquare size={17} />
                 </button>
+                {drive?.connected && drive.canPick && !onAndroid() && (
+                  <button className="iconbtn plain" onClick={fromDrive} title={importing ? 'Closed the picker? Click to open it again.' : 'Open Google Docs and files from your Drive'} aria-label="From Google Drive">
+                    <HardDrive size={17} />
+                  </button>
+                )}
+                <button className="iconbtn np-new" onClick={create} title="New note (Ctrl+N)" aria-label="New note">
+                  <SquarePen size={17} />
+                </button>
+              </div>
+
+              <label className="np-search">
+                <Search size={15} aria-hidden="true" />
+                <input ref={searchRef} placeholder="Search notes and #tags" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search notes" />
+                {q && (
+                  <button className="np-clear" aria-label="Clear search" onClick={() => setQ('')}>
+                    <X size={12} />
+                  </button>
+                )}
+              </label>
+
+              {(!subjectFilter && activeSubjects.length > 0) || allTags.length > 0 ? (
+                <div className="np-chips" aria-label="Filter notes">
+                  {!subjectFilter && activeSubjects.length > 0 && (
+                    <>
+                      <button className="np-chip" aria-pressed={!subjectId} onClick={() => setSubjectId(null)}>
+                        All
+                      </button>
+                      {activeSubjects.map((x) => (
+                        <button key={x.id} className="np-chip" aria-pressed={subjectId === x.id} onClick={() => setSubjectId(subjectId === x.id ? null : x.id)}>
+                          <i style={{ background: x.data.color }} /> {x.data.name}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {allTags.map((t) => (
+                    <button key={t} className="np-chip tag-chip" aria-pressed={tag === t} onClick={() => setTag(tag === t ? null : t)}>
+                      #{t}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="np-tools">
+                <div className="seg np-seg" role="tablist" aria-label="Which notes">
+                  <button role="tab" aria-selected={view === 'notes'} onClick={() => switchView('notes')}>
+                    Notes
+                  </button>
+                  <button role="tab" aria-selected={view === 'archived'} onClick={() => switchView('archived')}>
+                    Archived{archivedCount ? ` ${archivedCount}` : ''}
+                  </button>
+                </div>
+                <span className="grow" />
+                <label className="np-sort">
+                  <ArrowUpDown size={13} aria-hidden="true" />
+                  <select aria-label="Sort notes" value={settings.noteSort} onChange={(e) => setSetting({ noteSort: e.target.value as typeof settings.noteSort })}>
+                    <option value="edited">Last edited</option>
+                    <option value="created">Newest</option>
+                    <option value="title">A–Z</option>
+                  </select>
+                </label>
+              </div>
+
+              {selecting && (
+                <div className="bulk-bar">
+                  <button className="linkbtn xs" onClick={() => setPicked(picked.size === shown.length ? new Set() : new Set(shown.map((n) => n.id)))}>
+                    {picked.size === shown.length && shown.length ? 'Select none' : 'Select all'}
+                  </button>
+                  <span className="xs dim grow">{picked.size ? `${picked.size} selected` : phone ? 'Tap notes to pick them' : 'Pick notes, or Shift-click a range'}</span>
+                </div>
               )}
             </div>
-            <div className="notes-filters">
-              <div className="seg" role="tablist" aria-label="Which notes">
-                <button role="tab" aria-selected={view === 'notes'} onClick={() => switchView('notes')}>
-                  Notes
-                </button>
-                <button role="tab" aria-selected={view === 'archived'} onClick={() => switchView('archived')}>
-                  Archived{archivedCount ? ` · ${archivedCount}` : ''}
-                </button>
-              </div>
-              <select className="notes-sort" aria-label="Sort notes" value={settings.noteSort} onChange={(e) => setSetting({ noteSort: e.target.value as typeof settings.noteSort })}>
-                <option value="edited">Last edited</option>
-                <option value="created">Newest</option>
-                <option value="title">A–Z</option>
-              </select>
-            </div>
-            {subjectFilter ? (
-              <button className="btn sec" style={{ width: '100%', marginBottom: 8 }} onClick={create}>
-                <Plus size={15} /> New note
-              </button>
-            ) : (
-              <div style={{ marginBottom: 8 }}>
-                <SubjectSelect value={subjectId} onChange={setSubjectId} noneLabel="All subjects" />
-              </div>
-            )}
-            {allTags.length > 0 && (
-              <div className="tag-filter" aria-label="Filter by tag">
-                {allTags.map((t) => (
-                  <button key={t} className="tag" aria-pressed={tag === t} onClick={() => setTag(tag === t ? null : t)}>
-                    #{t}
-                  </button>
-                ))}
-              </div>
-            )}
 
-            {selecting && (
-              <div className="bulk-bar">
-                <button className="linkbtn xs" onClick={() => setPicked(picked.size === shown.length ? new Set() : new Set(shown.map((n) => n.id)))}>
-                  {picked.size === shown.length && shown.length ? 'Select none' : 'Select all'}
-                </button>
-                <span className="xs dim grow">{picked.size ? `${picked.size} selected` : 'Pick notes, or Shift-click a range'}</span>
-              </div>
-            )}
-
-            {shown.length > 0 && (
-              <div className="ig">
-                {shown.map((n) => {
-                  const s = subjects.find((x) => x.id === n.data.subjectId)
-                  const isPicked = picked.has(n.id)
-                  return (
-                    <button
-                      key={n.id}
-                      className={`ig-row tap note-row ${isPicked ? 'picked' : ''}`}
-                      aria-current={!selecting && n.id === selected}
-                      aria-pressed={selecting ? isPicked : undefined}
-                      onClick={(e) => onRow(e, n.id)}
-                      onContextMenu={(e) => {
-                        e.preventDefault()
-                        setCtx({ x: e.clientX, y: e.clientY, id: n.id })
-                      }}
-                    >
-                      {selecting && <span className="pick">{isPicked ? <CheckSquare size={17} /> : <Square size={17} />}</span>}
-                      <span className="note-row-icon" style={!n.data.icon && s ? { color: s.data.color } : undefined}>
-                        {n.data.icon ?? <FileText size={17} />}
-                      </span>
-                      <span className="grow" style={{ minWidth: 0 }}>
-                        <span className="note-row-title trunc">
-                          {n.data.pinned && <Pin size={11} className="tert" style={{ marginRight: 4 }} />}
-                          {n.data.title || 'Untitled'}
-                        </span>
-                        <span className="ig-sub note-row-excerpt">{n.data.excerpt || 'Empty note'}</span>
-                        <span className="xs tert row" style={{ gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
-                          {s && <span style={{ width: 7, height: 7, borderRadius: 9, background: s.data.color }} />}
-                          {s ? `${s.data.name} · ` : ''}
-                          {formatDistanceToNowStrict(settings.noteSort === 'created' ? n.createdAt : n.updatedAt, { addSuffix: true })}
-                          {(n.data.tags ?? []).slice(0, 3).map((t) => (
-                            <span key={t} className="mini-tag">#{t}</span>
-                          ))}
-                        </span>
-                      </span>
+            <div className="np-scroll">
+              {sections.map(([name, list]) => (
+                <section key={name} className="np-section">
+                  {!(sections.length === 1 && name === 'Notes') && <h3 className="np-section-title">{name}</h3>}
+                  <div className="np-group">
+                    {list.map((n) => {
+                      const s = subjects.find((x) => x.id === n.data.subjectId)
+                      const isPicked = picked.has(n.id)
+                      const text = preview(n.data.title, n.data.excerpt)
+                      return (
+                        <button
+                          key={n.id}
+                          className={`np-row ${isPicked ? 'picked' : ''}`}
+                          aria-current={!selecting && n.id === selected}
+                          aria-pressed={selecting ? isPicked : undefined}
+                          onClick={(e) => onRow(e, n.id)}
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            setCtx({ x: e.clientX, y: e.clientY, id: n.id })
+                          }}
+                        >
+                          {selecting && <span className="pick">{isPicked ? <CheckSquare size={17} /> : <Square size={17} />}</span>}
+                          <span className="np-row-body">
+                            <span className="np-row-title">
+                              {n.data.icon && <span className="np-row-emoji">{n.data.icon}</span>}
+                              <span className="trunc">{n.data.title || 'Untitled'}</span>
+                              {n.data.pinned && name !== 'Pinned' && <Pin size={11} className="tert" />}
+                            </span>
+                            <span className="np-row-text">
+                              <span className="np-row-date">{shortDate(stampOf(n), hour12)}</span>
+                              {text || <span className="tert">No additional text</span>}
+                            </span>
+                            {(s || (n.data.tags ?? []).length > 0) && (
+                              <span className="np-row-meta">
+                                {s && !subjectFilter && (
+                                  <span className="np-row-subject">
+                                    <i style={{ background: s.data.color }} />
+                                    {s.data.name}
+                                  </span>
+                                )}
+                                {(n.data.tags ?? []).slice(0, 3).map((t) => (
+                                  <span key={t} className="mini-tag">
+                                    #{t}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+              ))}
+              {loaded && !shown.length && (
+                <div className="np-empty">
+                  <NotebookPen size={22} />
+                  <p>{query || tag || subjectId ? 'No notes match.' : view === 'archived' ? 'No archived notes. Archive a note from its ••• menu to tidy your list without deleting it.' : 'No notes yet.'}</p>
+                  {view === 'notes' && !query && !tag && (
+                    <button className="btn sec sm" onClick={create}>
+                      <Plus size={14} /> New note
                     </button>
-                  )
-                })}
-              </div>
-            )}
-            {loaded && !shown.length && (
-              <div className="sm dim" style={{ padding: 12 }}>
-                {query || tag ? 'No notes match.' : view === 'archived' ? 'No archived notes. Archive a note from its … menu to tidy your list without deleting it.' : 'No notes yet.'}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {selecting && picked.size > 0 ? (
-          <div className="card bulk-panel">
+          <div className="note-pane bulk-panel">
+            {phone && (
+              <div className="np-appbar">
+                <button className="phone-back" onClick={clearPick}>
+                  <ChevronLeft size={20} /> Notes
+                </button>
+              </div>
+            )}
             <div className="bulk-count">{plural(picked.size, 'note')} selected</div>
             <div className="bulk-actions">
               <button className="btn sec" onClick={bulk.pin}>
@@ -407,13 +465,11 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                     <button className="menu-row" onClick={() => bulk.move(null)}>
                       No subject
                     </button>
-                    {subjects
-                      .filter((x) => !x.data.archived)
-                      .map((x) => (
-                        <button key={x.id} className="menu-row" onClick={() => bulk.move(x.id)}>
-                          <span style={{ width: 9, height: 9, borderRadius: 9, background: x.data.color }} /> {x.data.name}
-                        </button>
-                      ))}
+                    {activeSubjects.map((x) => (
+                      <button key={x.id} className="menu-row" onClick={() => bulk.move(x.id)}>
+                        <span style={{ width: 9, height: 9, borderRadius: 9, background: x.data.color }} /> {x.data.name}
+                      </button>
+                    ))}
                   </div>
                 )}
               </span>
@@ -427,28 +483,32 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                 <Trash2 size={15} /> Delete
               </button>
             </div>
-            <p className="xs tert" style={{ marginTop: 14 }}>
-              Ctrl+A selects all · Delete removes the selection · Esc cancels. Every action can be undone.
-            </p>
+            {!phone && (
+              <p className="xs tert" style={{ marginTop: 14 }}>
+                Ctrl+A selects all · Delete removes the selection · Esc cancels. Every action can be undone.
+              </p>
+            )}
           </div>
         ) : current ? (
-          <>
-          {phone && (
-            <button className="phone-back" onClick={() => setSelected(undefined)}>
-              <ChevronLeft size={18} /> Notes
-            </button>
-          )}
-          <NoteEditor
-            key={`${current.id}:${remoteBump}`}
-            note={current}
-            onDeleted={() => setSelected(undefined)}
-            onOpen={(id) => setSelected(id)}
-            focusMode={focus}
-            onToggleFocus={subjectFilter || phone ? undefined : () => setFocus(!focus)}
-          />
-          </>
+          <div className="note-pane">
+            {phone && (
+              <div className="np-appbar">
+                <button className="phone-back" onClick={() => setSelected(undefined)}>
+                  <ChevronLeft size={20} /> Notes
+                </button>
+              </div>
+            )}
+            <NoteEditor
+              key={`${current.id}:${remoteBump}`}
+              note={current}
+              onDeleted={() => setSelected(undefined)}
+              onOpen={(id) => setSelected(id)}
+              focusMode={focus}
+              onToggleFocus={subjectFilter || phone ? undefined : () => setFocus(!focus)}
+            />
+          </div>
         ) : (
-          <div className="card note-empty">
+          <div className="note-pane note-empty">
             <Empty
               icon={NotebookPen}
               title={view === 'archived' ? 'Pick an archived note' : 'Pick a note or start one'}

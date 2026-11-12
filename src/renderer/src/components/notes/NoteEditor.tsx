@@ -1,4 +1,5 @@
 import { onAndroid } from '../../lib/phone'
+import { preview } from './listing'
 import { useContext, useEffect, useRef, useState } from 'react'
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
@@ -450,7 +451,7 @@ export function NoteEditor({
     texts.current[field] = text
     const all = [texts.current.content, texts.current.cues, texts.current.summary].filter(Boolean).join(' · ')
     setWords(wordCount(all.replace(/·/g, ' ')))
-    update({ [field]: json, excerpt: all.replace(/\s+/g, ' ').slice(0, 240) })
+    update({ [field]: json, excerpt: preview(latest.current.title, all).slice(0, 240) })
   }
   // The main area is the toolbar's target until you click into another one.
   const mainActive = (e: Editor) => {

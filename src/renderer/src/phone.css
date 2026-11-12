@@ -94,13 +94,61 @@
   html .w-row { flex-direction: column; }
   html .w-slot { flex: none !important; width: 100% !important; max-width: none !important; }
 
-  /* Notes: the list, or the open note */
+  /* Notes: the list, or the open note as its own page */
+  html .notes-layout { display: block; height: auto; grid-template-columns: none; }
   html .notes-layout > * { width: 100% !important; max-width: none !important; min-width: 0; }
-  html .notes-layout { display: block; height: auto; }
-  html .notes-layout.phone-open > :first-child { display: none; }
-  html .notes-layout:not(.phone-open) > :last-child { display: none; }
-  html .note-toolbar { overflow-x: auto; flex-wrap: nowrap; position: sticky; top: 0; z-index: 5; }
-  html .note-page, html .note-main { padding-left: 0; padding-right: 0; }
+  html .notes-layout.phone-open > .notes-list { display: none; }
+  html .notes-layout:not(.phone-open) > .note-pane { display: none; }
+  html .notes-list { border-right: 0; }
+  html .notes-embed .notes-layout { height: auto; box-shadow: none; background: transparent; border-radius: 0; overflow: visible; }
+  html .phone-shell main.main.main-notes { padding: calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(var(--tabbar) + 16px) calc(12px + env(safe-area-inset-left)); overflow-y: auto; }
+  html .np-head { padding: 6px 4px 8px; gap: 12px; }
+  html .np-title { font-size: 32px; }
+  html .np-titlebar .np-new { display: none; } /* the compose button makes notes */
+  html .np-titlebar .iconbtn { width: 40px; height: 40px; }
+  html .np-search { height: 42px; border-radius: 14px; }
+  html .np-chips { margin: 0 -16px; padding: 0 16px; }
+  html .np-chip { height: 32px; padding: 0 13px; font-size: 13px; }
+  html .np-scroll { overflow: visible; padding: 0; }
+  html .np-section-title { margin: 14px 14px 6px; }
+  html .np-group { background: var(--panel); border-radius: 18px; overflow: hidden; }
+  html .np-row { border-radius: 0; padding: 13px 16px; }
+  html .np-row + .np-row::before { left: 16px; right: 16px; }
+  html .np-row[aria-current='true'] { background: transparent; }
+  html .np-row:active { background: var(--fill-tertiary); }
+  html .np-row-title { font-size: 15.5px; }
+  html .np-row-text { font-size: 13.5px; }
+
+  /* an open note fills the screen; the dock steps aside and the formatting bar sits at the bottom */
+  html body.note-open .phone-dock, html body.note-open .phone-timer { display: none; }
+  html body.note-open .phone-shell main.main.main-notes { padding: 0; overflow: hidden; }
+  html body.note-open .notes-page, html body.note-open .notes-layout { height: 100dvh; }
+  html .notes-full .note-pane { height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); background: var(--panel); }
+  html .np-appbar { display: flex; align-items: center; min-height: 48px; padding: 0 8px; flex-shrink: 0; }
+  html .np-appbar .phone-back { padding: 8px 6px; margin: 0; font-size: 16px; }
+  html .note-page { display: flex; flex-direction: column; }
+  html .note-page .note-scroll { order: 1; }
+  html .notes-layout .note-toolbar {
+    order: 2; position: static; border-bottom: 0; border-top: 1px solid var(--line); justify-content: flex-start;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: var(--panel); min-height: 52px;
+  }
+  html .note-toolbar .tb-btn { height: 38px; min-width: 38px; }
+  html .notes-layout .note-toolbar .tb-undo { display: contents; }
+  html .note-toolbar .tb-menu { position: static; }
+  html .note-toolbar .tb-pop { max-height: 50dvh; overflow-y: auto; }
+  html .notes-layout .note-sheet { padding: 8px 20px 60px; }
+  html .notes-layout .note-sheet.has-cover { padding-top: 8px; }
+  html .note-cover { height: 96px; }
+  html .has-cover .note-icon { margin-top: -40px; }
+  html .note-icon { font-size: 44px; }
+  html .note-title { font-size: 30px; }
+  html .note-meta { margin: 8px 0 18px; }
+  html .note-actions { min-height: 30px; margin-bottom: 2px; }
+  html .note-actions .save-state { display: none; }
+  html .cornell { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'cues' 'notes' 'summary'; }
+  html .cornell-cues { border-right: 0; border-bottom: 1px solid var(--line); }
+  html .note-pane.bulk-panel { padding: 20px; position: relative; }
+  html .note-pane.bulk-panel .np-appbar { position: absolute; top: env(safe-area-inset-top); left: 0; }
 
   /* Settings: the list of sections, or one section */
   html .settings.phone-list .set-main, html .settings.phone-page .set-nav { display: none; }
