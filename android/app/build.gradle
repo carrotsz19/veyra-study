@@ -4,7 +4,7 @@ apply plugin: 'com.android.application'
 // Veyra Study Dev (VEYRA_CHANNEL=dev, see tools/release-android.mjs --dev) is a separate app: its own id, name and version.
 def devBuild = System.getenv('VEYRA_CHANNEL') == 'dev'
 def appVersion = System.getenv('VEYRA_VERSION') ?: new groovy.json.JsonSlurper().parse(file('../../package.json')).version
-def appVersionCode = appVersion.tokenize('.').collect { it.replaceAll('[^0-9]', '') as int }.with { it[0] * 10000 + it[1] * 100 + it[2] }
+def appVersionCode = appVersion.tokenize('.-').take(3).collect { it.replaceAll('[^0-9]', '') as int }.with { it[0] * 10000 + it[1] * 100 + it[2] }
 
 android {
     namespace = "app.veyra.study"
