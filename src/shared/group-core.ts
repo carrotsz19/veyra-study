@@ -223,6 +223,10 @@ export class GroupCore {
         this.poll()
       } catch (e) {
         this.setStatus({ state: 'offline', error: e instanceof GroupError ? e.message : 'Couldn’t connect to the group server.' })
+        // Try again by itself in a little while (the server may be restarting).
+        setTimeout(() => {
+          if (!this.disposed && this.status.state === 'offline') void this.connect()
+        }, 20_000)
       }
       return this.status
     })().finally(() => (this.connecting = null))
@@ -312,6 +316,12 @@ export class GroupCore {
     let wait = 2000
     while (this.polling && !this.disposed) {
       try {
+        // Back after a dropout (the server restarting, a new address): a quick check first, so the
+        // banner goes as soon as it answers (the long poll below can wait a while before it returns).
+        if (this.status.state !== 'online') {
+          await this.call('GET', '/me')
+          this.setStatus({ state: 'online', me: this.saved.me ?? this.status.me, error: '' })
+        }
         const r = await this.call('GET', `/poll?since=${this.lastSeq}`)
         if (r.seq > this.lastSeq) {
           this.onRemoteChange?.()

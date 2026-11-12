@@ -613,17 +613,23 @@ function GroupChat({ group, items, me }: { group: Group; items: ItemsApi; me: Gr
     if (stuck.current) end.current?.scrollIntoView({ block: 'end' })
   }, [last])
 
+  // Blocks a second send at once (a held or quickly repeated Enter used to post the same message several times).
+  const inFlight = useRef(false)
   const send = async () => {
     const t = text.trim()
-    if (!t || sending) return
+    if (!t || inFlight.current) return
+    inFlight.current = true
     setSending(true)
+    // Clear the box straight away, so a repeat Enter has nothing to send; put it back if sending fails.
+    setText('')
     try {
       items.apply(await addItem(group.id, 'message', { text: t }))
-      setText('')
       stuck.current = true
     } catch (e) {
+      setText((cur) => cur || t)
       toast(msg(e))
     } finally {
+      inFlight.current = false
       setSending(false)
     }
   }

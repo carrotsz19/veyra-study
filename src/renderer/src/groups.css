@@ -70,3 +70,17 @@
 .grp-colors { gap: 8px; flex-wrap: wrap; }
 .grp-preview { gap: 12px; margin-bottom: 8px; }
 .grp-banner { margin-bottom: 14px; padding: 10px 14px; }
+
+/* Computer: Group work fits the window. The page never scrolls; the group list, and the tasks,
+   notes, deadlines or members of the open group, scroll in their own panels, and the chat fills
+   the height down to its message box. */
+.shell:not(.phone-shell) main.main-groups { overflow: hidden; display: flex; flex-direction: column; padding-bottom: 20px; }
+.shell:not(.phone-shell) main.main-groups > .grp { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; }
+.shell:not(.phone-shell) .grp > .topbar, .shell:not(.phone-shell) .grp > .card { flex-shrink: 0; }
+.shell:not(.phone-shell) .grp-layout { flex: 1; min-height: 0; align-items: stretch; grid-template-rows: minmax(0, 1fr); }
+.shell:not(.phone-shell) .grp-list { position: static; align-self: start; max-height: 100%; overflow-y: auto; }
+.shell:not(.phone-shell) .grp-panel { display: flex; flex-direction: column; min-height: 0; }
+.shell:not(.phone-shell) .grp-head { flex-shrink: 0; }
+.shell:not(.phone-shell) .grp-body { flex: 1; min-height: 0; overflow-y: auto; }
+.shell:not(.phone-shell) .grp-panel.tab-chat .grp-body { overflow: hidden; display: flex; flex-direction: column; }
+.shell:not(.phone-shell) .grp-chat { height: auto; flex: 1; min-height: 0; }
