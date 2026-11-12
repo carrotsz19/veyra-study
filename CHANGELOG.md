@@ -4,6 +4,14 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 0.2.5
+
+- **Group work on phones** is a list of your groups; tap one and it opens as its own page. The page stays still: only the tasks, messages or notes scroll, and the message box stays put above the navigation.
+- **Calendar on phones** fills the screen: the month never scrolls.
+- **The navigation bar stays put.** The round button is on every screen now, so the bar no longer changes width as you move around, and it steps aside while you type.
+- **Slim scroll bars on the computer.** A thin bar shows while you scroll and grows thicker when you point at it, so it's easy to grab.
+- **Android:** updates now come from inside the app (Settings → Software update), and the app has the Veyra icon.
+
 ## 0.2.4
 
 - **Notes, reworked.** On Windows, the list and the page sit side by side on one clean surface, with notes grouped by date (Pinned, Today, Yesterday, Previous 7 days…), subject and tag filters, and previews that no longer repeat the title. The toolbar fits on one row, with blocks, files and voice notes under Insert.
