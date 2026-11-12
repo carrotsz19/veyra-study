@@ -32,14 +32,9 @@ if (tags) {
   process.exit(1)
 }
 // The notes are this version's section of CHANGELOG.md (shown in Settings → Software update).
-const changelog = readFileSync('CHANGELOG.md', 'utf8').replace(/
-/g, '
-')
-const section = changelog.split(/^## /m).find((part) => part.split('
-')[0].trim() === version)
-const notes = section?.split('
-').slice(1).join('
-').trim()
+const changelog = readFileSync('CHANGELOG.md', 'utf8').replace(/\r\n/g, '\n')
+const section = changelog.split(/^## /m).find((part) => part.split('\n')[0].trim() === version)
+const notes = section?.split('\n').slice(1).join('\n').trim()
 if (!notes) {
   console.error(`Add a "## ${version}" section to CHANGELOG.md first: it becomes the release notes.`)
   process.exit(1)
