@@ -51,7 +51,14 @@ const appApi = {
   /** Height of Veyra's own title bar (0 where Windows' is used). */
   titleBar: ipcRenderer.sendSync('app:titleBar') as number,
   /** The title bar's menu commands. */
-  win: (cmd: 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'fullscreen' | 'close' | 'quit') => ipcRenderer.invoke('win:cmd', cmd),
+  win: (cmd: 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'fullscreen' | 'close' | 'quit' | 'minimize' | 'maximize') => ipcRenderer.invoke('win:cmd', cmd),
+  /** Whether the window is active and maximised (for the title bar's buttons). */
+  winState: () => ipcRenderer.sendSync('win:state') as { focused: boolean; maximized: boolean },
+  onWinState: (cb: (s: { focused: boolean; maximized: boolean }) => void) => {
+    const h = (_: unknown, s: { focused: boolean; maximized: boolean }) => cb(s)
+    ipcRenderer.on('win:state', h)
+    return () => void ipcRenderer.removeListener('win:state', h)
+  },
   /** The tray or a reminder asks to show a screen. */
   onNav: (cb: (screen: string) => void) => {
     const h = (_: unknown, screen: string) => cb(screen)

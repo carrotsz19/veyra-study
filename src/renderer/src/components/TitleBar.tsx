@@ -31,6 +31,33 @@ const REPO = 'https://github.com/carrotsz19/veyra-study'
 const NATIVE = !!window.veyra.menu?.supported()
 const win = (cmd: Parameters<NonNullable<typeof window.veyra.app.win>>[0]) => void window.veyra.app.win?.(cmd)
 
+/**
+ * Mac-style window buttons on the right, in Windows order: minimise (yellow),
+ * maximise or restore (green), close (red). Their symbols show when you point
+ * at them; they turn grey while another window is active.
+ */
+function WindowDots() {
+  const [st, setSt] = useState(() => window.veyra.app.winState?.() ?? { focused: true, maximized: false })
+  useEffect(() => window.veyra.app.onWinState?.(setSt), [])
+  return (
+    <div className={`wb-dots ${st.focused ? '' : 'inactive'}`} role="group" aria-label="Window">
+      <button className="wb-dot min" aria-label="Minimise" title="Minimise" onClick={() => win('minimize')}>
+        <svg viewBox="0 0 12 12" aria-hidden><path d="M2.5 6h7" /></svg>
+      </button>
+      <button className="wb-dot max" aria-label={st.maximized ? 'Restore' : 'Maximise'} title={st.maximized ? 'Restore' : 'Maximise'} onClick={() => win('maximize')}>
+        {st.maximized ? (
+          <svg viewBox="0 0 12 12" aria-hidden><path d="M6.5 2.5v3h3M5.5 9.5v-3h-3" /></svg>
+        ) : (
+          <svg viewBox="0 0 12 12" aria-hidden><path d="M3 7v2h2M9 5V3H7M3 9l2.6-2.6M9 3 6.4 5.6" /></svg>
+        )}
+      </button>
+      <button className="wb-dot close" aria-label="Close" title="Close" onClick={() => win('close')}>
+        <svg viewBox="0 0 12 12" aria-hidden><path d="M3.3 3.3l5.4 5.4M8.7 3.3 3.3 8.7" /></svg>
+      </button>
+    </div>
+  )
+}
+
 export function TitleBar() {
   const { go } = useNav()
   const { s, set } = useSettings()
@@ -304,6 +331,7 @@ export function TitleBar() {
         ))}
       </nav>
       <div className="wb-drag" />
+      <WindowDots />
       {newTask && <TaskDialog onClose={() => setNewTask(false)} />}
     </div>
   )

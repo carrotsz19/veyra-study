@@ -206,7 +206,8 @@ function createWindow(): void {
     autoHideMenuBar: true,
     ...(ownTitleBar ? (() => {
       barMaterial = windowPrefs().material
-      return { titleBarStyle: 'hidden' as const, titleBarOverlay: overlay() }
+      // Veyra draws its own window buttons (the Mac-style dots in its title bar), so no Windows overlay.
+      return { titleBarStyle: 'hidden' as const }
     })() : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -216,6 +217,9 @@ function createWindow(): void {
   })
 
   mainWin = win
+  // The title bar's window buttons dim when Veyra isn't the active window, and show restore when maximised.
+  const sendState = () => !win.isDestroyed() && win.webContents.send('win:state', { focused: win.isFocused(), maximized: win.isMaximized() })
+  for (const ev of ['focus', 'blur', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'] as const) win.on(ev as 'focus', sendState)
   // Veyra Study Dev: a violet dot on its taskbar icon, so it's never mistaken for the real app.
   if (IS_DEV && process.platform === 'win32') win.once('ready-to-show', () => win.setOverlayIcon(nativeImage.createFromPath(devBadgePath), 'Veyra Study Dev (test build)'))
   // Started with Windows: wait in the tray until asked for.
@@ -429,6 +433,10 @@ app.whenReady().then(async () => {
     refreshTitleBar()
   })
   ipcMain.on('app:titleBar', (e) => (e.returnValue = ownTitleBar ? TITLE_BAR_H : 0))
+  ipcMain.on('win:state', (e) => {
+    const w = BrowserWindow.fromWebContents(e.sender)
+    e.returnValue = { focused: !!w?.isFocused(), maximized: !!w?.isMaximized() }
+  })
   // The title bar's menus: editing, the window, quitting.
   ipcMain.handle('win:cmd', (e, cmd: string) => {
     const wc = e.sender
@@ -441,6 +449,8 @@ app.whenReady().then(async () => {
       case 'paste': return wc.paste()
       case 'selectAll': return wc.selectAll()
       case 'fullscreen': return win?.setFullScreen(!win.isFullScreen())
+      case 'minimize': return win?.minimize()
+      case 'maximize': return win ? (win.isMaximized() ? win.unmaximize() : win.maximize()) : undefined
       case 'close': return win?.close()
       case 'quit': return app.quit()
     }
