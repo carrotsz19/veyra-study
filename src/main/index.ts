@@ -155,21 +155,28 @@ function windowPrefs(): WindowPrefs {
     return {
       material: ['solid', 'acrylic', 'mica'].includes(j.material) ? j.material : 'acrylic',
       theme: ['light', 'dark'].includes(j.theme) ? j.theme : 'system',
-      buttons: j.buttons === 'windows' ? 'windows' : 'dots'
+      buttons: j.buttons === 'dots' ? 'dots' : 'windows'
     }
   } catch {
-    return { material: 'acrylic', theme: 'system', buttons: 'dots' }
+    return { material: 'acrylic', theme: 'system', buttons: 'windows' }
   }
 }
 function savePrefs(p: Partial<WindowPrefs>): void {
+  // Only what was actually chosen is written, so unchosen options keep following the defaults.
+  let saved: Record<string, unknown> = {}
   try {
-    writeFileSync(prefsFile(), JSON.stringify({ ...windowPrefs(), ...p }))
+    saved = JSON.parse(readFileSync(prefsFile(), 'utf8'))
+  } catch {
+    /* none yet */
+  }
+  try {
+    writeFileSync(prefsFile(), JSON.stringify({ ...saved, ...p }))
   } catch {
     /* not fatal */
   }
 }
 /** The window buttons this window was made with (Windows only lets its own be added when the window is created). */
-let windowButtons: 'dots' | 'windows' = 'dots'
+let windowButtons: 'dots' | 'windows' = 'windows'
 /*
  * Veyra draws its own title bar (the app's name and menus); Windows keeps
  * drawing just the minimise / maximise / close buttons (so Snap layouts still

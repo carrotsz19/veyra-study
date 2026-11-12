@@ -1377,7 +1377,7 @@ function SoftwareUpdate() {
 
 /** Windows: Mac-style dots drawn by Veyra, or Windows' own buttons. Saved per computer; applies on the next start. */
 function WindowButtonsRow(): ReactNode {
-  const running = window.veyra.app.windowButtons ?? 'dots'
+  const running = window.veyra.app.windowButtons ?? 'windows'
   const [choice, setChoice] = useState<'dots' | 'windows'>(() => window.veyra.app.windowButtonsChoice?.() ?? running)
   return (
     <Row
@@ -1398,8 +1398,8 @@ function WindowButtonsRow(): ReactNode {
             void window.veyra.app.setWindowButtons?.(b)
           }}
           options={[
-            ['dots', 'Mac-style'],
-            ['windows', 'Windows']
+            ['windows', 'Windows'],
+            ['dots', 'Mac-style']
           ]}
         />
         {choice !== running && (
