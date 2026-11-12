@@ -62,14 +62,19 @@ export default {
     if (url.pathname === '/server') {
       if (request.method === 'GET') {
         const v = await env.RELAY.get('server', 'json')
-        return v ? json(v) : json({ error: 'The group server hasn’t started yet.' }, 404)
+        if (!v) return json({ error: 'The group server hasn’t started yet.' }, 404)
+        // An empty address: the server is up but its tunnel is down (it publishes a new one once it's back).
+        if (!v.url) return json({ error: 'The group server is offline right now. It reconnects by itself; try again in a few minutes.' }, 503)
+        return json(v)
       }
       if (request.method === 'PUT') {
         const auth = request.headers.get('Authorization') || ''
         if (!env.RELAY_SECRET || !same(auth, `Bearer ${env.RELAY_SECRET}`)) return json({ error: 'Not allowed.' }, 403)
         const body = await request.json().catch(() => null)
         const addr = body && typeof body.url === 'string' ? body.url.trim() : ''
-        if (!/^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(addr)) return json({ error: 'That isn’t an https address.' }, 400)
+        // '' means "offline for now"; Cloudflare's own api address is never a tunnel.
+        if (addr && !/^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(addr)) return json({ error: 'That isn’t an https address.' }, 400)
+        if (/^https:\/\/api\.trycloudflare\.com/i.test(addr)) return json({ error: 'That’s Cloudflare’s address, not a tunnel.' }, 400)
         const value = { url: addr, updatedAt: Date.now() }
         await env.RELAY.put('server', JSON.stringify(value))
         return json(value)

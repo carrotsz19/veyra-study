@@ -4,6 +4,13 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 0.2.4
+
+- **Notes, reworked.** On Windows, the list and the page sit side by side on one clean surface, with notes grouped by date (Pinned, Today, Yesterday, Previous 7 days…), subject and tag filters, and previews that no longer repeat the title. The toolbar fits on one row, with blocks, files and voice notes under Insert.
+- **Notes on Android** open as their own full-screen page: the navigation steps aside while you write, and the formatting bar sits at the bottom, within reach of your thumb.
+- **Group work and sync recover by themselves** when the group server gets a new address. Before, an app could hold on to an address that no longer worked and keep saying "answered 405".
+- Clearer messages when the group server is offline for a moment.
+
 ## 0.2.3
 
 - **The focus timer survives a restart.** A running or paused block carries on if Veyra is closed, or if Android stops it in the background, and its study time is still saved.

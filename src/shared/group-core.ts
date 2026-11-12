@@ -103,7 +103,9 @@ export class GroupCore {
       throw new GroupError('Can’t reach the internet to find the group server.')
     }
     const j: any = await res.json().catch(() => ({}))
-    if (!res.ok || !j.url) throw new GroupError(j.error || 'The group server isn’t running right now.')
+    // (api.trycloudflare.com is Cloudflare's own address, never the server's: an old server could publish it by mistake.)
+    if (!res.ok || !j.url || /\/\/api\.trycloudflare\.com/i.test(j.url))
+      throw new GroupError(j.error || 'The group server is offline right now. It reconnects by itself; try again in a few minutes.')
     this.saved.serverUrl = j.url
     this.save()
     return j.url
@@ -146,8 +148,14 @@ export class GroupCore {
     const j: any = await res.json().catch(() => ({}))
     if (!res.ok) {
       const { error, ...extra } = j
-      // A tunnel address that no longer works (e.g. Cloudflare's 530 / 1033): look it up again.
-      throw new GroupError(error || (res.status >= 500 ? 'The group server didn’t answer.' : `The group server answered ${res.status}.`), res.status >= 520 ? -1 : res.status, extra)
+      // A tunnel address that no longer works (Cloudflare's 530 / 1033), or an answer that isn't
+      // from the group server at all (it always explains its errors): look the address up again.
+      const notOurs = res.status >= 520 || typeof error !== 'string'
+      throw new GroupError(
+        error || (notOurs ? 'The group server isn’t answering right now. It reconnects by itself; try again in a few minutes.' : `The group server answered ${res.status}.`),
+        notOurs ? -1 : res.status,
+        extra
+      )
     }
     return j
   }

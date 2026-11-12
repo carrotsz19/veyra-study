@@ -32,7 +32,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:f
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION = '1.2.2'
+const VERSION = '1.2.3'
 const HERE = dirname(fileURLToPath(import.meta.url))
 
 /* ---------- settings ---------- */
@@ -688,7 +688,7 @@ async function publish(addr) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RELAY_SECRET}` },
         body: JSON.stringify({ url: addr })
       })
-      if (r.ok) return log('published', addr)
+      if (r.ok) return log(addr ? `published ${addr}` : 'marked offline until the tunnel is back')
       log('relay refused the address:', r.status, await r.text())
       return
     } catch (e) {
@@ -723,12 +723,15 @@ function startTunnel(attempt = 0) {
     const wait = limited ? 5 * 60_000 : Math.min(15 * 60_000, 10_000 * 2 ** attempt)
     limited = false
     log(`tunnel stopped (code ${code}); restarting in ${wait / 1000}s`)
+    // Tell the relay the old address is gone, so apps say "offline" instead of trying it.
+    if (tunnelUrl) publish('')
     tunnelUrl = ''
     if (tunnelChild === child) tunnelChild = null
     setTimeout(() => startTunnel(attempt + 1), wait)
   })
 }
 if (TUNNEL) {
+  publish('') // until the tunnel is up, the old address (if any) is gone
   startTunnel()
   watchTunnel()
 } else log('TUNNEL=off: no public address (local testing).')
