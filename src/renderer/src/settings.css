@@ -72,7 +72,7 @@ main.main.main-settings { padding: 0; overflow: hidden; }
 .set-result-head:hover { background: var(--fill-tertiary); color: var(--ink); }
 .set-result .set-group > h2 { display: none; }
 .set-result .set-group { margin-bottom: 10px; }
-.set-group:not(:has(.set-row, .appearance-preview)) { display: none; }
+.set-group:not(:has(.set-row, .appearance-preview, .upd-card, .upd-notes)) { display: none; }
 .set-result:not(:has(.set-row)) { display: none; }
 .set-result:not(:has(.set-row)) + .set-footer, .set-result .set-footer { display: none; }
 .set-main:has(.set-row) .set-none { display: none; }

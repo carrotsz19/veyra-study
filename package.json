@@ -1,6 +1,6 @@
 {
   "name": "veyra-study",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Veyra Study: tasks, notes, focus timer and group work.",
   "main": "out/main/index.js",
   "private": true,
@@ -61,6 +61,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
+    "@capacitor/share": "^8.0.2",
     "electron-updater": "^6.8.11",
     "ical.js": "^2.2.1"
   },

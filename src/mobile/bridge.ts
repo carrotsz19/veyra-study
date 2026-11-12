@@ -10,6 +10,7 @@ import * as acct from './account'
 import * as online from './online'
 import * as reminders from './reminders'
 import * as phoneFiles from './files'
+import * as exports from './exports'
 
 type Veyra = Window['veyra']
 const unsub = () => () => {}
@@ -143,15 +144,24 @@ const mcp: Veyra['mcp'] = {
 
 const appApi: Veyra['app'] = {
   setZoom: (f) => void (document.documentElement.style.zoom = String(Math.min(1.4, Math.max(0.8, f)))),
-  exportData: onComputer('Export'),
-  importData: onComputer('Import'),
+  exportData: () => exports.exportData(__APP_VERSION__),
+  importData: async () => {
+    const r = await exports.importData()
+    if (r.imported) {
+      online.sync.schedule()
+      reminders.schedule()
+      emitExternal(['subject', 'task', 'note', 'session', 'settings'], [])
+    }
+    return r
+  },
   openDataFolder: async () => {},
-  exportNotes: onComputer('Exporting notes'),
+  exportNotes: (files) => exports.exportNotes(files),
   version: async () => __APP_VERSION__,
   materialSupported: false,
   setMaterial: async () => {},
   setStartup: async () => false,
-  onNav: (cb) => reminders.onNav(cb)
+  onNav: (cb) => reminders.onNav(cb),
+  timerAlarm: (at, title, body) => reminders.timerAlarm(at, title, body)
 }
 
 export async function installBridge(): Promise<void> {

@@ -113,7 +113,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   const notify = useCallback(
     (title: string, body: string) => {
-      if (!s.notify) return
+      // On the phone the alert was scheduled ahead (the app may be asleep in the background).
+      if (!s.notify || window.veyra.app.timerAlarm) return
       try {
         new Notification(title, { body, silent: true })
       } catch {
@@ -138,6 +139,19 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       enter('focus', s.autoStartFocus)
     }
   }, [phase, saveFocus, total, streak, s, notify, enter])
+
+  // Phone: line up the end-of-block notification whenever a block is running.
+  useEffect(() => {
+    const alarm = window.veyra.app.timerAlarm
+    if (!alarm) return
+    const at = running && s.notify ? endsAt.current : null
+    if (at == null) void alarm(null)
+    else if (phase === 'focus') {
+      const done = streak + 1
+      const long = s.longBreakEvery > 0 && done % s.longBreakEvery === 0
+      void alarm(at, 'Focus block done', `Take a ${lengthOf(long ? 'long' : 'break', s) / 60}-minute ${long ? 'long ' : ''}break.`)
+    } else void alarm(at, 'Break over', 'Ready for the next focus block?')
+  }, [running, phase, total, s.notify, s.longBreakEvery, streak]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!running) return

@@ -10,7 +10,7 @@ import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../componen
 import { useSettings } from '../data/settings'
 import { SubjectSelect } from '../components/editors'
 import { useNav } from '../nav'
-import { usePhone } from '../lib/phone'
+import { onAndroid, usePhone } from '../lib/phone'
 import { cleanError, importFromDrive, useDrive } from '../data/drive'
 
 /** A new note, starting from the defaults in Settings → Notes. */
@@ -275,7 +275,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             <button className={`btn ${selecting ? 'sec' : 'ghost'}`} onClick={() => (selecting ? clearPick() : setSelecting(true))} title="Select several notes (or Ctrl-click them)">
               <CheckSquare size={15} /> {selecting ? 'Cancel' : 'Select'}
             </button>
-            {drive?.connected && drive.canPick && (
+            {drive?.connected && drive.canPick && !onAndroid() && (
               <button className="btn ghost" onClick={fromDrive} title={importing ? 'Closed the picker? Click to open it again.' : 'Open Google Docs and files from your Drive'}>
                 <HardDrive size={15} /> {importing ? 'Picking in browser…' : 'From Drive'}
               </button>

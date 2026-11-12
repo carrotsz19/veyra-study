@@ -53,8 +53,8 @@ export function schedule(ms = 1500): void {
 
 async function rebuild(): Promise<void> {
   const s = withDefaults(((await idb.list('settings'))[0]?.data as object) ?? {})
-  const pending = await LocalNotifications.getPending()
-  if (pending.notifications.length) await LocalNotifications.cancel({ notifications: pending.notifications.map((n) => ({ id: n.id })) })
+  const pending = (await LocalNotifications.getPending()).notifications.filter((n) => n.id !== TIMER_ID)
+  if (pending.length) await LocalNotifications.cancel({ notifications: pending.map((n) => ({ id: n.id })) })
   if (!s.remindersOn) return
 
   const tasks = ((await idb.list('task')) as Rec<'task'>[]).filter((t) => !t.data.done)
@@ -104,4 +104,22 @@ async function rebuild(): Promise<void> {
     }
   }
   await LocalNotifications.schedule({ notifications: out.slice(0, 60) })
+}
+
+/* ---------- focus timer ---------- */
+const TIMER_ID = 1_999_999_999 // outside idOf's range, so it never clashes with a reminder
+/**
+ * The focus timer's "block done" alert. The app is paused in the background,
+ * so the alert is scheduled for the moment the block ends (null cancels it).
+ */
+export async function timerAlarm(at: number | null, title = '', body = ''): Promise<void> {
+  try {
+    await LocalNotifications.cancel({ notifications: [{ id: TIMER_ID }] })
+    if (at == null || at <= Date.now() + 1000) return
+    const p = await LocalNotifications.checkPermissions()
+    if (p.display !== 'granted' && (await LocalNotifications.requestPermissions()).display !== 'granted') return
+    await LocalNotifications.schedule({ notifications: [{ id: TIMER_ID, title, body, schedule: { at: new Date(at), allowWhileIdle: true }, extra: { screen: 'timer' } }] })
+  } catch {
+    /* notifications unavailable */
+  }
 }

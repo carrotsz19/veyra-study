@@ -174,7 +174,8 @@ export async function downloadNow(): Promise<UpdateState> {
   try {
     await autoUpdater.downloadUpdate()
     publish({ status: 'ready', progress: 1 })
-  } catch {
+  } catch (e) {
+    if (process.env['VEYRA_UPDATE_URL']) console.error('update download failed:', e)
     publish({ status: 'available', error: 'The download didn’t finish. Try again.' })
   } finally {
     autoUpdater.removeListener('download-progress', onProgress)

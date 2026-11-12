@@ -1,3 +1,4 @@
+import { onAndroid } from '../lib/phone'
 import { useEffect, useRef, useState } from 'react'
 import { ListTodo, Plus, Search, Sparkles, X } from 'lucide-react'
 import { PlanDialog } from '../components/PlanDialog'
@@ -92,9 +93,11 @@ export function Tasks() {
           <p className="dim">{tasks.filter((t) => !t.data.done).length} open</p>
         </div>
         <div className="row">
-          <button className="btn ghost" onClick={() => setPlanning(true)} title="Turn a syllabus into tasks with AI">
-            <Sparkles size={15} /> Plan from syllabus
-          </button>
+          {!onAndroid() && (
+            <button className="btn ghost" onClick={() => setPlanning(true)} title="Turn a syllabus into tasks with AI">
+              <Sparkles size={15} /> Plan from syllabus
+            </button>
+          )}
           <button className="btn" onClick={() => setAdding(true)} title="New task (Ctrl+N)">
             <Plus size={16} /> New task
           </button>

@@ -1,3 +1,4 @@
+import { onAndroid } from '../../lib/phone'
 import { useContext, useEffect, useRef, useState } from 'react'
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
@@ -279,9 +280,11 @@ function PageMenu({
       <button className="menu-row" onClick={onExport}>
         <Download size={15} /> Export as Markdown
       </button>
-      <button className="menu-row" onClick={onSaveDocs}>
-        <FileUp size={15} /> Save to Google Docs
-      </button>
+      {!onAndroid() && (
+        <button className="menu-row" onClick={onSaveDocs}>
+          <FileUp size={15} /> Save to Google Docs
+        </button>
+      )}
       <button className="menu-row" onClick={() => set({ archived: !data.archived })}>
         {data.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />} {data.archived ? 'Unarchive' : 'Archive'}
       </button>
@@ -429,9 +432,19 @@ export function NoteEditor({
       timer.current = null
       window.veyra.saveNow('note', latest.current, note.id)
     }
+    // On the phone the app is put away, not closed: save as soon as it's hidden.
+    const onHide = () => {
+      if (document.visibilityState === 'hidden' && timer.current) flush()
+    }
     window.addEventListener('beforeunload', onUnload)
-    return () => window.removeEventListener('beforeunload', onUnload)
-  }, [note.id])
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', onHide)
+    return () => {
+      window.removeEventListener('beforeunload', onUnload)
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', onHide)
+    }
+  }, [note.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const onArea = (field: 'content' | 'cues' | 'summary') => (json: unknown, text: string) => {
     texts.current[field] = text
@@ -539,7 +552,7 @@ export function NoteEditor({
   const showBar = settings.noteToolbar !== 'slash'
 
   return (
-    <NoteAiCtx.Provider value={askAi}>
+    <NoteAiCtx.Provider value={onAndroid() ? null : askAi}>
     <div
       className={`note-page font-${data.font ?? 'sans'} layout-${template} width-${settings.noteWidth} ${aiJob ? 'with-ai' : ''}`}
       style={{ ['--note-base' as string]: `${settings.noteSize}px` }}

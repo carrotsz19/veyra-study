@@ -781,13 +781,17 @@ function SharedNote({ group, note, items, onDeleted }: { group: Group; note: Gro
     if (timer.current) clearTimeout(timer.current)
     if (!conflict) timer.current = setTimeout(() => void save(), 900)
   }
-  // Leaving the note saves what's pending.
-  useEffect(
-    () => () => {
+  // Leaving the note, or putting the app away, saves what's pending.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden' && timer.current) void save()
+    }
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      document.removeEventListener('visibilitychange', onHide)
       if (timer.current) void save()
-    },
-    [] // eslint-disable-line react-hooks/exhaustive-deps
-  )
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const takeTheirs = () => {
     if (!conflict) return

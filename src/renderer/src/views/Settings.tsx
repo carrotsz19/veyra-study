@@ -859,13 +859,17 @@ function DataPrivacy() {
   }, [])
   return (
     <>
-      <Group title="Your data" footer="Your study data is stored on this computer, in a separate file for each Veyra account.">
-        <Row label="Export everything" hint="Subjects, tasks, notes, study time and settings, as a JSON file." keywords="backup download">
+      <Group title="Your data" footer={onAndroid() ? 'Your study data is stored on this phone, separately for each Veyra account.' : 'Your study data is stored on this computer, in a separate file for each Veyra account.'}>
+        <Row label="Export everything" hint={onAndroid() ? 'Subjects, tasks, notes, study time and settings, as a JSON file you can save to Files or Google Drive.' : 'Subjects, tasks, notes, study time and settings, as a JSON file.'} keywords="backup download">
           <button
             className="btn sec sm"
             onClick={async () => {
-              const r = await window.veyra.app.exportData()
-              if (r.saved) toast(`Exported ${r.count} items`)
+              try {
+                const r = await window.veyra.app.exportData()
+                if (r.saved) toast(`Exported ${r.count} items`)
+              } catch (e) {
+                toast(`Couldn’t export: ${String((e as Error).message ?? e)}`)
+              }
             }}
           >
             Export…
@@ -889,11 +893,13 @@ function DataPrivacy() {
             Import…
           </button>
         </Row>
-        <Row label="Open the data folder" keywords="files location">
-          <button className="btn sec sm" onClick={() => window.veyra.app.openDataFolder()}>
-            Open
-          </button>
-        </Row>
+        {!onAndroid() && (
+          <Row label="Open the data folder" keywords="files location">
+            <button className="btn sec sm" onClick={() => window.veyra.app.openDataFolder()}>
+              Open
+            </button>
+          </Row>
+        )}
       </Group>
       <Group title="Reset">
         <Row label="Reset all settings" hint="Puts every option back to how it started. Your tasks, notes and study time stay." keywords="defaults">
@@ -1145,6 +1151,7 @@ function SoftwareUpdate() {
               {u.status === 'up-to-date' && <Check size={13} />}
               {status}
             </div>
+            {u.error && u.status === 'available' && <div className="upd-status error">{u.error}</div>}
             {u.checkedAt && u.status !== 'checking' && u.status !== 'downloading' && <div className="xs tert">Checked {formatDistanceToNowStrict(u.checkedAt, { addSuffix: true })}</div>}
           </div>
           <div className="upd-actions">

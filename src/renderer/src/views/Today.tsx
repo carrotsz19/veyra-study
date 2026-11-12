@@ -1,3 +1,4 @@
+import { onAndroid } from '../lib/phone'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { addDays, format, formatDistanceToNowStrict, startOfDay, subDays } from 'date-fns'
 import {
@@ -219,7 +220,7 @@ function ScheduleWidget({ d }: { d: TodayData }) {
       ) : (
         <p className="w-empty">
           Nothing scheduled.{' '}
-          <button
+          {!onAndroid() && <button
             className="linkbtn"
             onClick={() => {
               sessionStorage.setItem('veyra.settingsSection', 'connections')
@@ -227,7 +228,7 @@ function ScheduleWidget({ d }: { d: TodayData }) {
             }}
           >
             Connect a calendar
-          </button>
+          </button>}
         </p>
       )}
       {open && <EventDialog event={open} onClose={() => setOpen(null)} />}

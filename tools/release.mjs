@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Publishes a new version of the Windows app:
- *   1. bump "version" in package.json (e.g. 0.2.0 → 0.2.1) and commit
+ *   1. bump "version" in package.json (e.g. 0.2.0 → 0.2.1), add its section
+ *      to CHANGELOG.md, and commit
  *   2. npm run release
  * It builds the app and the installer and publishes them as a GitHub release
  * (tag v<version>) on carrotsz19/veyra-study. Installed copies find it at their
@@ -30,6 +31,19 @@ if (tags) {
   console.error(`v${version} is already released. Bump "version" in package.json first.`)
   process.exit(1)
 }
+// The notes are this version's section of CHANGELOG.md (shown in Settings → Software update).
+const changelog = readFileSync('CHANGELOG.md', 'utf8').replace(/
+/g, '
+')
+const section = changelog.split(/^## /m).find((part) => part.split('
+')[0].trim() === version)
+const notes = section?.split('
+').slice(1).join('
+').trim()
+if (!notes) {
+  console.error(`Add a "## ${version}" section to CHANGELOG.md first: it becomes the release notes.`)
+  process.exit(1)
+}
 let token = process.env.GH_TOKEN
 if (!token) {
   try {
@@ -44,6 +58,8 @@ run('npm', ['run', 'build'])
 // Make the release first: electron-builder uploads its files in parallel, and when the release
 // doesn't exist yet two uploads each try to create it and one fails.
 // Run directly (not through the shell, which would split the notes at every space).
-execFileSync('gh', ['release', 'create', `v${version}`, '--target', git('rev-parse', 'HEAD'), '--title', `Veyra Study ${version}`, '--notes', `Install: download Veyra-Study-Setup-${version}.exe below and run it. Installed copies update themselves.`], { stdio: 'inherit', env: { ...process.env, GH_TOKEN: token } })
+execFileSync('gh', ['release', 'create', `v${version}`, '--target', git('rev-parse', 'HEAD'), '--title', `Veyra Study ${version}`, '--notes', `${notes}
+
+**Install:** download Veyra-Study-Setup-${version}.exe below and run it. Installed copies update themselves.`], { stdio: 'inherit', env: { ...process.env, GH_TOKEN: token } })
 run('npx', ['electron-builder', '--win', '--publish', 'always'], { ...process.env, GH_TOKEN: token })
 console.log(`\nDone: https://github.com/carrotsz19/veyra-study/releases/tag/v${version}`)
