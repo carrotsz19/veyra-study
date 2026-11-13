@@ -137,14 +137,23 @@ export interface RecorderState {
   /** Milliseconds recorded before the current stretch (pauses don't count). */
   banked: number
   level: number
+  /** The microphone in use (its name). */
+  mic: string
+  /** Nothing has been heard for a while (a muted or idle microphone, say Camo with no phone). */
+  quiet: boolean
 }
 let rec: {
   editor: Editor
   pos: number
   media: MediaRecorder
   stream: MediaStream
+  source: MediaStreamAudioSourceNode
+  analyser: AnalyserNode
+  dest: MediaStreamAudioDestinationNode
   chunks: Blob[]
   ctx: AudioContext
+  lastHeard: number
+  everHeard: boolean
   raf: number
   state: RecorderState
   discard: boolean
@@ -157,7 +166,8 @@ export function watchRecorder(f: (s: RecorderState | null) => void): () => void 
   return () => void recSubs.delete(f)
 }
 
-type Report = (msg: string) => void
+/** A message for the person; long ones stay up longer, with an OK button. */
+type Report = (msg: string, long?: boolean) => void
 let report: Report = () => {}
 export const onVoiceMessage = (r: Report) => {
   report = r
@@ -166,38 +176,75 @@ export const onVoiceMessage = (r: Report) => {
   }
 }
 
+/** The computer's microphones (names show once Veyra has used the microphone). */
+export async function microphones(): Promise<{ id: string; label: string }[]> {
+  const list = await navigator.mediaDevices.enumerateDevices().catch(() => [] as MediaDeviceInfo[])
+  return list
+    .filter((d) => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications')
+    .map((d, i) => ({ id: d.deviceId, label: d.label || `Microphone ${i + 1}` }))
+}
+const openMic = (id: string) =>
+  navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, ...(id ? { deviceId: { exact: id } } : {}) } })
+const micName = (s: MediaStream) => s.getAudioTracks()[0]?.label || 'Microphone'
+/** Below this the microphone is sending nothing at all (real rooms are never this quiet). */
+const SILENT = 0.004
+const QUIET_AFTER = 10_000
+
 export async function startRecording(editor: Editor): Promise<void> {
   if (rec) return report('A recording is already going.')
+  const chosen = (await voiceSettings()).voiceMic
   let stream: MediaStream
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+    stream = await openMic(chosen)
   } catch {
-    return report('Veyra can’t use your microphone. Check Windows Settings → Privacy → Microphone.')
+    try {
+      if (!chosen) throw new Error('no microphone')
+      stream = await openMic('')
+      report('The microphone you picked isn’t connected, so this uses the default one.')
+    } catch {
+      return report('Veyra can’t use your microphone. Check Windows Settings → Privacy → Microphone.')
+    }
   }
-  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
-  const media = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 48000 })
+  // The microphone goes through the audio graph, so it can be switched mid-recording.
   const ctx = new AudioContext()
+  void ctx.resume()
   const analyser = ctx.createAnalyser()
   analyser.fftSize = 512
-  ctx.createMediaStreamSource(stream).connect(analyser)
+  const dest = ctx.createMediaStreamDestination()
+  const source = ctx.createMediaStreamSource(stream)
+  source.connect(analyser)
+  source.connect(dest)
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
+  const media = new MediaRecorder(dest.stream, { mimeType: mime, audioBitsPerSecond: 48000 })
   const buf = new Uint8Array(analyser.fftSize)
   const r = {
     editor,
     pos: editor.state.selection.to,
     media,
     stream,
+    source,
+    analyser,
+    dest,
     chunks: [] as Blob[],
     ctx,
+    lastHeard: Date.now(),
+    everHeard: false,
     raf: 0,
-    state: { phase: 'recording', started: Date.now(), banked: 0, level: 0 } as RecorderState,
+    state: { phase: 'recording', started: Date.now(), banked: 0, level: 0, mic: micName(stream), quiet: false } as RecorderState,
     discard: false
   }
   rec = r
   const meter = () => {
-    analyser.getByteTimeDomainData(buf)
+    r.analyser.getByteTimeDomainData(buf)
     let peak = 0
     for (const v of buf) peak = Math.max(peak, Math.abs(v - 128) / 128)
-    r.state.level = r.state.phase === 'recording' ? peak : 0
+    const recording = r.state.phase === 'recording'
+    if (peak > SILENT) {
+      r.lastHeard = Date.now()
+      if (recording) r.everHeard = true
+    }
+    r.state.level = recording ? peak : 0
+    r.state.quiet = recording && Date.now() - r.lastHeard > QUIET_AFTER
     emitRec()
     r.raf = requestAnimationFrame(meter)
   }
@@ -207,6 +254,29 @@ export async function startRecording(editor: Editor): Promise<void> {
   media.start(1000)
 }
 
+/** Changes the microphone, mid-recording too (the recording carries on with the new one). */
+export async function switchMic(id: string): Promise<void> {
+  const r = rec
+  if (!r || r.state.phase === 'saving') return
+  let stream: MediaStream
+  try {
+    stream = await openMic(id)
+  } catch {
+    return report('That microphone can’t be used right now.')
+  }
+  if (rec !== r) return void stream.getTracks().forEach((t) => t.stop())
+  const source = r.ctx.createMediaStreamSource(stream)
+  source.connect(r.analyser)
+  source.connect(r.dest)
+  r.source.disconnect()
+  r.stream.getTracks().forEach((t) => t.stop())
+  r.source = source
+  r.stream = stream
+  r.lastHeard = Date.now()
+  r.state = { ...r.state, mic: micName(stream), quiet: false }
+  emitRec()
+}
+
 export function pauseRecording(): void {
   if (!rec) return
   if (rec.state.phase === 'recording') {
@@ -214,6 +284,7 @@ export function pauseRecording(): void {
     rec.state = { ...rec.state, phase: 'paused', banked: rec.state.banked + (Date.now() - rec.state.started) }
   } else if (rec.state.phase === 'paused') {
     rec.media.resume()
+    rec.lastHeard = Date.now()
     rec.state = { ...rec.state, phase: 'recording', started: Date.now() }
   }
   emitRec()
@@ -240,6 +311,9 @@ async function finish(r: NonNullable<typeof rec>) {
     if (r.editor.isDestroyed) return report('The recording was saved, but the note was closed. Attach it from your attachments folder.')
     const at = Math.min(r.pos, r.editor.state.doc.content.size)
     r.editor.chain().insertContentAt(at, { type: 'attachment', attrs: { ...file } }).run()
+    // Only silence came in: say so, instead of transcribing nothing.
+    if (!r.everHeard)
+      return report(`This recording is silent: “${r.state.mic}” sent no sound. Pick another microphone from the recording bar, or in Settings → Notes.`, true)
     const s = await voiceSettings()
     if (s.voiceAutoTranscribe && !document.documentElement.classList.contains('phone')) {
       // Find the node we just put in (its id is unique).

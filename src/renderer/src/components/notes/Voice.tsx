@@ -2,8 +2,65 @@ import { useEffect, useState } from 'react'
 import { Mic, Pause, Play, Square, Trash2 } from 'lucide-react'
 import type { VoiceModel, VoiceProgress, VoiceStatus } from '@shared/types'
 import { Bar, Dialog } from '../ui'
-import { cleanVoiceError, pauseRecording, registerVoiceSetup, stopRecording, watchRecorder, type RecorderState } from '../../data/voice'
+import { cleanVoiceError, microphones, pauseRecording, registerVoiceSetup, stopRecording, switchMic, watchRecorder, type RecorderState } from '../../data/voice'
 import { useSettings } from '../../data/settings'
+
+/** The microphone button in the recording bar: shows which one, and switches (the recording carries on). */
+function MicPicker({ current }: { current: string }) {
+  const { set } = useSettings()
+  const [list, setList] = useState<{ id: string; label: string }[] | null>(null)
+  const open = list !== null
+  return (
+    <span className="rec-mic">
+      <button className="iconbtn plain" aria-label={`Microphone: ${current}`} title={`Microphone: ${current}`} aria-expanded={open} onClick={() => (open ? setList(null) : void microphones().then(setList))}>
+        <Mic size={16} />
+      </button>
+      {open && (
+        <div className="popover rec-mic-menu" role="menu">
+          <div className="rec-mic-head">Microphone</div>
+          {list.map((m) => (
+            <button
+              key={m.id}
+              role="menuitemradio"
+              aria-checked={m.label === current}
+              className="menu-row"
+              onClick={() => {
+                setList(null)
+                set({ voiceMic: m.id })
+                void switchMic(m.id)
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  )
+}
+
+/** Settings → Notes: which microphone recordings use. */
+export function MicSetting() {
+  const { s, set } = useSettings()
+  const [list, setList] = useState<{ id: string; label: string }[]>([])
+  useEffect(() => {
+    const read = () => void microphones().then(setList)
+    read()
+    navigator.mediaDevices?.addEventListener?.('devicechange', read)
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', read)
+  }, [])
+  const missing = s.voiceMic && !list.some((m) => m.id === s.voiceMic)
+  return (
+    <select className="set-sel" aria-label="Microphone" value={missing ? '' : s.voiceMic} onChange={(e) => set({ voiceMic: e.target.value })}>
+      <option value="">Windows default</option>
+      {list.map((m) => (
+        <option key={m.id} value={m.id}>
+          {m.label}
+        </option>
+      ))}
+    </select>
+  )
+}
 
 const clock = (ms: number) => {
   const s = Math.floor(ms / 1000)
@@ -23,12 +80,18 @@ export function RecorderBar() {
   if (!s) return null
   const elapsed = s.banked + (s.phase === 'recording' ? Date.now() - s.started : 0)
   return (
-    <div className="rec-bar" role="status" aria-label="Recording">
+    <div className={`rec-bar ${s.quiet ? 'quiet' : ''}`} role="status" aria-label="Recording">
+      {s.quiet && (
+        <div className="rec-quiet" role="alert">
+          Nothing is coming in from “{s.mic}”. Pick another microphone, or check it isn’t muted.
+        </div>
+      )}
       <span className={`rec-dot ${s.phase === 'recording' ? 'on' : ''}`} />
       <b className="num">{clock(elapsed)}</b>
       <span className="rec-level" aria-hidden="true">
         <i style={{ transform: `scaleX(${Math.min(1, s.level * 2.2)})` }} />
       </span>
+      {s.phase !== 'saving' && <MicPicker current={s.mic} />}
       {s.phase === 'saving' ? (
         <span className="sm dim">Saving…</span>
       ) : (

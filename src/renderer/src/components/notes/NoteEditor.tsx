@@ -413,7 +413,7 @@ export function NoteEditor({
 }) {
   const toast = useToast()
   useEffect(() => onAttachError(toast), [toast])
-  useEffect(() => onVoiceMessage(toast), [toast])
+  useEffect(() => onVoiceMessage((m, long) => toast(m, long ? { label: 'OK', run: () => {} } : undefined)), [toast])
   const { items: subjects } = useRecords('subject')
   // One copy of the note that every field writes into, saved as a whole.
   const latest = useRef<Note>(note.data)

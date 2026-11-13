@@ -71,6 +71,8 @@ export interface AppSettings {
   voiceModel: 'base' | 'small'
   voiceLanguage: string
   voiceAutoTranscribe: boolean
+  /** The microphone recordings use (a device id), or '' for the system's default. */
+  voiceMic: string
   /** Transcribe with Subtitle Maker when it's installed and working. */
   voiceUseSubtitleMaker: boolean
   /** AI apps (MCP) can read Veyra; and, separately, change it. */
@@ -193,6 +195,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   voiceModel: 'base',
   voiceLanguage: 'auto',
   voiceAutoTranscribe: true,
+  voiceMic: '',
   voiceUseSubtitleMaker: true,
   mcpEnabled: false,
   mcpAllowWrites: false,

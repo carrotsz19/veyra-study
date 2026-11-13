@@ -1,3 +1,4 @@
+import { MicSetting } from '../components/notes/Voice'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
   ArrowDown, ArrowUp, CalendarDays, Smartphone, Minus as MinusIcon, Plus as PlusIcon, Check, ChevronLeft, Download, ExternalLink, RefreshCw, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, NotebookPen,
@@ -43,7 +44,7 @@ export const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: s
   { id: 'subjects', label: 'Subjects', icon: Shapes, hint: 'Order, colours, archived and deleted subjects' },
   { id: 'today', label: 'Today', icon: Home, hint: 'Your Today page’s widgets', keys: ['todayLayout', 'upcomingCount'] },
   { id: 'tasks', label: 'Tasks', icon: ListTodo, hint: 'Defaults for new tasks, how lists sort, and reminders', keys: ['defaultPriority', 'defaultDue', 'taskSort', 'showDoneInLists', 'highlightOverdue', 'remindersOn', 'remindMorning', 'morningTime', 'remindEvening', 'eveningTime', 'keepInTray', 'startWithWindows'] },
-  { id: 'notes', label: 'Notes', icon: NotebookPen, hint: 'How new notes start, how pages look, and voice recordings', keys: ['voiceAutoTranscribe', 'voiceUseSubtitleMaker', 'voiceModel', 'voiceLanguage', 'noteTemplate', 'noteFont', 'noteCover', 'noteWidth', 'noteSize', 'spellcheck', 'showWordCount', 'noteToolbar', 'noteBubble', 'noteSort'] },
+  { id: 'notes', label: 'Notes', icon: NotebookPen, hint: 'How new notes start, how pages look, and voice recordings', keys: ['voiceAutoTranscribe', 'voiceMic', 'voiceUseSubtitleMaker', 'voiceModel', 'voiceLanguage', 'noteTemplate', 'noteFont', 'noteCover', 'noteWidth', 'noteSize', 'spellcheck', 'showWordCount', 'noteToolbar', 'noteBubble', 'noteSort'] },
   { id: 'timer', label: 'Focus timer', icon: Timer, hint: 'Lengths, long breaks, sounds and your daily goal', keys: ['focusMin', 'breakMin', 'longBreakMin', 'longBreakEvery', 'autoStartBreaks', 'autoStartFocus', 'sound', 'volume', 'notify', 'dailyGoalMin'] },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays, hint: 'What appears on the calendar', keys: ['calendarShowTasks', 'calendarShowDone', 'calendarShowEvents'] },
   { id: 'ai', label: 'AI', icon: Sparkles, hint: 'Local AI or your own Claude, Gemini or OpenAI key' },
@@ -555,6 +556,9 @@ function Notes() {
         </Row>
         <Row label="Use Subtitle Maker when it’s installed" hint="Transcribes with Subtitle Maker on this computer: its quality level, graphics card settings and word fixes, and nothing more to download." keywords="subtitle maker faster whisper gpu">
           <Toggle label="Use Subtitle Maker" on={s.voiceUseSubtitleMaker} onChange={(voiceUseSubtitleMaker) => set({ voiceUseSubtitleMaker })} />
+        </Row>
+        <Row label="Microphone" hint="What recordings listen to. If a recording comes out silent, pick your computer’s own microphone here (some, like a phone-as-webcam app’s, only send sound while that app is running)." keywords="microphone mic input device camo silent">
+          <MicSetting />
         </Row>
         <Row label="Transcription model" hint="Fast suits clear lectures. More accurate copes better with accents and noise, but takes longer." keywords="whisper model accuracy speed">
           <Choice label="Transcription model" value={s.voiceModel} onChange={(voiceModel) => set({ voiceModel })} options={[['base', 'Fast'], ['small', 'More accurate']]} />
