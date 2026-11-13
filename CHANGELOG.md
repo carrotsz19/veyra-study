@@ -6,6 +6,7 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **Recording player:** recordings in notes have Veyra's own player (play, a time bar you can drag, and 1×–2× speed) and a ••• menu with Download and Delete recording (Ctrl+Z brings a deleted one back).
 - **Website (test):** Veyra Study in a browser at veyra-study-dev.igreenrobotz.workers.dev, with sign-in, group work and sync.
 
 ## 1.0.1

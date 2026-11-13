@@ -371,9 +371,56 @@ body.focus-mode .shell { grid-template-columns: 1fr; }
 .tiptap .att-missing { color: var(--dim); font-size: 13px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 10px; }
 
 /* voice recordings */
-.tiptap .att-audio { max-width: 520px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
-.tiptap .att-audio-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.tiptap .att-audio audio { width: 100%; height: 36px; }
+/* A voice recording: Veyra's own player (attachment.ts). */
+.tiptap .att-audio {
+  max-width: 540px; padding: 12px 14px 12px; border: 1px solid var(--line); border-radius: 16px;
+  background: var(--panel-2); transition: border-color 0.2s, box-shadow 0.2s;
+}
+.tiptap .att-audio.playing { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+.tiptap .att-audio-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.tiptap .att-audio audio { display: none; }
+.tiptap .att-more-wrap { position: relative; display: inline-flex; }
+.tiptap .att-more, .tiptap .att-speed, .tiptap .att-play {
+  border: 0; display: grid; place-items: center; color: var(--ink); cursor: pointer; font: inherit;
+  transition: background-color 0.15s, transform 0.12s, color 0.15s;
+}
+.tiptap .att-more { width: 30px; height: 30px; border-radius: 99px; background: transparent; color: var(--dim); }
+.tiptap .att-more:hover, .tiptap .att-more[aria-expanded='true'] { background: var(--fill-tertiary); color: var(--ink); }
+.tiptap .att-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; min-width: 190px; padding: 5px;
+  background: var(--bg-elevated, var(--panel)); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--elev-3);
+  animation: popIn var(--spring-snappy-ms, 0.2s) var(--spring-snappy, ease-out); transform-origin: top right;
+}
+.tiptap .att-menu[hidden] { display: none; }
+.tiptap .att-menu-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+}
+.tiptap .att-menu-row[hidden] { display: none; }
+.tiptap .att-menu-row:hover { background: var(--fill-tertiary); }
+.tiptap .att-menu-row.danger { color: var(--bad, #d64545); }
+.tiptap .att-menu-row.danger:hover { background: color-mix(in srgb, var(--bad, #d64545) 12%, transparent); }
+.tiptap .att-player { display: flex; align-items: center; gap: 10px; }
+.tiptap .att-play { width: 38px; height: 38px; flex: none; border-radius: 99px; background: var(--accent); color: #fff; }
+.tiptap .att-play:hover { transform: scale(1.05); }
+.tiptap .att-play:active { transform: scale(0.94); }
+.tiptap .att-time, .tiptap .att-dur { font-size: 12.5px; color: var(--dim); font-variant-numeric: tabular-nums; min-width: 36px; }
+.tiptap .att-dur { text-align: right; }
+.tiptap .att-seek {
+  flex: 1; min-width: 0; height: 18px; margin: 0; padding: 0; background: transparent; cursor: pointer; border: 0; box-shadow: none;
+  -webkit-appearance: none; appearance: none; --fill: 0%;
+}
+.tiptap .att-seek::-webkit-slider-runnable-track {
+  height: 5px; border-radius: 99px;
+  background: linear-gradient(to right, var(--accent) var(--fill), color-mix(in srgb, var(--ink) 14%, transparent) var(--fill));
+}
+.tiptap .att-seek::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px; margin-top: -4.5px; border-radius: 99px; background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); transition: transform 0.12s;
+}
+.tiptap .att-seek:hover::-webkit-slider-thumb { transform: scale(1.2); }
+.tiptap .att-speed { height: 28px; min-width: 44px; padding: 0 8px; border-radius: 99px; background: var(--fill-tertiary); font-size: 12px; font-weight: 700; }
+.tiptap .att-speed:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
 .tiptap .att-open[disabled] { opacity: 0.7; cursor: default; }
 .rec-bar {
   position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 85;
