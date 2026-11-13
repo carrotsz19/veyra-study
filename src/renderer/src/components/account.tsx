@@ -5,7 +5,7 @@ import '@fontsource/inter/600.css'
 import '@fontsource/inter/700.css'
 import '@fontsource/inter/800.css'
 import './auth.css'
-import { onAndroid } from '../lib/phone'
+import { deviceWord } from '../lib/phone'
 import type { AccountState } from '@shared/types'
 import { IS_DEV } from '@shared/channel'
 
@@ -261,7 +261,7 @@ export function Welcome({
               <button type="button" className="btn btn-plain dim" onClick={() => api.continueAsGuest().then(onDone)}>
                 Use Veyra Study without an account
               </button>
-              <p className="guest-note">Everything stays on this {onAndroid() ? 'phone' : 'computer'}. You can sign in later and keep it all.</p>
+              <p className="guest-note">Everything stays on this {deviceWord()}. You can sign in later and keep it all.</p>
             </>
           )}
         </div>

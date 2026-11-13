@@ -13,6 +13,10 @@ import { CapacitorCookies, CapacitorHttp } from '@capacitor/core'
 import { SecureStorage } from '@aparajita/capacitor-secure-storage'
 import type { AccountState, AccountUser } from '@shared/types'
 import * as idb from './idb'
+import { ON_WEB } from '@shared/channel'
+
+/** The website can't sign in yet: the account service only answers the apps. */
+const WEB_NO_SIGNIN = 'Signing in isn’t available on the website yet. Use the Veyra Study app for your account, groups and sync.'
 
 export const SERVER = 'https://veyra.igreenrobotz.workers.dev'
 const SESSION = 'veyra.session'
@@ -91,6 +95,14 @@ const dbName = (s: Session | null) => (s ? `veyra-study-${s.folder}` : 'veyra-st
 
 /** Loads the saved sign-in and opens that account's database. Runs before anything else. */
 export async function start(): Promise<void> {
+  // The website goes straight in, without an account (its data stays in this browser).
+  if (ON_WEB) {
+    try {
+      if (!localStorage.getItem(GUEST)) localStorage.setItem(GUEST, 'guest')
+    } catch {
+      /* storage unavailable */
+    }
+  }
   try {
     const raw = await SecureStorage.getItem(SESSION)
     session = raw ? JSON.parse(raw) : null
@@ -146,6 +158,7 @@ async function adopt(home: any, set: Record<string, string | null>): Promise<Acc
 }
 
 export async function signIn(username: string, password: string): Promise<AccountState> {
+  if (ON_WEB) throw new Error(WEB_NO_SIGNIN)
   username = username.trim()
   if (!username || !password) throw new Error('Enter your username and password.')
   const { v: info } = await call<{ salt: string; scheme: string }>('getLoginSalt', [username])
@@ -161,6 +174,7 @@ export async function signIn(username: string, password: string): Promise<Accoun
 }
 
 export async function signUp(input: { username: string; email: string; password: string; acceptLegal: boolean }): Promise<AccountState> {
+  if (ON_WEB) throw new Error(WEB_NO_SIGNIN)
   const username = input.username.trim()
   if (!/^[A-Za-z0-9_.-]{3,30}$/.test(username)) throw new Error('Username must be 3–30 characters: letters, numbers, . _ -')
   if (input.password.length < 8 || input.password.length > 200) throw new Error('Use a password of at least 8 characters.')

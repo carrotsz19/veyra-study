@@ -7,6 +7,19 @@
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
 import * as idb from './idb'
+import { ON_WEB } from '@shared/channel'
+
+/** The website: an ordinary browser download. */
+function download(name: string, text: string, type: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 30_000)
+}
 
 const safe = (n: string) => (n.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim() || 'Untitled').slice(0, 120)
 const cancelled = (e: unknown) => /cancel/i.test(String((e as Error)?.message ?? e))
@@ -30,6 +43,10 @@ async function share(title: string, files: string[]): Promise<boolean> {
 export async function exportData(version: string): Promise<{ saved: boolean; path?: string; count?: number }> {
   const records = (await idb.changesSince(0)).filter((r) => !r.deletedAt)
   const name = `veyra-study-${new Date().toISOString().slice(0, 10)}.json`
+  if (ON_WEB) {
+    download(name, JSON.stringify({ app: 'veyra-study', version, exportedAt: new Date().toISOString(), records }, null, 2), 'application/json')
+    return { saved: true, path: name, count: records.length }
+  }
   const uri = await write(name, JSON.stringify({ app: 'veyra-study', version, exportedAt: new Date().toISOString(), records }, null, 2))
   const saved = await share('Save your Veyra Study data', [uri])
   return saved ? { saved: true, path: name, count: records.length } : { saved: false }
@@ -43,8 +60,10 @@ export async function exportNotes(files: { name: string; text: string }[]): Prom
     let base = safe(f.name)
     for (let i = 2; used.has(base.toLowerCase()); i++) base = `${safe(f.name)} (${i})`
     used.add(base.toLowerCase())
-    uris.push(await write(`${base}.md`, f.text))
+    if (ON_WEB) download(`${base}.md`, f.text, 'text/markdown')
+    else uris.push(await write(`${base}.md`, f.text))
   }
+  if (ON_WEB) return { saved: files.length }
   return { saved: (await share(files.length === 1 ? 'Export note' : `Export ${files.length} notes`, uris)) ? files.length : 0 }
 }
 

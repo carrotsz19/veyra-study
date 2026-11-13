@@ -15,5 +15,10 @@ export function usePhone(): boolean {
   return phone
 }
 
-/** The Android app (some computer-only features are hidden there). */
+/** The website (the phone app's code in a browser). */
+export const onWeb = () => document.documentElement.classList.contains('web')
+/** Where the data lives, in words: "phone", "browser" or "computer". */
+export const deviceWord = () => (onWeb() ? 'browser' : onAndroid() ? 'phone' : 'computer')
+
+/** The Android app, or the website (some computer-only features are hidden there). */
 export const onAndroid = () => document.documentElement.classList.contains('phone')

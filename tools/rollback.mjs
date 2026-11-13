@@ -66,13 +66,8 @@ const next = `${a}.${b}.${c + 1}`
 const dir = resolve(HERE, '..', `veyra-rollback-${dev ? commit.slice(0, 8) : next}`)
 
 console.log(dev ? `Publishing ${ref} (${commit.slice(0, 8)}) as a new Dev build…` : `Rolling back: v${target}'s code as Veyra Study ${next}…`)
-if (existsSync(dir)) {
-  try {
-    git(['worktree', 'remove', '--force', dir])
-  } catch {
-    rmSync(dir, { recursive: true, force: true })
-  }
-}
+if (existsSync(dir)) rmSync(dir, { recursive: true, force: true, maxRetries: 3 })
+git(['worktree', 'prune'])
 git(['worktree', 'add', '--detach', dir, commit])
 
 // What a build needs that isn't in git.
@@ -112,8 +107,10 @@ if (dev) {
   git(['commit', '-m', `Rolled back to ${target} as ${next}; the next release is above it`])
 }
 
+// Remove the checkout (git can't delete node_modules' long paths on Windows, so Node does).
 try {
-  git(['worktree', 'remove', '--force', dir])
+  rmSync(dir, { recursive: true, force: true, maxRetries: 3 })
+  git(['worktree', 'prune'])
 } catch {
   console.log(`(The checkout at ${dir} can be deleted.)`)
 }

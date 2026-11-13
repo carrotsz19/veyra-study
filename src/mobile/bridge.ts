@@ -17,6 +17,7 @@ import { registerPlugin } from '@capacitor/core'
 /** The app's own bit of Android code (android/.../ScreenPlugin.java). */
 const Screen = registerPlugin<{ keepOn(o: { on: boolean }): Promise<void> }>('Screen')
 import { withDefaults } from '@shared/settings'
+import { ON_WEB } from '@shared/channel'
 
 type Veyra = Window['veyra']
 const unsub = () => () => {}
@@ -136,7 +137,16 @@ const voice: Veyra['voice'] = {
   onTranscribing: unsub,
   saveRecording: (name, mime, bytes) => phoneFiles.save(name, mime, bytes)
 }
-const update: Veyra['update'] = {
+// The website is always the newest version: nothing to update.
+const update: Veyra['update'] = ON_WEB
+  ? {
+      state: async () => ({ supported: false, current: __APP_VERSION__, status: 'idle' }),
+      check: async () => ({ supported: false, current: __APP_VERSION__, status: 'idle' }),
+      download: async () => ({ supported: false, current: __APP_VERSION__, status: 'idle' }),
+      install: async () => {},
+      onState: unsub
+    }
+  : {
   state: () => updates.getState(),
   check: () => updates.check(),
   download: () => updates.download(),
@@ -171,6 +181,7 @@ const appApi: Veyra['app'] = {
   timerAlarm: (at, title, body) => reminders.timerAlarm(at, title, body),
   keepAwake: async (on) => {
     try {
+      if (ON_WEB) return void (await webWake(on))
       await Screen.keepOn({ on })
     } catch {
       /* older app without the plugin */
@@ -182,6 +193,17 @@ const appApi: Veyra['app'] = {
     } catch {
       /* no vibration motor */
     }
+  }
+}
+
+/** The website: the browser's screen wake lock, while the timer runs. */
+let wake: { release(): Promise<void> } | null = null
+async function webWake(on: boolean) {
+  const nav = navigator as Navigator & { wakeLock?: { request(t: 'screen'): Promise<{ release(): Promise<void> }> } }
+  if (on && !wake && nav.wakeLock) wake = await nav.wakeLock.request('screen')
+  else if (!on && wake) {
+    await wake.release()
+    wake = null
   }
 }
 
@@ -215,7 +237,7 @@ export async function installBridge(): Promise<void> {
   reminders.startReminders()
   online.startOnline()
   // Look for a new version now and then (Settings → Software update can turn this off).
-  void idb.list('settings').then((r) => {
+  if (!ON_WEB) void idb.list('settings').then((r) => {
     if (withDefaults((r[0]?.data as object) ?? {}).checkUpdatesAtStart) updates.checkAtStart(() => {})
   })
 }

@@ -20,7 +20,9 @@
     "release:dev": "node tools/release.mjs --dev",
     "release:android": "node tools/release-android.mjs",
     "rollback": "node tools/rollback.mjs",
-    "rollback:dev": "node tools/rollback.mjs --dev"
+    "rollback:dev": "node tools/rollback.mjs --dev",
+    "release:web:dev": "node tools/release-web.mjs --dev",
+    "release:web": "node tools/release-web.mjs"
   },
   "build": {
     "appId": "app.veyra.study",

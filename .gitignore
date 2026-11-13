@@ -28,3 +28,12 @@ release-next/
 # Release outputs (Dev builds and Android)
 release-dev/
 release-android/
+
+# The website build
+web/dist/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example

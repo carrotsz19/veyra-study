@@ -306,7 +306,7 @@ function Shell() {
     <TimerProvider>
       <NavCtx.Provider value={{ route, go: navigate }}>
         <div className={`shell ${phone ? 'phone-shell' : `${titleBar ? 'has-titlebar' : ''} side-${s.sidebarMode} ${peek ? 'peek' : ''}`}`} data-route={route.name} style={titleBar ? ({ '--titlebar': `${titleBar}px` } as React.CSSProperties) : undefined}>
-          {titleBar && <TitleBar />}
+          {titleBar > 0 && <TitleBar />}
           {phone ? <PhoneNav route={route} go={navigate} /> : <Sidebar route={route} go={navigate} onEnter={peekIn} onLeave={peekOut} />}
           {/* Hidden sidebar: pointing at the left edge slides it out. */}
           {!phone && s.sidebarMode === 'hidden' && <div className="side-hotzone" onMouseEnter={peekIn} onMouseLeave={peekOut} aria-hidden />}

@@ -12,7 +12,7 @@ import { playSound } from '../components/timer'
 import { Bar, useToast } from '../components/ui'
 import { VeyraMark } from '../components/account'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { onAndroid, usePhone } from '../lib/phone'
+import { onAndroid, onWeb, usePhone } from '../lib/phone'
 import { transition } from '../lib/motion'
 import { NOTE_COVERS } from '../components/notes/NoteEditor'
 import { AccountSection, AiAppsSection, DriveSection, GoogleSection } from './Connections'
@@ -1048,7 +1048,7 @@ function DataPrivacy() {
   }, [])
   return (
     <>
-      <Group title="Your data" footer={onAndroid() ? 'Your study data is stored on this phone, separately for each Veyra account.' : 'Your study data is stored on this computer, in a separate file for each Veyra account.'}>
+      <Group title="Your data" footer={onWeb() ? 'Your study data is stored in this browser. Clearing the site’s data deletes it, so export it now and then.' : onAndroid() ? 'Your study data is stored on this phone, separately for each Veyra account.' : 'Your study data is stored on this computer, in a separate file for each Veyra account.'}>
         <Row label="Export everything" hint={onAndroid() ? 'Subjects, tasks, notes, study time and settings, as a JSON file you can save to Files or Google Drive.' : 'Subjects, tasks, notes, study time and settings, as a JSON file.'} keywords="backup download">
           <button
             className="btn sec sm"

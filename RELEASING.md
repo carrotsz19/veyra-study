@@ -74,3 +74,17 @@ npm run rollback:dev -- <commit|tag>   # Dev: that commit goes out as a new Dev 
 - **Android:** GitHub's list of releases, falling back to the releases feed (`releases.atom`).
   - The feed shows only **one tag per commit**, and `v<version>` and `android-v<version>` would otherwise share one, so the Android tag was left out. That's why 0.2.x phones never saw 1.0.0.
   - `release:android` therefore puts the Android tag on a commit of its own, with the same files.
+
+## The website
+
+The phone app's code built for a browser (`mobile/vite.config.ts` with `VEYRA_WEB=1`), served by a Cloudflare Worker that only hosts the files.
+
+```
+npm run release:web:dev   # https://veyra-study-dev.igreenrobotz.workers.dev  (test site)
+npm run release:web       # https://veyra-study-web.igreenrobotz.workers.dev  (Prod: only when the owner says so)
+```
+
+- **No sign-in yet:** the account service (`veyra.igreenrobotz.workers.dev`) only answers the apps, not browsers. The site opens without an account, data stays in that browser, and there are no groups or sync.
+- **The Dev feed token is never in the site:** web builds leave it out, and the script refuses to publish if it finds it.
+- **Wrangler runs from a temporary folder.** Run inside this repo, it changes the project by itself (it adds packages, npm scripts, `vite.config.ts` and `wrangler.jsonc`).
+- **Going back:** run `npx wrangler rollback --name veyra-study-dev`, pick an older deployment in the Cloudflare dashboard, or run the script from an older commit. The site is always whatever was published last, so there is nothing to update on people's devices.

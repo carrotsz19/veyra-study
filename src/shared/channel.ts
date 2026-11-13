@@ -12,6 +12,9 @@ declare const __DEV_FEED_TOKEN__: string
 
 export const CHANNEL: 'prod' | 'dev' = typeof __CHANNEL__ !== 'undefined' && __CHANNEL__ === 'dev' ? 'dev' : 'prod'
 export const IS_DEV = CHANNEL === 'dev'
+/** The website build (mobile/vite.config.ts with VEYRA_WEB=1): the phone app's code, in a browser. */
+declare const __WEB__: boolean
+export const ON_WEB = typeof __WEB__ !== 'undefined' && __WEB__ === true
 export const APP_NAME = IS_DEV ? 'Veyra Study Dev' : 'Veyra Study'
 
 /**
