@@ -84,7 +84,14 @@ npm run release:web:dev   # https://veyra-study-dev.igreenrobotz.workers.dev  (t
 npm run release:web       # https://veyra-study-web.igreenrobotz.workers.dev  (Prod: only when the owner says so)
 ```
 
-- **No sign-in yet:** the account service (`veyra.igreenrobotz.workers.dev`) only answers the apps, not browsers. The site opens without an account, data stays in that browser, and there are no groups or sync.
+- **Sign-in, groups and sync:** the Worker (`web/worker.js`) passes them through the site's own address, because the account service only answers the apps.
+  - **Sessions:** the Veyra session cookies stay in a token that only that Worker can decrypt, using the secret `WEB_SESSION_KEY`.
+    - The publish script creates the secret once per site and pipes it straight into Cloudflare, so it's never shown.
+    - If it's replaced, people on the website just sign in again.
+  - **Connections:** the account service and the relay are reached through service bindings, and the group server through the relay's current address.
+  - **Passwords:** the page hashes them before sending, except an account's first sign-in under the old password format, which sends the password once so the service can upgrade it. The Worker never stores or logs request bodies.
+  - **Other websites:** requests from other sites, and any account request beyond the five the app uses, are refused.
+  - **Limits:** each open tab long-polls the group server through the Worker, about 2,000 requests a day per tab. The free plan allows 100,000 a day.
 - **The Dev feed token is never in the site:** web builds leave it out, and the script refuses to publish if it finds it.
 - **Wrangler runs from a temporary folder.** Run inside this repo, it changes the project by itself (it adds packages, npm scripts, `vite.config.ts` and `wrangler.jsonc`).
 - **Going back:** run `npx wrangler rollback --name veyra-study-dev`, pick an older deployment in the Cloudflare dashboard, or run the script from an older commit. The site is always whatever was published last, so there is nothing to update on people's devices.

@@ -12,6 +12,7 @@ import { DEFAULT_RELAY, GroupCore, GroupError, type GroupSaved } from '@shared/g
 import { SyncCore } from '@shared/sync-core'
 import * as acct from './account'
 import * as idb from './idb'
+import { ON_WEB } from '@shared/channel'
 
 type Cb<T> = (v: T) => void
 const statusSubs = new Set<Cb<GroupStatus>>()
@@ -28,7 +29,8 @@ export let sync: SyncCore
 /** Makes both clients, once the signed-in account is known (they keep their state per account). */
 export function create(): void {
   group = new GroupCore({
-    relay: DEFAULT_RELAY,
+    // The website reaches the relay (and through it the server) via its own address (web/worker.js).
+    relay: ON_WEB ? `${location.origin}/api/relay` : DEFAULT_RELAY,
     load: async () => {
       const raw = await SecureStorage.getItem(key()).catch(() => null)
       return raw ? (JSON.parse(raw) as GroupSaved) : null

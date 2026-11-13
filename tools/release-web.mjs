@@ -6,9 +6,11 @@
  *   npm run release:web:dev   → https://veyra-study-dev.igreenrobotz.workers.dev   (test site)
  *   npm run release:web       → https://veyra-study-web.igreenrobotz.workers.dev   (Prod: only when the owner says so)
  *
- * The site has no sign-in yet (the account service only answers the apps): it runs
- * without an account, and its data stays in the browser. It never contains the Dev
- * feed token (mobile/vite.config.ts leaves it out of web builds), and this script checks.
+ * The Worker (web/worker.js) serves the files and passes sign-in, the relay and the group
+ * server through the site's own address (the account service only answers the apps).
+ * It keeps people's sessions in tokens encrypted with WEB_SESSION_KEY, a secret made here
+ * the first time (straight into Cloudflare; it's never shown or saved anywhere else).
+ * The site never contains the Dev feed token (web builds leave it out; this checks).
  *
  * Wrangler runs in a temporary folder: run inside this repo, it "sets the project up"
  * by itself (adds packages, scripts and config files).
@@ -18,6 +20,7 @@
  *   (Workers & Pages → the Worker → Deployments), or run this script from an older commit.
  */
 import { spawnSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -67,15 +70,34 @@ const headers = [
   ''
 ].join('\n')
 writeFileSync(join(tmp, 'site', '_headers'), headers)
-// Any address opens the app (it has its own screens).
+cpSync(join('web', 'worker.js'), join(tmp, 'worker.js'))
+// /api/* runs the Worker; any other address opens the app (it has its own screens).
 const config = {
   name: worker,
+  main: './worker.js',
   compatibility_date: '2026-09-25',
   workers_dev: true,
   preview_urls: false,
-  assets: { directory: './site', not_found_handling: 'single-page-application' }
+  assets: { directory: './site', binding: 'ASSETS', not_found_handling: 'single-page-application', run_worker_first: ['/api/*'] },
+  // Workers on this account reach each other this way (not by their workers.dev address).
+  services: [
+    { binding: 'VEYRA', service: 'veyra' },
+    { binding: 'RELAY', service: 'veyra-study-relay' }
+  ]
 }
 writeFileSync(join(tmp, 'wrangler.jsonc'), JSON.stringify(config, null, 2))
+const wrangler = (args, input) =>
+  spawnSync('npx', ['-y', 'wrangler@4.161.0', ...args], { cwd: tmp, env: { ...process.env, CI: '1' }, input, encoding: 'utf8', shell: process.platform === 'win32' })
 run('npx', ['-y', 'wrangler@4.161.0', 'deploy'], { ...process.env, CI: '1' }, tmp)
+// The key for people's session tokens: made once per site, piped straight in (never printed).
+const secrets = wrangler(['secret', 'list', '--format', 'json'])
+if (secrets.status === 0 && !/"WEB_SESSION_KEY"/.test(secrets.stdout)) {
+  const set = wrangler(['secret', 'put', 'WEB_SESSION_KEY'], randomBytes(32).toString('base64url'))
+  if (set.status !== 0) {
+    console.error('Couldn’t set WEB_SESSION_KEY, so signing in on the site won’t work yet.')
+    process.exit(1)
+  }
+  console.log('Made the key for website sign-in sessions (WEB_SESSION_KEY).')
+} else if (secrets.status !== 0) console.warn('Couldn’t check the site’s secrets; signing in may not work until WEB_SESSION_KEY is set.')
 rmSync(tmp, { recursive: true, force: true })
 console.log(`\nDone: https://${worker}.igreenrobotz.workers.dev  (${siteVersion})`)

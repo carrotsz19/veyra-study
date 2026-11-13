@@ -15,8 +15,6 @@ import type { AccountState, AccountUser } from '@shared/types'
 import * as idb from './idb'
 import { ON_WEB } from '@shared/channel'
 
-/** The website can't sign in yet: the account service only answers the apps. */
-const WEB_NO_SIGNIN = 'Signing in isn’t available on the website yet. Use the Veyra Study app for your account, groups and sync.'
 
 export const SERVER = 'https://veyra.igreenrobotz.workers.dev'
 const SESSION = 'veyra.session'
@@ -68,7 +66,31 @@ const applyCookies = (jar: Record<string, string>, set: Record<string, string | 
   return out
 }
 
+/**
+ * The website: the account service doesn't answer browsers, so the site's own Worker
+ * (web/worker.js) makes the call and keeps the session cookies in an encrypted token,
+ * held here as the one cookie "__web".
+ */
+async function webCall<T>(name: string, args: unknown[], jar: Record<string, string>): Promise<{ v: T; set: Record<string, string | null> }> {
+  let res: Response
+  try {
+    res = await fetch(`/api/account/${name}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ args, jar: jar.__web ?? '' }),
+      signal: AbortSignal.timeout(20000)
+    })
+  } catch {
+    throw new Error('Can’t reach Veyra. Check your connection and try again.')
+  }
+  const j: any = await res.json().catch(() => null)
+  if (!j) throw new Error(`Veyra answered ${res.status}. Try again.`)
+  if (!j.ok) throw new Error(j.e || 'Veyra refused that.')
+  return { v: j.v as T, set: { __web: j.jar || null } }
+}
+
 async function call<T>(name: string, args: unknown[], jar: Record<string, string> = {}): Promise<{ v: T; set: Record<string, string | null> }> {
+  if (ON_WEB) return webCall<T>(name, args, jar)
   let res
   try {
     res = await CapacitorHttp.request({
@@ -158,7 +180,6 @@ async function adopt(home: any, set: Record<string, string | null>): Promise<Acc
 }
 
 export async function signIn(username: string, password: string): Promise<AccountState> {
-  if (ON_WEB) throw new Error(WEB_NO_SIGNIN)
   username = username.trim()
   if (!username || !password) throw new Error('Enter your username and password.')
   const { v: info } = await call<{ salt: string; scheme: string }>('getLoginSalt', [username])
@@ -174,7 +195,6 @@ export async function signIn(username: string, password: string): Promise<Accoun
 }
 
 export async function signUp(input: { username: string; email: string; password: string; acceptLegal: boolean }): Promise<AccountState> {
-  if (ON_WEB) throw new Error(WEB_NO_SIGNIN)
   const username = input.username.trim()
   if (!/^[A-Za-z0-9_.-]{3,30}$/.test(username)) throw new Error('Username must be 3–30 characters: letters, numbers, . _ -')
   if (input.password.length < 8 || input.password.length > 200) throw new Error('Use a password of at least 8 characters.')
