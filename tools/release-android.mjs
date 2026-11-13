@@ -79,5 +79,11 @@ if (dev) {
   git('tag', '-f', tagName, own)
   git('push', 'origin', `+refs/tags/${tagName}`)
   gh(['release', 'create', tagName, apk, '--repo', REPO, '--prerelease', '--verify-tag', '--title', `Veyra Study ${version} for Android`, '--notes-file', notesFile])
+  // Scan the APK on VirusTotal and add the result to the notes (never stops the release).
+  try {
+    await (await import('./virustotal.mjs')).addToRelease(tagName, [apk])
+  } catch (e) {
+    console.warn('VirusTotal scan skipped:', e.message)
+  }
   console.log(`\nDone: https://github.com/${REPO}/releases/tag/android-v${version}`)
 }

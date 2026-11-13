@@ -117,4 +117,10 @@ execFileSync('gh', ['release', 'create', `v${version}`, '--target', git('rev-par
 
 **Install:** download Veyra-Study-Setup-${version}.exe below and run it. Installed copies update themselves.`], { stdio: 'inherit', env: ghEnv })
 run('npx', ['electron-builder', '--win', '--publish', 'always'], { ...prodEnv, GH_TOKEN: token })
+// Scan the installer on VirusTotal and add the result to the notes (never stops the release).
+try {
+  await (await import('./virustotal.mjs')).addToRelease(`v${version}`, [join('release', `Veyra-Study-Setup-${version}.exe`)])
+} catch (e) {
+  console.warn('VirusTotal scan skipped:', e.message)
+}
 console.log(`\nDone: https://github.com/${REPO}/releases/tag/v${version}`)

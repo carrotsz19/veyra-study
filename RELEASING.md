@@ -95,3 +95,9 @@ npm run release:web       # https://veyra-study-web.igreenrobotz.workers.dev  (P
 - **The Dev feed token is never in the site:** web builds leave it out, and the script refuses to publish if it finds it.
 - **Wrangler runs from a temporary folder.** Run inside this repo, it changes the project by itself (it adds packages, npm scripts, `vite.config.ts` and `wrangler.jsonc`).
 - **Going back:** run `npx wrangler rollback --name veyra-study-dev`, pick an older deployment in the Cloudflare dashboard, or run the script from an older commit. The site is always whatever was published last, so there is nothing to update on people's devices.
+
+## VirusTotal scans
+
+- `npm run release` and `npm run release:android` scan the installer and the APK on VirusTotal after publishing. They add a "VirusTotal" section to the release notes, with a link, the number of engines that flagged the file, and its SHA-256.
+- The API key lives in `C:\dev\tools\virustotal.key`, outside the repo, or in `VIRUSTOTAL_KEY`. Without a key the scan is skipped, and a failed scan never stops a release.
+- **To scan again by hand:** `node tools/virustotal.mjs <tag> <file>`. Running it again replaces the section rather than adding a second one.
