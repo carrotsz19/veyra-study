@@ -173,6 +173,7 @@ const syncApi = {
   now: () => ipcRenderer.invoke('sync:now'),
   setEnabled: (on: boolean) => ipcRenderer.invoke('sync:set', on),
   setSending: (on: boolean) => ipcRenderer.invoke('sync:sending', on),
+  setHistory: (on: boolean) => ipcRenderer.invoke('sync:history', on),
   onStatus: (cb: (s: unknown) => void) => {
     const h = (_: unknown, s: unknown) => cb(s)
     ipcRenderer.on('sync:status', h)

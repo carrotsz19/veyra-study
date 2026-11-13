@@ -1,5 +1,6 @@
 import type { Note, Rec } from '@shared/types'
 import { db } from '../data/store'
+import { dropHistory, tidyHistory } from './history'
 
 /**
  * Notes helpers shared by the notes list, Today and the Ctrl+K palette:
@@ -40,6 +41,7 @@ export async function restoreNotes(list: Rec<'note'>[]): Promise<void> {
 /** Deletes for good (this syncs as a delete to your other devices). */
 export async function deleteForever(list: Rec<'note'>[]): Promise<void> {
   for (const n of list) await db.remove('note', n.id)
+  await dropHistory(list.map((n) => n.id)).catch(() => {})
 }
 
 /** Removes notes that have been in the trash longer than 30 days. */
@@ -47,6 +49,7 @@ export async function emptyOldTrash(): Promise<void> {
   const cutoff = Date.now() - TRASH_DAYS * DAY
   const old = (await db.list('note')).filter((n) => n.data.trashedAt && n.data.trashedAt < cutoff)
   if (old.length) await deleteForever(old)
+  await tidyHistory().catch(() => {})
 }
 
 /* ---------- search through whole notes ---------- */

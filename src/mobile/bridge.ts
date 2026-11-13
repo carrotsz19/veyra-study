@@ -125,6 +125,7 @@ const sync: Veyra['sync'] = {
   now: () => online.sync.run(),
   setEnabled: (on) => online.sync.setEnabled(on),
   setSending: (on) => online.sync.setSending(on),
+  setHistory: (on) => online.sync.setHistory(on),
   onStatus: online.onSyncStatus
 }
 const voice: Veyra['voice'] = {
@@ -167,7 +168,7 @@ const appApi: Veyra['app'] = {
     if (r.imported) {
       online.sync.schedule()
       reminders.schedule()
-      emitExternal(['subject', 'task', 'note', 'session', 'settings', 'folder'], [])
+      emitExternal(['subject', 'task', 'note', 'session', 'settings', 'folder', 'noteVersion'], [])
     }
     return r
   },

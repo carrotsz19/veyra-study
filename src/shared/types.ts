@@ -4,7 +4,7 @@
  * merges them last-writer-wins on (updatedAt, deviceId). Deletes are
  * tombstones (deletedAt set) so they sync too.
  */
-export type Kind = 'subject' | 'task' | 'note' | 'session' | 'settings' | 'folder'
+export type Kind = 'subject' | 'task' | 'note' | 'session' | 'settings' | 'folder' | 'noteVersion'
 
 export interface RecordMeta {
   id: string
@@ -112,6 +112,19 @@ export interface StudySession {
   taskId?: string | null
 }
 
+/** An earlier version of a note (lib/history.ts): what it was just before a stretch of editing. */
+export interface NoteVersion {
+  noteId: string
+  /** When the note was like this. */
+  at: number
+  title: string
+  content: unknown
+  cues?: unknown
+  summary?: unknown
+  template?: NoteTemplate
+  words: number
+}
+
 export interface DataByKind {
   subject: Subject
   task: Task
@@ -119,6 +132,7 @@ export interface DataByKind {
   session: StudySession
   settings: Partial<import('./settings').AppSettings>
   folder: Folder
+  noteVersion: NoteVersion
 }
 
 export type Rec<K extends Kind = Kind> = RecordMeta & { kind: K; data: DataByKind[K] }
@@ -455,6 +469,8 @@ export interface SyncStatus {
   enabled: boolean
   /** Sends this device's changes. Off (Veyra Study Dev): only receives what other devices changed. */
   sending: boolean
+  /** Sends this device's note history too (Settings). Off: history stays on this device. */
+  history: boolean
   state: 'idle' | 'syncing' | 'error'
   lastSync?: number
   error: string
@@ -465,6 +481,7 @@ export interface SyncApi {
   now(): Promise<SyncStatus>
   setEnabled(on: boolean): Promise<SyncStatus>
   setSending(on: boolean): Promise<SyncStatus>
+  setHistory(on: boolean): Promise<SyncStatus>
   onStatus(cb: (s: SyncStatus) => void): () => void
 }
 

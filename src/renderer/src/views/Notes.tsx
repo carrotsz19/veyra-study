@@ -769,6 +769,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
               onOpen={(id) => setSelected(id)}
               focusMode={focus}
               onToggleFocus={subjectFilter || phone ? undefined : () => setFocus(!focus)}
+              onReplaced={() => (remotePending.current = true)}
             />
           </div>
         ) : (

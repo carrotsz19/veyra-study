@@ -6,6 +6,7 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **Note history:** a note's ••• menu → Version history shows earlier versions (kept automatically while you edit, at most every 10 minutes). Preview one, copy its text, or restore it; restoring keeps what was there as a version too. History syncs between your devices (Settings → Sync note history can keep it on each device instead).
 - **Security:** links can no longer open web pages inside Veyra's windows (they open in your browser), the windows run in Chromium's sandbox, the Android app is a release build that USB debugging can't read, and the website has a strict content policy.
 - **Website (test):** Veyra Study in a browser at veyra-study-dev.igreenrobotz.workers.dev, with sign-in, group work and sync.
 - **Android updates:** phones now find new versions reliably (they ask GitHub's list of releases).

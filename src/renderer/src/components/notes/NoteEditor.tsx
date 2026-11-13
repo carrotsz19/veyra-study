@@ -5,7 +5,7 @@ import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/r
 import { BubbleMenu } from '@tiptap/react/menus'
 import { formatDistanceToNowStrict } from 'date-fns'
 import {
-  Archive, ArchiveRestore, Bold, Code, Copy, Download, FileUp, Hash, Italic, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, Pin, PinOff,
+  Archive, ArchiveRestore, Bold, Code, Copy, Download, FileUp, Hash, History as HistoryIcon, Italic, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, Pin, PinOff,
   Sparkles, Strikethrough, Trash2, Underline
 } from 'lucide-react'
 import type { Note, NoteFont, NoteTemplate, Rec } from '@shared/types'
@@ -27,6 +27,9 @@ import { useSettings } from '../../data/settings'
 import { registerOpenNote, trashNotes } from '../../lib/notes'
 import { Select } from '../Select'
 import { Spelling } from './spelling'
+import { NoteHistory } from './History'
+import { beforeSave, keepVersion } from '../../lib/history'
+import type { NoteVersion } from '@shared/types'
 
 export const NOTE_COVERS: Record<string, string> = {
   clay: 'linear-gradient(120deg,#e9b9a4,#d9825f 55%,#b3492b)',
@@ -210,12 +213,14 @@ function PageMenu({
   onDuplicate,
   onExport,
   onSaveDocs,
+  onHistory,
   onClose
 }: {
   data: Note
   set: (p: Partial<Note>) => void
   onDelete: () => void
   onDuplicate: () => void
+  onHistory: () => void
   onExport: () => void
   onSaveDocs: () => void
   onClose: () => void
@@ -280,6 +285,9 @@ function PageMenu({
       <div className="menu-sep" />
       <button className="menu-row" onClick={() => set({ pinned: !data.pinned })}>
         {data.pinned ? <PinOff size={15} /> : <Pin size={15} />} {data.pinned ? 'Unpin' : 'Pin to top'}
+      </button>
+      <button className="menu-row" onClick={onHistory}>
+        <HistoryIcon size={15} /> Version history
       </button>
       <button className="menu-row" onClick={onDuplicate}>
         <Copy size={15} /> Duplicate
@@ -392,13 +400,16 @@ export function NoteEditor({
   onDeleted,
   onOpen,
   focusMode,
-  onToggleFocus
+  onToggleFocus,
+  onReplaced
 }: {
   note: Rec<'note'>
   onDeleted: () => void
   onOpen?: (id: string) => void
   focusMode?: boolean
   onToggleFocus?: () => void
+  /** The note's text was replaced (a restored version): show it fresh. */
+  onReplaced?: () => void
 }) {
   const toast = useToast()
   useEffect(() => onAttachError(toast), [toast])
@@ -418,9 +429,15 @@ export function NoteEditor({
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const { s: settings } = useSettings()
 
+  // The note as last saved (and when): kept as a version before a new stretch of editing (lib/history.ts).
+  const saved = useRef({ data: note.data, at: note.updatedAt })
+  const [history, setHistory] = useState(false)
   const flush = () => {
     if (timer.current) clearTimeout(timer.current)
     timer.current = null
+    const before = saved.current
+    saved.current = { data: latest.current, at: Date.now() }
+    void beforeSave(note.id, before.data, before.at, latest.current).catch(() => {})
     db.put('note', latest.current, note.id).then((r) => setSavedAt(r.updatedAt))
   }
   const update = (patch: Partial<Note>, now = false) => {
@@ -540,6 +557,18 @@ export function NoteEditor({
     toast('Moved to the trash', { label: 'Undo', run: undo })
     onDeleted()
   }
+  // Brings a version back; what's there now is kept as a version first, so this can be undone the same way.
+  const restore = async (v: NoteVersion) => {
+    if (timer.current) flush()
+    await keepVersion(note.id, latest.current, Date.now())
+    const next: Note = { ...latest.current, title: v.title, content: v.content, cues: v.cues, summary: v.summary, ...(v.template ? { template: v.template } : {}) }
+    latest.current = next
+    saved.current = { data: next, at: Date.now() }
+    setHistory(false)
+    onReplaced?.()
+    await db.put('note', next, note.id)
+    toast('Version restored. The text before it is in Version history.')
+  }
   const duplicate = async () => {
     flush()
     const copy = await duplicateNote(latest.current)
@@ -611,7 +640,10 @@ export function NoteEditor({
                 <MoreHorizontal size={18} />
               </button>
               {menu === 'page' && (
-                <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportMd} onSaveDocs={saveDocs} onClose={() => setMenu(null)} />
+                <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportMd} onSaveDocs={saveDocs} onHistory={() => (setMenu(null), setHistory(true))} onClose={() => setMenu(null)} />
+              )}
+              {history && (
+                <NoteHistory noteId={note.id} currentWords={words} onRestore={(v) => void restore(v)} onClose={() => setHistory(false)} />
               )}
             </span>
           </div>

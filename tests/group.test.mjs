@@ -248,6 +248,10 @@ test('personal sync: your own records only, newest edit wins, paged pulls', asyn
   assert.equal(rest.more, false)
   assert.equal(rest.records.find((x) => x.id === 't2').deletedAt, 300)
   assert.equal((await api(a, 'GET', `/sync/pull?since=${rest.seq}`)).body.records.length, 0)
+
+  // Note history syncs too.
+  r = await api(a, 'POST', '/sync/push', { records: [rec('v1', 'x', 400, 'pc-1', { kind: 'noteVersion', data: { noteId: 't1', at: 1, title: 'x', content: null, words: 0 } })] })
+  assert.equal(r.body.accepted, 1)
 })
 
 /* ---------------- relay ---------------- */

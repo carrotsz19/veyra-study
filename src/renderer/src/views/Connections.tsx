@@ -441,6 +441,19 @@ function SyncRow() {
         <input type="checkbox" className="switch" checked={s.enabled} onChange={async (e) => setS(await window.veyra.sync.setEnabled(e.target.checked))} />
       </label>
       {/* Veyra Study Dev: keep test builds from changing your real data, while still seeing it. */}
+      {s.enabled && (
+        <label className="toggle-row" style={{ marginTop: 12 }}>
+          <span>
+            <b>Sync note history</b>
+            <span className="sm dim">
+              {s.history
+                ? 'On: earlier versions of your notes are on all your devices.'
+                : 'Off: versions made on this device stay on it (other devices’ history still arrives here).'}
+            </span>
+          </span>
+          <input type="checkbox" className="switch" checked={s.history} onChange={async (e) => setS(await window.veyra.sync.setHistory(e.target.checked))} />
+        </label>
+      )}
       {IS_DEV && s.enabled && (
         <label className="toggle-row" style={{ marginTop: 12 }}>
           <span>

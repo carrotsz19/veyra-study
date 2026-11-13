@@ -34,7 +34,7 @@ import { createGzip } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION = '1.3.2'
+const VERSION = '1.4.0'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -694,7 +694,7 @@ route('DELETE', '/admin/users/:username/block', ({ me, params }) => {
 })
 
 /* ---------- personal sync (only ever your own records) ---------- */
-const SYNC_KINDS = new Set(['subject', 'task', 'note', 'session', 'folder'])
+const SYNC_KINDS = new Set(['subject', 'task', 'note', 'session', 'folder', 'noteVersion'])
 const SYNC_MAX_RECORD = 1_500_000
 const SYNC_MAX_ROWS = 100_000
 
@@ -896,6 +896,19 @@ function sweepDeleted() {
 void backup().then(sweepDeleted)
 setInterval(sweepDeleted, 24 * 3600_000).unref()
 setInterval(backup, 3600_000).unref()
+
+/*
+ * Note history thins itself out (the app deletes old versions), and each delete stays here as a
+ * marker so other devices hear about it. Markers for versions are cleared after 60 days, so they
+ * don't build up toward the 100,000-item limit. (A device away longer than that just keeps an old
+ * version until its own tidy-up removes it.)
+ */
+function clearOldVersionMarkers() {
+  const r = q("DELETE FROM personal WHERE kind = 'noteVersion' AND deleted_at IS NOT NULL AND deleted_at < ?").run(Date.now() - 60 * 86400_000)
+  if (r.changes) log(`cleared ${r.changes} old note-history markers`)
+}
+clearOldVersionMarkers()
+setInterval(clearOldVersionMarkers, 6 * 3600_000).unref()
 
 /* ---------- the tunnel: start cloudflared, publish its address ---------- */
 let tunnelUrl = ''

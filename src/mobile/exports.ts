@@ -93,7 +93,7 @@ function pickText(): Promise<string | null> {
   })
 }
 
-const KINDS = new Set(['subject', 'task', 'note', 'session', 'settings', 'folder'])
+const KINDS = new Set(['subject', 'task', 'note', 'session', 'settings', 'folder', 'noteVersion'])
 export async function importData(): Promise<{ imported: number }> {
   const text = await pickText()
   if (text == null) return { imported: 0 }

@@ -30,7 +30,7 @@ export class SyncCore {
   private running = false
   private again = false
   private disposed = false
-  private status: SyncStatus = { enabled: true, sending: true, state: 'idle', error: '' }
+  private status: SyncStatus = { enabled: true, sending: true, history: true, state: 'idle', error: '' }
   private ready: Promise<void>
 
   constructor(
@@ -42,8 +42,8 @@ export class SyncCore {
     private emit: (status: SyncStatus) => void
   ) {
     this.ready = (async () => {
-      const [on, send, last] = await Promise.all([store.meta('sync_enabled'), store.meta('sync_send'), store.meta('sync_last')])
-      this.status = { enabled: on !== '0', sending: send !== '0', state: 'idle', lastSync: Number(last || 0) || undefined, error: '' }
+      const [on, send, last, history] = await Promise.all([store.meta('sync_enabled'), store.meta('sync_send'), store.meta('sync_last'), store.meta('sync_history')])
+      this.status = { enabled: on !== '0', sending: send !== '0', history: history !== '0', state: 'idle', lastSync: Number(last || 0) || undefined, error: '' }
     })()
     group.onRemoteChange = () => this.schedule(300)
   }
@@ -81,6 +81,15 @@ export class SyncCore {
     await this.ready
     await this.store.setMeta('sync_send', on ? '1' : '0')
     this.set({ sending: on, error: '' })
+    this.schedule(0)
+    return this.status
+  }
+
+  /** Note history: sent to your other devices (on), or kept on this one (off; from now on). */
+  async setHistory(on: boolean): Promise<SyncStatus> {
+    await this.ready
+    await this.store.setMeta('sync_history', on ? '1' : '0')
+    this.set({ history: on, error: '' })
     this.schedule(0)
     return this.status
   }
@@ -156,15 +165,23 @@ export class SyncCore {
       // Keep each request under the server's size limit.
       const batch: Rec[] = []
       let size = 0
+      // How far this round got (skipped history counts as dealt with).
+      let upTo = changes[0].updatedAt
       for (const c of changes) {
+        // Note history kept on this device only.
+        if (!this.status.history && c.kind === 'noteVersion') {
+          upTo = c.updatedAt
+          continue
+        }
         const n = JSON.stringify(c).length
         if (batch.length && size + n > MAX_REQUEST) break
         batch.push(c)
         size += n
+        upTo = c.updatedAt
       }
-      await this.group.call('POST', '/sync/push', { records: batch })
+      if (batch.length) await this.group.call('POST', '/sync/push', { records: batch })
       if (this.disposed) return
-      await this.store.setMeta('sync_pushed', String(batch[batch.length - 1].updatedAt))
+      await this.store.setMeta('sync_pushed', String(upTo))
     }
   }
 }
