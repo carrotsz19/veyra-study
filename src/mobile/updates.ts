@@ -54,6 +54,43 @@ const toText = (html: string) =>
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 
+type Found = { version: string; notes: string; date: string } | null
+
+/** The newest Android release, from GitHub's list of releases (only published ones that have the APK). */
+async function fromApi(): Promise<Found> {
+  const r = await CapacitorHttp.request({
+    method: 'GET',
+    url: 'https://api.github.com/repos/carrotsz19/veyra-study/releases?per_page=40',
+    headers: { Accept: 'application/vnd.github+json' },
+    connectTimeout: 15000,
+    readTimeout: 15000
+  })
+  if (r.status !== 200) throw new Error(`GitHub answered ${r.status}`)
+  const list = (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as { tag_name: string; body?: string; published_at?: string; draft?: boolean; assets?: { name: string }[] }[]
+  let best: Found = null
+  for (const rel of list) {
+    const version = /^android-v(\d+\.\d+\.\d+)$/.exec(rel.tag_name)?.[1]
+    if (!version || rel.draft || !rel.assets?.some((a) => a.name === `Veyra-Study-${version}.apk`)) continue
+    if (best && !newer(version, best.version)) continue
+    best = { version, notes: (rel.body ?? '').replace(/\*\*/g, '').replace(/\r\n/g, '\n').replace(/\n*Install this APK once[^\n]*$/, '').trim(), date: rel.published_at ?? '' }
+  }
+  return best
+}
+
+/** The same from the releases feed. It lists one tag per commit, so each Android release gets a commit of its own (tools/release-android.mjs). */
+async function fromFeed(): Promise<Found> {
+  const r = await CapacitorHttp.request({ method: 'GET', url: `${REPO}/releases.atom`, headers: { Accept: 'application/atom+xml' }, connectTimeout: 15000, readTimeout: 15000 })
+  if (r.status !== 200) throw new Error(`GitHub answered ${r.status}`)
+  const xml = String(r.data)
+  let best: Found = null
+  for (const entry of xml.split('<entry>').slice(1)) {
+    const tag = /releases\/tag\/android-v(\d+\.\d+\.\d+)/.exec(entry)?.[1]
+    if (!tag || (best && !newer(tag, best.version))) continue
+    best = { version: tag, notes: toText(/<content[^>]*>([\s\S]*?)<\/content>/.exec(entry)?.[1] ?? ''), date: /<updated>([^<]+)</.exec(entry)?.[1] ?? '' }
+  }
+  return best
+}
+
 /** Looks for a newer Android version on GitHub. */
 export async function check(): Promise<UpdateState> {
   if (state.status === 'downloading' || state.status === 'ready') return state
@@ -84,15 +121,8 @@ export async function check(): Promise<UpdateState> {
     return state
   }
   try {
-    const r = await CapacitorHttp.request({ method: 'GET', url: `${REPO}/releases.atom`, headers: { Accept: 'application/atom+xml' }, connectTimeout: 15000, readTimeout: 15000 })
-    if (r.status !== 200) throw new Error(`GitHub answered ${r.status}`)
-    const xml = String(r.data)
-    let best: { version: string; notes: string; date: string } | null = null
-    for (const entry of xml.split('<entry>').slice(1)) {
-      const tag = /releases\/tag\/android-v(\d+\.\d+\.\d+)/.exec(entry)?.[1]
-      if (!tag || (best && !newer(tag, best.version))) continue
-      best = { version: tag, notes: toText(/<content[^>]*>([\s\S]*?)<\/content>/.exec(entry)?.[1] ?? ''), date: /<updated>([^<]+)</.exec(entry)?.[1] ?? '' }
-    }
+    // GitHub's list of releases first (60 checks an hour per network); its releases feed if that's unavailable.
+    const best = (await fromApi().catch(() => null)) ?? (await fromFeed())
     if (best && newer(best.version, current)) {
       apk = `${REPO}/releases/download/android-v${best.version}/Veyra-Study-${best.version}.apk`
       publish({ status: 'available', latest: best.version, notes: best.notes.replace(/^Install:[^\n]*\n*/, ''), releaseDate: best.date, checkedAt: Date.now() })

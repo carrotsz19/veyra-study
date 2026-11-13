@@ -18,7 +18,9 @@
     "android:install": "node tools/android-build.mjs --install",
     "release": "node tools/release.mjs",
     "release:dev": "node tools/release.mjs --dev",
-    "release:android": "node tools/release-android.mjs"
+    "release:android": "node tools/release-android.mjs",
+    "rollback": "node tools/rollback.mjs",
+    "rollback:dev": "node tools/rollback.mjs --dev"
   },
   "build": {
     "appId": "app.veyra.study",

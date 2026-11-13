@@ -70,6 +70,12 @@ if (dev) {
   const notes = section?.split('\n').slice(1).join('\n').trim() || `Veyra Study ${version} for Android.`
   const notesFile = join('release-android', 'notes.md')
   writeFileSync(notesFile, `${notes}\n\nInstall this APK once by hand if you're on 0.2.3 or older; after that, updates come from Settings → Software update.`)
-  gh(['release', 'create', `android-v${version}`, apk, '--repo', REPO, '--prerelease', '--title', `Veyra Study ${version} for Android`, '--notes-file', notesFile, '--target', git('rev-parse', 'HEAD')])
+  // GitHub's releases feed (which installed apps read) lists one tag per commit, and the Windows
+  // tag v<version> sits on HEAD: so the Android tag gets a commit of its own (same files), or it's left out.
+  const tagName = `android-v${version}`
+  const own = git('commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', `Veyra Study ${version} for Android`)
+  git('tag', '-f', tagName, own)
+  git('push', 'origin', `+refs/tags/${tagName}`)
+  gh(['release', 'create', tagName, apk, '--repo', REPO, '--prerelease', '--verify-tag', '--title', `Veyra Study ${version} for Android`, '--notes-file', notesFile])
   console.log(`\nDone: https://github.com/${REPO}/releases/tag/android-v${version}`)
 }
