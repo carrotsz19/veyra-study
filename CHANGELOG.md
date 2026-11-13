@@ -6,10 +6,13 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **Website (test):** Veyra Study in a browser at veyra-study-dev.igreenrobotz.workers.dev, with sign-in, group work and sync.
+
+## 1.0.1
+
 - **Microphones:** pick which microphone recordings use (the mic button in the recording bar, or Settings → Notes), even mid-recording. If nothing is coming in for 10 seconds the bar says so, and a recording that's completely silent says that instead of transcribing nothing.
 - **Note history:** a note's ••• menu → Version history shows earlier versions (kept automatically while you edit, at most every 10 minutes). Preview one, copy its text, or restore it; restoring keeps what was there as a version too. History syncs between your devices (Settings → Sync note history can keep it on each device instead).
-- **Security:** links can no longer open web pages inside Veyra's windows (they open in your browser), the windows run in Chromium's sandbox, the Android app is a release build that USB debugging can't read, and the website has a strict content policy.
-- **Website (test):** Veyra Study in a browser at veyra-study-dev.igreenrobotz.workers.dev, with sign-in, group work and sync.
+- **Security:** links can no longer open web pages inside Veyra's windows (they open in your browser), the windows run in Chromium's sandbox, and the Android app is a release build that USB debugging can't read.
 - **Android updates:** phones now find new versions reliably (they ask GitHub's list of releases).
 - **Server night hours:** for now the Veyra server sleeps from about 12 am to 8 am. A one-time note explains it, and Group work and the sync setting show a reminder from 11:30 pm and while it's asleep.
 - **Folders for notes:** group notes into folders, and folders inside folders; open one to see its folders and notes, and new notes start there. Move notes and folders by dragging them onto a folder (or onto the back link to go up a level), from the right-click menu, or several notes at once. Searching still looks through everything.
