@@ -35,7 +35,7 @@ export function setupMenus(main: BrowserWindow, load: Load, preload: string, mat
     backgroundMaterial: 'acrylic',
     width: 240,
     height: 200,
-    webPreferences: { preload, contextIsolation: true, sandbox: false }
+    webPreferences: { preload, contextIsolation: true, sandbox: true }
   })
   pop.setMenu(null)
   load(pop, 'menu')

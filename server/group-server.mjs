@@ -34,7 +34,7 @@ import { createGzip } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION = '1.3.1'
+const VERSION = '1.3.2'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -307,8 +307,10 @@ route(
   'POST',
   '/session',
   ({ body, ip }) => {
-    limit(`session:${ip}`, 20, 60_000)
+    // Loosely per address (everyone on the website arrives from Cloudflare's), tightly per account once the pass checks out.
+    limit(`session-ip:${ip}`, 300, 60_000)
     const p = verifyPass(body?.pass)
+    limit(`session:${p.u}`, 20, 60_000)
     if (isBlocked(p.u)) throw new HttpError(403, 'This account can’t use Group work or sync. Contact the owner if you think that’s a mistake.')
     const t = now()
     const existing = getUser(p.u)

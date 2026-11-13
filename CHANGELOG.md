@@ -6,6 +6,7 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **Security:** links can no longer open web pages inside Veyra's windows (they open in your browser), the windows run in Chromium's sandbox, the Android app is a release build that USB debugging can't read, and the website has a strict content policy.
 - **Website (test):** Veyra Study in a browser at veyra-study-dev.igreenrobotz.workers.dev, with sign-in, group work and sync.
 - **Android updates:** phones now find new versions reliably (they ask GitHub's list of releases).
 - **Server night hours:** for now the Veyra server sleeps from about 12 am to 8 am. A one-time note explains it, and Group work and the sync setting show a reminder from 11:30 pm and while it's asleep.

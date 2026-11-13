@@ -263,7 +263,8 @@ function createWindow(): void {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
-      sandbox: false
+      // Chromium's sandbox: the preload only needs Electron's own modules.
+      sandbox: true
     }
   })
 
@@ -326,6 +327,36 @@ function createWindow(): void {
 }
 
 /** Loads the app's page into a window (`hash` picks a screen, or "menu" for the menu window). */
+/*
+ * No window ever leaves Veyra's own page. Its windows can reach your data (window.veyra), so a
+ * link that would load a web page in one (say in a note someone shared with your group) opens in
+ * the browser instead. Pop-up windows and embedded web views are refused too.
+ */
+const ownPage = (u: string): boolean => {
+  try {
+    const url = new URL(u)
+    const dev = process.env['ELECTRON_RENDERER_URL']
+    if (!app.isPackaged && dev && url.origin === new URL(dev).origin) return true
+    return url.protocol === 'file:' && /\/renderer\/index\.html$/.test(url.pathname)
+  } catch {
+    return false
+  }
+}
+app.on('web-contents-created', (_e, wc) => {
+  const stay = (e: Electron.Event, url: string) => {
+    if (ownPage(url)) return
+    e.preventDefault()
+    if (/^https?:\/\//i.test(url) || /^mailto:[^\s]+$/i.test(url)) void shell.openExternal(url)
+  }
+  wc.on('will-navigate', stay)
+  wc.on('will-redirect', stay)
+  wc.on('will-attach-webview', (e) => e.preventDefault())
+  wc.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+})
+
 function loadPage(w: BrowserWindow, hash?: string): void {
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
     w.loadURL(process.env['ELECTRON_RENDERER_URL'] + (hash ? '#' + hash : ''))

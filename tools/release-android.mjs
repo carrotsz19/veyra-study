@@ -18,7 +18,8 @@
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const REPO = 'carrotsz19/veyra-study'
 /** Private: Dev test builds (only you can see them). */
@@ -50,9 +51,10 @@ if (!dev) {
 }
 
 console.log(`Building ${dev ? 'Veyra Dev' : 'Veyra Study'} ${appVersion} for Android…`)
-const r = spawnSync('node', ['tools/android-build.mjs', ...(install ? ['--install'] : [])], { stdio: 'inherit', env, shell: process.platform === 'win32' })
+// This folder's build script (a rollback runs this one against an older checkout).
+const r = spawnSync('node', [join(dirname(fileURLToPath(import.meta.url)), 'android-build.mjs'), ...(install ? ['--install'] : [])], { stdio: 'inherit', env, shell: process.platform === 'win32' })
 if (r.status !== 0) process.exit(r.status ?? 1)
-const built = join('android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk')
+const built = join('android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk')
 mkdirSync('release-android', { recursive: true })
 
 if (dev) {

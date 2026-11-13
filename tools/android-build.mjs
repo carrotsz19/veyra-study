@@ -14,8 +14,10 @@ const run = (cmd, args, cwd = process.cwd()) => {
 }
 run('npx', ['vite', 'build', '--config', 'mobile/vite.config.ts'])
 run('npx', ['cap', 'sync', 'android'])
-run(join(process.cwd(), 'android', 'gradlew.bat'), ['assembleDebug', '--console=plain'], join(process.cwd(), 'android'))
-const apk = join(process.cwd(), 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk')
+// A release build: not debuggable, so neither USB debugging nor Chrome's inspector can read the
+// app's data on someone's phone. Signed with the same key as before, so it installs over older builds.
+run(join(process.cwd(), 'android', 'gradlew.bat'), ['assembleRelease', '--console=plain'], join(process.cwd(), 'android'))
+const apk = join(process.cwd(), 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk')
 console.log('\nAPK:', apk)
 if (process.argv.includes('--install')) {
   const adb = join(env.ANDROID_HOME, 'platform-tools', 'adb.exe')

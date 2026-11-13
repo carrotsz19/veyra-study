@@ -65,6 +65,10 @@ const headers = [
   '  X-Content-Type-Options: nosniff',
   '  Referrer-Policy: strict-origin-when-cross-origin',
   '  X-Frame-Options: DENY',
+  // Only the site's own scripts run, and it only talks to its own address (web/worker.js passes the rest on).
+  "  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+  '  Strict-Transport-Security: max-age=31536000; includeSubDomains',
+  '  Permissions-Policy: camera=(), geolocation=(), payment=(), usb=(), microphone=(self)',
   '/assets/*',
   '  Cache-Control: public, max-age=31536000, immutable',
   ''
