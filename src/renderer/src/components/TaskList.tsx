@@ -2,40 +2,17 @@ import { useRef, useState, type ReactNode } from 'react'
 import { Bell, Check, ChevronDown, Flag, ListChecks, Repeat as RepeatIcon, Trash2, Undo2 } from 'lucide-react'
 import { usePhone } from '../lib/phone'
 import type { Rec, TaskStep } from '@shared/types'
-import { nextInSeries, repeatLabel } from '@shared/repeat'
+import { repeatLabel } from '@shared/repeat'
 import { db, useRecords } from '../data/store'
-import { dueLabel, isOverdue, todayKey } from '../lib/dates'
+import { dueLabel, isOverdue } from '../lib/dates'
+import { nextWhen, toggleTask } from '../lib/tasks'
 import { useToast } from './ui'
 import { TaskDialog } from './editors'
 import { useSettings } from '../data/settings'
 import type { TaskSort } from '@shared/settings'
 
-/**
- * Ticks a task off (or back on). A repeating task makes its next one; unticking
- * takes that next one away again if it hasn't been touched since.
- * Returns the next task's due date, if one was made.
- */
-export async function toggleTask(t: Rec<'task'>): Promise<string | null> {
-  const done = !t.data.done
-  if (done) {
-    const next = nextInSeries(t.id, t.data, todayKey())
-    if (next && !(await db.list('task')).some((x) => x.id === next.id)) await db.put('task', next.data, next.id)
-    await db.put('task', { ...t.data, done, completedAt: Date.now(), nextId: next?.id ?? null }, t.id)
-    return next?.data.due ?? null
-  }
-  if (t.data.nextId) {
-    const n = (await db.list('task')).find((x) => x.id === t.data.nextId)
-    if (n && !n.data.done && n.updatedAt === n.createdAt) await db.remove('task', n.id)
-  }
-  await db.put('task', { ...t.data, done, completedAt: null, nextId: null }, t.id)
-  return null
-}
-
-/** "tomorrow", "on Friday", "on Mon 14 Dec". */
-export function nextWhen(day: string): string {
-  const l = dueLabel(day)
-  return l === 'Today' || l === 'Tomorrow' ? l.toLowerCase() : `on ${l}`
-}
+// Kept here too: other screens import them from the task list.
+export { toggleTask, nextWhen }
 
 /** Ticks one step; says so when that was the last one. */
 async function toggleStep(task: Rec<'task'>, step: TaskStep): Promise<boolean> {

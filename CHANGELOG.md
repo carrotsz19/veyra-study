@@ -6,6 +6,8 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **Repeating tasks and the focus timer:** "Mark done" at the end of a focus block now makes the task's next one, like ticking it anywhere else.
+- **Undo messages:** a message stays while you point at it, and Ctrl+Z takes back the last thing it offers to undo.
 - **Recording player:** recordings in notes have Veyra's own player (play, a time bar you can drag, and 1×–2× speed) and a ••• menu with Download and Delete recording (Ctrl+Z brings a deleted one back).
 - **Website (test):** Veyra Study in a browser at veyra-study-dev.igreenrobotz.workers.dev, with sign-in, group work and sync.
 

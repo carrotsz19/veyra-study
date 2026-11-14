@@ -6,7 +6,7 @@ import { childrenOf, deleteFolder, drag, folderPath, moveFolder, newFolder, pare
 import { FolderNameDialog, FolderPickDialog } from '../components/FolderDialogs'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, onExternalChange, useRecords } from '../data/store'
-import { Dialog, Empty, useToast } from '../components/ui'
+import { ContextMenu as RowMenu, Dialog, Empty, useToast } from '../components/ui'
 import { Select } from '../components/Select'
 import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../components/notes/NoteEditor'
 import { useSettings } from '../data/settings'
@@ -35,38 +35,6 @@ export function Marked({ text, terms }: { text: string; terms: string[] }) {
     <>
       {text.split(re).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part))}
     </>
-  )
-}
-
-/** Right-click menu for one note. */
-function RowMenu({ x, y, items, onClose }: { x: number; y: number; items: [string, React.ReactNode, () => void, boolean?][]; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const away = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as globalThis.Node) && onClose()
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    setTimeout(() => document.addEventListener('mousedown', away))
-    document.addEventListener('keydown', esc)
-    return () => {
-      document.removeEventListener('mousedown', away)
-      document.removeEventListener('keydown', esc)
-    }
-  }, [onClose])
-  return (
-    <div ref={ref} className="ctx-menu" role="menu" style={{ left: Math.min(x, window.innerWidth - 220), top: Math.min(y, window.innerHeight - items.length * 36 - 16) }}>
-      {items.map(([label, icon, run, danger]) => (
-        <button
-          key={label}
-          role="menuitem"
-          className={`menu-row ${danger ? 'danger' : ''}`}
-          onClick={() => {
-            run()
-            onClose()
-          }}
-        >
-          {icon} {label}
-        </button>
-      ))}
-    </div>
   )
 }
 

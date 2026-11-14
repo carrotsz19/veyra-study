@@ -3,6 +3,7 @@ import { db } from '../data/store'
 import { useSettings } from '../data/settings'
 import { useToast } from './ui'
 import type { AppSettings } from '@shared/settings'
+import { freshTask, nextWhen, toggleTask } from '../lib/tasks'
 
 /**
  * One focus timer for the whole app, so it keeps running while you move
@@ -39,6 +40,8 @@ interface TimerState {
   setSubject: (id: string | null) => void
   /** Start (or keep) studying this subject; time already spent on another subject is saved first. */
   study: (id: string | null) => void
+  /** Start (or keep) a focus block on this task, under its subject. */
+  focusOn: (task: { id: string; subjectId: string | null }) => void
 }
 
 const Ctx = createContext<TimerState | null>(null)
@@ -208,8 +211,13 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           if (t && !t.data.done)
             toast(`Focus block done. Did you finish “${t.data.title}”?`, {
               label: 'Mark done',
+              // The same tick as everywhere else, so a repeating task makes its next one.
               run: () => {
-                void db.put('task', { ...t.data, done: true, completedAt: Date.now() }, t.id)
+                void freshTask(t).then(async (now) => {
+                  if (now.data.done) return
+                  const next = await toggleTask(now)
+                  if (next) toast(`Done. The next one is due ${nextWhen(next)}.`)
+                })
                 setTaskState(null)
               }
             })
@@ -292,6 +300,11 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     else if (!running) start()
   }
 
+  const focusOn = (task: { id: string; subjectId: string | null }) => {
+    setTaskState(task.id)
+    study(task.subjectId)
+  }
+
   const reset = () => enter(phase, false)
   const extend = (min: number) => {
     const add = min * 60
@@ -313,7 +326,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Ctx.Provider value={{ phase, running, remaining, total, subjectId, taskId, focusLen, streak, start, pause, stop, skip, reset, extend, setFocusLength, setTask, setSubject: changeSubject, study }}>
+    <Ctx.Provider value={{ phase, running, remaining, total, subjectId, taskId, focusLen, streak, start, pause, stop, skip, reset, extend, setFocusLength, setTask, setSubject: changeSubject, study, focusOn }}>
       {children}
     </Ctx.Provider>
   )

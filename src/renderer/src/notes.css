@@ -315,6 +315,8 @@
   border-radius: 12px; box-shadow: var(--elev-3); animation: popIn 0.15s var(--ease-out);
 }
 
+.ctx-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+
 /* ---------- focus mode: just the page ---------- */
 body.focus-mode aside.side { display: none; }
 body.focus-mode .shell { grid-template-columns: 1fr; }
