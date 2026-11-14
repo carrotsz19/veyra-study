@@ -34,7 +34,7 @@ import { createGzip } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION = '1.6.0'
+const VERSION = '1.7.0'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -547,8 +547,15 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS shares_owner ON shares(owner, note_id);
   CREATE INDEX IF NOT EXISTS shares_to ON shares(to_user);
 `)
+for (const col of ["role TEXT NOT NULL DEFAULT 'view'", 'signin INTEGER NOT NULL DEFAULT 1'])
+  try {
+    db.exec(`ALTER TABLE shares ADD COLUMN ${col}`)
+  } catch {
+    /* already there */
+  }
 const SHARE_MAX = 500_000
-const shareView = (r) => ({ id: r.id, noteId: r.note_id, to: r.to_user ? userCard(getUser(r.to_user)) ?? { username: r.to_user, displayName: r.to_user } : null, updatedAt: r.updated_at })
+const role = (r) => (r === 'edit' ? 'edit' : 'view')
+const shareView = (r) => ({ id: r.id, noteId: r.note_id, to: r.to_user ? userCard(getUser(r.to_user)) ?? { username: r.to_user, displayName: r.to_user } : null, role: role(r.role), signin: !!r.signin, docId: docFor(r.owner, r.note_id), updatedAt: r.updated_at })
 function sharePayload(body) {
   const title = typeof body?.title === 'string' ? body.title.slice(0, 300) : ''
   const content = typeof body?.content === 'string' ? body.content : ''
@@ -561,7 +568,7 @@ route('GET', '/shares/mine', ({ me }) => ({ shares: q('SELECT * FROM shares WHER
 route('GET', '/shares/inbox', ({ me }) => ({
   shares: q('SELECT * FROM shares WHERE to_user = ? AND dismissed = 0 ORDER BY updated_at DESC')
     .all(me)
-    .map((r) => ({ id: r.id, title: r.title, from: userCard(getUser(r.owner)) ?? { username: r.owner, displayName: r.owner }, updatedAt: r.updated_at }))
+    .map((r) => ({ id: r.id, title: r.title, from: userCard(getUser(r.owner)) ?? { username: r.owner, displayName: r.owner }, role: role(r.role), docId: docFor(r.owner, r.note_id), updatedAt: r.updated_at }))
 }))
 
 // Share a note: a link (no "to"), or with one person ("to": their username). Sharing again updates it.
@@ -578,8 +585,10 @@ route('POST', '/shares', ({ me, body }) => {
   }
   const t = now()
   const old = q(`SELECT * FROM shares WHERE owner = ? AND note_id = ? AND ${to ? 'to_user = ?' : 'to_user IS NULL'}`).get(...(to ? [me, noteId, to] : [me, noteId]))
-  if (old) q('UPDATE shares SET title = ?, content = ?, updated_at = ?, dismissed = 0 WHERE id = ?').run(title, content, t, old.id)
-  else q('INSERT INTO shares (id, owner, note_id, to_user, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(randomBytes(16).toString('base64url'), me, noteId, to, title, content, t, t)
+  const r = role(body?.role)
+  const signin = body?.signin === false ? 0 : 1
+  if (old) q('UPDATE shares SET title = ?, content = ?, updated_at = ?, dismissed = 0, role = ?, signin = ? WHERE id = ?').run(title, content, t, r, signin, old.id)
+  else q('INSERT INTO shares (id, owner, note_id, to_user, title, content, created_at, updated_at, role, signin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(randomBytes(16).toString('base64url'), me, noteId, to, title, content, t, t, r, signin)
   if (to) notify([to])
   const linked = q(
     `SELECT id FROM shares WHERE owner = ? AND note_id = ? AND ${to ? 'to_user = ?' : 'to_user IS NULL'}`
@@ -606,8 +615,17 @@ route('POST', '/shares/update', ({ me, body }) => {
 // Read one: the owner, or the person it was sent to.
 route('GET', '/shares/:id', ({ me, params }) => {
   const r = q('SELECT * FROM shares WHERE id = ?').get(params.id)
-  if (!r || (r.owner !== me && r.to_user !== me)) throw new HttpError(404, 'That shared note isn’t there any more.')
-  return { title: r.title, content: r.content, from: userCard(getUser(r.owner)) ?? { username: r.owner, displayName: r.owner }, updatedAt: r.updated_at }
+  if (!r || (r.owner !== me && r.to_user !== me && r.to_user !== null)) throw new HttpError(404, 'That shared note isn’t there any more.')
+  return { title: r.title, content: r.content, from: userCard(getUser(r.owner)) ?? { username: r.owner, displayName: r.owner }, role: role(r.role), signin: !!r.signin, docId: docFor(r.owner, r.note_id), mine: r.owner === me, updatedAt: r.updated_at }
+})
+
+// The owner changes someone's role (or the link's), like Google Docs' Viewer / Editor.
+route('PATCH', '/shares/:id', ({ me, params, body }) => {
+  const r = q('SELECT * FROM shares WHERE id = ? AND owner = ?').get(params.id, me)
+  if (!r) throw new HttpError(404, 'That share isn’t there any more.')
+  q('UPDATE shares SET role = ?, signin = ? WHERE id = ?').run(body?.role ? role(body.role) : role(r.role), body?.signin === undefined ? r.signin : body.signin ? 1 : 0, r.id)
+  if (r.to_user) notify([r.to_user])
+  return { share: shareView(q('SELECT * FROM shares WHERE id = ?').get(r.id)) }
 })
 
 // The owner stops sharing; the person it was sent to takes it off their list.
@@ -632,7 +650,141 @@ route(
     const r = q('SELECT * FROM shares WHERE id = ? AND to_user IS NULL').get(params.id)
     if (!r) throw new HttpError(404, 'This link doesn’t work any more. The person who shared it may have stopped sharing.')
     const u = getUser(r.owner)
-    return { title: r.title, content: r.content, from: u ? u.display_name || u.username : r.owner, updatedAt: r.updated_at }
+    return { title: r.title, content: r.content, from: u ? u.display_name || u.username : r.owner, role: role(r.role), signin: !!r.signin, docId: docFor(r.owner, r.note_id), updatedAt: r.updated_at }
+  },
+  false
+)
+
+/* ---------- editing a shared note together (Yjs updates, relayed) ---------- */
+/*
+ * Each shared note has one document. The apps edit it with Yjs and send each change as a
+ * small update; this server only stores them in order and hands them on (it never reads
+ * them). New updates wake anyone waiting (long poll). An app sends a snapshot now and then,
+ * and older updates are dropped. Who may read or write is worked out from the note's shares.
+ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS docs (id TEXT PRIMARY KEY, owner TEXT NOT NULL, note_id TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(owner, note_id));
+  CREATE TABLE IF NOT EXISTS doc_updates (seq INTEGER PRIMARY KEY AUTOINCREMENT, doc_id TEXT NOT NULL, data TEXT NOT NULL, at INTEGER NOT NULL);
+  CREATE INDEX IF NOT EXISTS doc_updates_doc ON doc_updates(doc_id, seq);
+  CREATE TABLE IF NOT EXISTS doc_snapshots (doc_id TEXT PRIMARY KEY, data TEXT NOT NULL, upto INTEGER NOT NULL);
+`)
+function docFor(owner, noteId) {
+  const d = q('SELECT id FROM docs WHERE owner = ? AND note_id = ?').get(owner, noteId)
+  if (d) return d.id
+  const id = 'dc_' + randomBytes(16).toString('base64url')
+  q('INSERT INTO docs (id, owner, note_id, created_at) VALUES (?, ?, ?, ?)').run(id, owner, noteId, now())
+  return id
+}
+/** What someone may do with a document: 'edit', 'view' or nothing (null). */
+function docAccess(docId, me, shareId) {
+  const d = q('SELECT * FROM docs WHERE id = ?').get(docId)
+  if (!d) return null
+  if (me && me === d.owner) return 'edit'
+  let best = null
+  if (me) for (const r of q('SELECT role FROM shares WHERE owner = ? AND note_id = ? AND to_user = ?').all(d.owner, d.note_id, me)) best = best === 'edit' ? 'edit' : role(r.role)
+  if (shareId) {
+    const r = q('SELECT role, signin FROM shares WHERE id = ? AND owner = ? AND note_id = ? AND to_user IS NULL').get(shareId, d.owner, d.note_id)
+    // A link that lets people edit may ask them to sign in first: without that, they can only read.
+    if (r) best = best === 'edit' ? 'edit' : role(r.role) === 'edit' && (!r.signin || me) ? 'edit' : 'view'
+  }
+  return best
+}
+const signedIn = (req) => {
+  try {
+    return sessionUser(req).me
+  } catch {
+    return null
+  }
+}
+const docWaiters = new Map()
+const wakeDoc = (id) => {
+  for (const w of docWaiters.get(id) ?? []) w()
+  docWaiters.delete(id)
+}
+function docSince(id, since) {
+  const snap = q('SELECT data, upto FROM doc_snapshots WHERE doc_id = ?').get(id)
+  const from = snap && since < snap.upto ? snap.upto : since
+  const updates = q('SELECT seq, data FROM doc_updates WHERE doc_id = ? AND seq > ? ORDER BY seq LIMIT 500').all(id, from)
+  const last = q('SELECT MAX(seq) AS s FROM doc_updates WHERE doc_id = ?').get(id).s ?? snap?.upto ?? 0
+  return { snapshot: snap && since < snap.upto ? snap.data : null, updates: updates.map((u) => u.data), seq: updates.length ? updates[updates.length - 1].seq : Math.max(since, snap?.upto ?? 0, from), last }
+}
+
+// Changes since a point (waits up to 15 s when there are none, so it's live without polling hard).
+route(
+  'GET',
+  '/docs/:id',
+  async ({ params, url, req, ip }) => {
+    limit(`doc-read:${ip}`, 900, 60_000)
+    const me = signedIn(req)
+    const can = docAccess(params.id, me, url.searchParams.get('share') || '')
+    if (!can) throw new HttpError(404, 'That shared note isn’t there any more.')
+    const since = Math.max(0, Number(url.searchParams.get('since')) || 0)
+    let out = docSince(params.id, since)
+    if (!out.snapshot && !out.updates.length && url.searchParams.get('wait') === '1') {
+      await new Promise((resolve) => {
+        const list = docWaiters.get(params.id) ?? new Set()
+        const done = () => (clearTimeout(t), list.delete(done), resolve())
+        const t = setTimeout(done, 15_000)
+        list.add(done)
+        docWaiters.set(params.id, list)
+      })
+      out = docSince(params.id, since)
+    }
+    return { ...out, can }
+  },
+  false
+)
+
+// One change (a Yjs update, base64), from someone who may edit.
+route(
+  'POST',
+  '/docs/:id',
+  ({ params, url, req, body, ip }) => {
+    const me = signedIn(req)
+    limit(`doc-write:${me || ip}`, 1200, 60_000)
+    if (docAccess(params.id, me, url.searchParams.get('share') || '') !== 'edit') throw new HttpError(403, 'You can only read this note.')
+    const list = Array.isArray(body?.updates) ? body.updates : [body?.update]
+    let seq = 0
+    for (const u of list) {
+      if (typeof u !== 'string' || !u || u.length > 1_000_000) continue
+      seq = Number(q('INSERT INTO doc_updates (doc_id, data, at) VALUES (?, ?, ?)').run(params.id, u, now()).lastInsertRowid)
+    }
+    if (seq) wakeDoc(params.id)
+    return { seq }
+  },
+  false
+)
+
+// A snapshot of the whole document up to a point; older changes are dropped.
+route(
+  'POST',
+  '/docs/:id/snapshot',
+  ({ params, url, req, body }) => {
+    const me = signedIn(req)
+    if (docAccess(params.id, me, url.searchParams.get('share') || '') !== 'edit') throw new HttpError(403, 'You can only read this note.')
+    const upto = Number(body?.upto)
+    if (typeof body?.data !== 'string' || !body.data || body.data.length > 6_000_000 || !Number.isFinite(upto)) throw new HttpError(400, 'Bad snapshot.')
+    q('INSERT INTO doc_snapshots (doc_id, data, upto) VALUES (?, ?, ?) ON CONFLICT(doc_id) DO UPDATE SET data = excluded.data, upto = excluded.upto WHERE excluded.upto > doc_snapshots.upto').run(params.id, body.data, upto)
+    q('DELETE FROM doc_updates WHERE doc_id = ? AND seq <= ?').run(params.id, upto)
+    return { ok: true }
+  },
+  false
+)
+
+// The note's text as plain JSON (for people reading it, and anyone on an older app), from an editor.
+route(
+  'POST',
+  '/docs/:id/text',
+  ({ params, url, req, body }) => {
+    const me = signedIn(req)
+    if (docAccess(params.id, me, url.searchParams.get('share') || '') !== 'edit') throw new HttpError(403, 'You can only read this note.')
+    const d = q('SELECT * FROM docs WHERE id = ?').get(params.id)
+    const content = typeof body?.content === 'string' ? body.content : ''
+    if (!content || content.length > SHARE_MAX) throw new HttpError(413, 'That note is too large to share.')
+    const rows = q('SELECT * FROM shares WHERE owner = ? AND note_id = ?').all(d.owner, d.note_id)
+    q('UPDATE shares SET content = ?, updated_at = ? WHERE owner = ? AND note_id = ?').run(content, now(), d.owner, d.note_id)
+    for (const r of rows) linkFiles(r.id, d.owner, content)
+    return { ok: true }
   },
   false
 )
@@ -662,7 +814,7 @@ function linkFiles(shareId, owner, content) {
   const ids = [...new Set(String(content).match(/sf_[A-Za-z0-9_-]{22}/g) ?? [])]
   q('DELETE FROM share_files WHERE share_id = ?').run(shareId)
   for (const id of ids)
-    if (q('SELECT 1 FROM files WHERE id = ? AND owner = ?').get(id, owner)) q('INSERT OR IGNORE INTO share_files (share_id, file_id) VALUES (?, ?)').run(shareId, id)
+    if (q('SELECT 1 FROM files WHERE id = ?').get(id)) q('INSERT OR IGNORE INTO share_files (share_id, file_id) VALUES (?, ?)').run(shareId, id)
 }
 
 // Already uploaded? (by the file's SHA-256), so edits don't upload the same pictures again.
@@ -1013,7 +1165,7 @@ const server = createServer(async (req, res) => {
       const params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]))
       limit(`all:${ip}`, 1200, 60_000)
       const auth = r.auth ? sessionUser(req) : {}
-      const body = req.method === 'GET' || req.method === 'DELETE' ? null : await readBody(req, url.pathname === '/sync/push' ? MAX_SYNC_BODY : url.pathname === '/files' ? MAX_FILE_BODY : MAX_BODY)
+      const body = req.method === 'GET' || req.method === 'DELETE' ? null : await readBody(req, url.pathname === '/sync/push' ? MAX_SYNC_BODY : url.pathname === '/files' || url.pathname.endsWith('/snapshot') ? MAX_FILE_BODY : MAX_BODY)
       const out = await r.handler({ ...auth, params, body, url, req, ip })
       return send(200, out)
     }

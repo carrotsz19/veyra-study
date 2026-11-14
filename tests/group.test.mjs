@@ -372,7 +372,8 @@ test('sharing a note: a link anyone can read, or one person; updates, removing a
   assert.ok(link.length >= 20)
   r = await api(null, 'GET', `/shares/public/${link}`)
   assert.equal(r.body.title, 'Cells')
-  assert.equal((await api(b, 'GET', `/shares/${link}`)).status, 404)
+  // Anyone signed in with the link can open it in the app too (that is what a link is for).
+  assert.equal((await api(b, 'GET', `/shares/${link}`)).status, 200)
 
   // One person: unknown people and yourself are explained; they see it in their list.
   assert.equal((await api(a, 'POST', '/shares', { noteId: 'n1', title: 'Cells', content: doc('v1'), to: '@nobody-here' })).status, 404)
@@ -424,4 +425,56 @@ test('files in shared notes: only the owner, the person shared with, or the link
   // Stopping the link stops the link's access.
   await api(a, 'DELETE', `/shares/${link}`)
   assert.equal((await api(null, 'GET', `/files/${fid}?share=${link}`)).status, 404)
+})
+
+test('roles and editing together: viewers read, editors write, links can ask editors to sign in', async () => {
+  const a = await login('owner2')
+  const b = await login('helper')
+  const c = await login('outsider')
+  const content = JSON.stringify({ content: null })
+  let r = await api(a, 'POST', '/shares', { noteId: 'live1', title: 'Essay', content, to: 'helper' })
+  const person = r.body.share
+  assert.equal(person.role, 'view')
+  const doc = person.docId
+  assert.match(doc, /^dc_/)
+
+  // A viewer can read but not write; an outsider can't even read.
+  assert.equal((await api(b, 'GET', `/docs/${doc}?since=0`)).body.can, 'view')
+  assert.equal((await api(b, 'POST', `/docs/${doc}`, { update: 'AAA=' })).status, 403)
+  assert.equal((await api(c, 'GET', `/docs/${doc}?since=0`)).status, 404)
+
+  // Made an editor: their changes are kept in order.
+  assert.equal((await api(a, 'PATCH', `/shares/${person.id}`, { role: 'edit' })).body.share.role, 'edit')
+  assert.equal((await api(a, 'POST', `/docs/${doc}`, { update: 'AQ==' })).status, 200)
+  assert.equal((await api(b, 'POST', `/docs/${doc}`, { updates: ['Ag==', 'Aw=='] })).status, 200)
+  r = await api(b, 'GET', `/docs/${doc}?since=0`)
+  assert.deepEqual(r.body.updates, ['AQ==', 'Ag==', 'Aw=='])
+  const seq = r.body.seq
+
+  // Waiting for changes wakes up as soon as someone writes.
+  const started = Date.now()
+  const waiting = api(b, 'GET', `/docs/${doc}?since=${seq}&wait=1`)
+  await new Promise((res) => setTimeout(res, 200))
+  await api(a, 'POST', `/docs/${doc}`, { update: 'BA==' })
+  r = await waiting
+  assert.deepEqual(r.body.updates, ['BA=='])
+  assert.ok(Date.now() - started < 5000)
+
+  // A snapshot replaces the older changes.
+  await api(a, 'POST', `/docs/${doc}/snapshot`, { data: 'U05BUA==', upto: r.body.seq })
+  r = await api(b, 'GET', `/docs/${doc}?since=0`)
+  assert.equal(r.body.snapshot, 'U05BUA==')
+  assert.deepEqual(r.body.updates, [])
+
+  // A link: view only by default; "anyone can edit" can still ask people to sign in.
+  const link = (await api(a, 'POST', '/shares', { noteId: 'live1', title: 'Essay', content, role: 'edit' })).body.share
+  assert.equal(link.signin, true)
+  assert.equal((await api(null, 'GET', `/docs/${doc}?since=0&share=${link.id}`)).body.can, 'view')
+  assert.equal((await api(null, 'POST', `/docs/${doc}?share=${link.id}`, { update: 'BQ==' })).status, 403)
+  assert.equal((await api(c, 'POST', `/docs/${doc}?share=${link.id}`, { update: 'BQ==' })).status, 200)
+  await api(a, 'PATCH', `/shares/${link.id}`, { signin: false })
+  assert.equal((await api(null, 'POST', `/docs/${doc}?share=${link.id}`, { update: 'Bg==' })).status, 200)
+  // ...and editors keep the plain text up to date for readers.
+  assert.equal((await api(c, 'POST', `/docs/${doc}/text?share=${link.id}`, { content: JSON.stringify({ content: { type: 'doc' } }) })).status, 200)
+  assert.equal((await api(null, 'GET', `/shares/public/${link.id}`)).body.role, 'edit')
 })

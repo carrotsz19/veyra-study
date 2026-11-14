@@ -72,11 +72,14 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
+    "@tiptap/extension-collaboration": "3.33.1",
+    "@tiptap/y-tiptap": "3.3.0",
     "dictionary-en": "^4.0.0",
     "dictionary-en-gb": "^3.0.0",
     "electron-updater": "^6.8.11",
     "ical.js": "^2.2.1",
-    "nspell": "^2.1.5"
+    "nspell": "^2.1.5",
+    "yjs": "13.6.33"
   },
   "devDependencies": {
     "@aparajita/capacitor-secure-storage": "^8.0.1",
