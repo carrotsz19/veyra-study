@@ -1,6 +1,6 @@
 import { onAndroid } from '../../lib/phone'
 import { preview } from './listing'
-import { useContext, useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import { formatDistanceToNowStrict } from 'date-fns'
@@ -284,6 +284,16 @@ function PageMenu({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const { s, set: setSetting } = useSettings()
+  // As tall as the space below it (it scrolls inside), so nothing ends up off the bottom of the window.
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = ref.current
+      if (el) el.style.maxHeight = `${Math.max(220, window.innerHeight - el.getBoundingClientRect().top - 12)}px`
+    }
+    fit()
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [])
   useEffect(() => {
     const away = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as globalThis.Node) && onClose()
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -298,6 +308,36 @@ function PageMenu({
   const font = data.font ?? 'sans'
   return (
     <div className="popover page-menu" ref={ref} role="dialog" aria-label="Page options">
+      {/* What you do most comes first; how the page looks is below. */}
+      <button className="menu-row" onClick={() => set({ pinned: !data.pinned })}>
+        {data.pinned ? <PinOff size={15} /> : <Pin size={15} />} {data.pinned ? 'Unpin' : 'Pin to top'}
+      </button>
+      {onShare && (
+        <button className="menu-row" onClick={onShare}>
+          <Share2 size={15} /> Share…
+        </button>
+      )}
+      <button className="menu-row" onClick={onHistory}>
+        <HistoryIcon size={15} /> Version history
+      </button>
+      <button className="menu-row" onClick={onDuplicate}>
+        <Copy size={15} /> Duplicate
+      </button>
+      <button className="menu-row" onClick={onExport}>
+        <Download size={15} /> Export as Markdown
+      </button>
+      {!onAndroid() && (
+        <button className="menu-row" onClick={onSaveDocs}>
+          <FileUp size={15} /> Save to Google Docs
+        </button>
+      )}
+      <button className="menu-row" onClick={() => set({ archived: !data.archived })}>
+        {data.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />} {data.archived ? 'Unarchive' : 'Archive'}
+      </button>
+      <button className="menu-row danger" onClick={onDelete}>
+        <Trash2 size={15} /> Move to trash
+      </button>
+      <div className="menu-sep" />
       <h2>Layout</h2>
       <div className="tpl-picker">
         {TEMPLATES.map(([t, label, hint]) => (
@@ -347,35 +387,6 @@ function PageMenu({
           </button>
         ))}
       </div>
-      <div className="menu-sep" />
-      <button className="menu-row" onClick={() => set({ pinned: !data.pinned })}>
-        {data.pinned ? <PinOff size={15} /> : <Pin size={15} />} {data.pinned ? 'Unpin' : 'Pin to top'}
-      </button>
-      {onShare && (
-        <button className="menu-row" onClick={onShare}>
-          <Share2 size={15} /> Share…
-        </button>
-      )}
-      <button className="menu-row" onClick={onHistory}>
-        <HistoryIcon size={15} /> Version history
-      </button>
-      <button className="menu-row" onClick={onDuplicate}>
-        <Copy size={15} /> Duplicate
-      </button>
-      <button className="menu-row" onClick={onExport}>
-        <Download size={15} /> Export as Markdown
-      </button>
-      {!onAndroid() && (
-        <button className="menu-row" onClick={onSaveDocs}>
-          <FileUp size={15} /> Save to Google Docs
-        </button>
-      )}
-      <button className="menu-row" onClick={() => set({ archived: !data.archived })}>
-        {data.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />} {data.archived ? 'Unarchive' : 'Archive'}
-      </button>
-      <button className="menu-row danger" onClick={onDelete}>
-        <Trash2 size={15} /> Move to trash
-      </button>
     </div>
   )
 }
