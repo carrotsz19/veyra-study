@@ -101,3 +101,28 @@ npm run release:web       # https://veyra-study-web.igreenrobotz.workers.dev  (P
 - `npm run release` and `npm run release:android` scan the installer and the APK on VirusTotal after publishing. They add a "VirusTotal" section to the release notes, with a link, the number of engines that flagged the file, and its SHA-256.
 - The API key lives in `C:\dev\tools\virustotal.key`, outside the repo, or in `VIRUSTOTAL_KEY`. Without a key the scan is skipped, and a failed scan never stops a release.
 - **To scan again by hand:** `node tools/virustotal.mjs <tag> <file>`. Running it again replaces the section rather than adding a second one.
+
+## Code signing (Windows)
+
+Smart App Control and school/work PC policies block unsigned compiled files, and Veyra's
+`.exe` is new to Windows, so it has no reputation to fall back on. Signing fixes that.
+
+**Check on every release:** `tools/native-check.mjs` runs before anything is published. Unsigned,
+it only allows Electron's own files, so a new native dependency can't slip in. Signed, it requires
+every `.exe`/`.dll` to be signed.
+
+**Setting up Azure Trusted Signing (once):**
+1. In Azure: create a Trusted Signing account, complete identity validation, and create a
+   *Public Trust* certificate profile.
+2. Create an Entra app registration with a client secret, and give it the
+   *Trusted Signing Certificate Profile Signer* role on the account.
+3. Put its sign-in in `C:\dev\tools\azure-signing.json` (never in the repo):
+   `{ "tenantId": "…", "clientId": "…", "clientSecret": "…" }`
+4. Commit `build/signing.json` (nothing secret):
+   `{ "publisherName": "<the name on the certificate, exactly>", "endpoint": "https://<region>.codesigning.azure.net", "codeSigningAccountName": "…", "certificateProfileName": "…" }`
+5. Release Dev first and check the installer: right-click → Properties → Digital Signatures.
+
+From then on, every release (Dev, Prod and rollbacks) is signed: the installer, the app and Electron's
+DLLs. **There's no going back:** signed apps check that each update is signed by the same
+publisher, so with `build/signing.json` in place a release without the sign-in stops instead of
+going out unsigned. Keep the client secret renewed before it expires.

@@ -37,3 +37,6 @@ web/dist/
 .dev.vars*
 !.dev.vars.example
 !.env.example
+
+# Written for one signed release, then removed
+electron-builder.signed.json

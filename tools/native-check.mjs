@@ -1,7 +1,8 @@
 // Stops a release when the Windows app would ship a compiled file (.exe/.dll/.node/.pyd) that
 // isn't signed and isn't one of Electron's own. Smart App Control and school/work PC policies
 // block unsigned compiled files, so a new native dependency must be a choice, not an accident.
-//   node tools/native-check.mjs <unpacked app folder>
+//   node tools/native-check.mjs <unpacked app folder> [--signed]
+// --signed (the app is code-signed): every compiled file must be signed, Electron's included.
 import { execFileSync } from 'node:child_process'
 import { readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -12,6 +13,7 @@ const ALLOWED = new Set(['dxcompiler.dll', 'electron_wer.dll', 'ffmpeg.dll', 'vk
 const NATIVE = /\.(exe|dll|node|pyd)$/i
 
 const dir = process.argv[2]
+const signed = process.argv.includes('--signed')
 if (!dir) throw new Error('usage: node tools/native-check.mjs <unpacked app folder>')
 
 const files = []
@@ -33,9 +35,9 @@ const status = execFileSync('powershell', ['-NoProfile', '-Command', ps], { inpu
 
 const name = (p) => relative(dir, p).replace(/\\/g, '/')
 const mainExe = (p) => !name(p).includes('/') && name(p).toLowerCase().endsWith('.exe')
-const bad = files.filter((p, i) => status[i] !== 'Valid' && !mainExe(p) && !ALLOWED.has(name(p).toLowerCase())).map(name)
+const bad = files.filter((p, i) => status[i] !== 'Valid' && (signed || (!mainExe(p) && !ALLOWED.has(name(p).toLowerCase())))).map(name)
 if (bad.length || packed.length) {
-  console.error('\nUnsigned compiled files that are not Electron’s own (Smart App Control would block them):')
+  console.error(signed ? '\nThese compiled files did not get signed:' : '\nUnsigned compiled files that are not Electron’s own (Smart App Control would block them):')
   for (const f of [...bad, ...packed.map((f) => `app.asar${f}`)]) console.error('  ' + f)
   console.error('\nRemove the dependency, or if it is accepted on purpose, add it to ALLOWED in tools/native-check.mjs.')
   process.exit(1)

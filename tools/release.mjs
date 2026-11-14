@@ -25,7 +25,9 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { createRequire } from 'node:module'
+import { join, resolve } from 'node:path'
+import { signing } from './signing.mjs'
 
 const REPO = 'carrotsz19/veyra-study'
 /** Private: Dev test builds (only you can see them). */
@@ -50,6 +52,21 @@ if (!token) {
 const ghEnv = { ...process.env, GH_TOKEN: token }
 const { version } = JSON.parse(readFileSync('package.json', 'utf8'))
 
+// Signed once build/signing.json is set up (see tools/signing.mjs): the builder settings plus
+// the signing ones, in a file of their own for this release only.
+const sign = signing()
+const SIGNED_CONFIG = 'electron-builder.signed.json'
+const builderConfig = (devConfig) => {
+  if (!sign) return devConfig ? ['--config', devConfig] : []
+  const base = devConfig ? createRequire(import.meta.url)(resolve(devConfig)) : JSON.parse(readFileSync('package.json', 'utf8')).build
+  writeFileSync(SIGNED_CONFIG, JSON.stringify({ ...base, win: { ...base.win, ...sign.win } }, null, 2))
+  process.on('exit', () => rmSync(SIGNED_CONFIG, { force: true }))
+  return ['--config', SIGNED_CONFIG]
+}
+const signEnv = sign?.env ?? {}
+const checkFlags = sign ? ['--signed'] : []
+if (sign) console.log('Signing the Windows app with Azure Trusted Signing.')
+
 if (dev) {
   // The next version, marked as a test build: 0.2.12 → 0.2.13-dev.202611121905.
   const [a, b, c] = version.split('.').map(Number)
@@ -58,12 +75,13 @@ if (dev) {
   const commit = git('rev-parse', '--short', 'HEAD') + (git('status', '--porcelain') ? ' + uncommitted changes' : '')
   console.log(`Publishing Veyra Study Dev ${devVersion} (${commit})…`)
   const env = { ...process.env, VEYRA_CHANNEL: 'dev', VEYRA_VERSION: devVersion }
+  process.env.VEYRA_VERSION = devVersion // read by electron-builder.dev.cjs
   run('npm', ['run', 'typecheck'], env)
   // Start clean, so nothing from an earlier test build is published by mistake.
   rmSync('release-dev', { recursive: true, force: true })
   run('npx', ['electron-vite', 'build'], env)
-  run('npx', ['electron-builder', '--win', '--publish', 'never', '--config', 'electron-builder.dev.cjs'], env)
-  run('node', ['tools/native-check.mjs', join('release-dev', 'win-unpacked')])
+  run('npx', ['electron-builder', '--win', '--publish', 'never', ...builderConfig('electron-builder.dev.cjs')], { ...env, ...signEnv })
+  run('node', [join(import.meta.dirname, 'native-check.mjs'), join('release-dev', 'win-unpacked'), ...checkFlags])
 
   // A release in the private test-build repo (only you can see it), marked newest:
   // Dev apps read it with their read-only token. Windows looks for latest.yml there.
@@ -112,15 +130,16 @@ console.log(`Publishing Veyra Study ${version}…`)
 const prodEnv = { ...process.env, VEYRA_CHANNEL: 'prod', VEYRA_VERSION: '' }
 run('npm', ['run', 'build'], prodEnv)
 // Package once without publishing, to check for unsigned compiled files before anything goes out.
-run('npx', ['electron-builder', '--win', '--dir', '--publish', 'never'], prodEnv)
-run('node', ['tools/native-check.mjs', join('release', 'win-unpacked')])
+const prodConfig = builderConfig()
+run('npx', ['electron-builder', '--win', '--dir', '--publish', 'never', ...prodConfig], { ...prodEnv, ...signEnv })
+run('node', [join(import.meta.dirname, 'native-check.mjs'), join('release', 'win-unpacked'), ...checkFlags])
 // Make the release first: electron-builder uploads its files in parallel, and when the release
 // doesn't exist yet two uploads each try to create it and one fails.
 // Run directly (not through the shell, which would split the notes at every space).
 execFileSync('gh', ['release', 'create', `v${version}`, '--target', git('rev-parse', 'HEAD'), '--title', `Veyra Study ${version}`, '--notes', `${notes}
 
 **Install:** download Veyra-Study-Setup-${version}.exe below and run it. Installed copies update themselves.`], { stdio: 'inherit', env: ghEnv })
-run('npx', ['electron-builder', '--win', '--publish', 'always'], { ...prodEnv, GH_TOKEN: token })
+run('npx', ['electron-builder', '--win', '--publish', 'always', ...prodConfig], { ...prodEnv, ...signEnv, GH_TOKEN: token })
 // Scan the installer on VirusTotal and add the result to the notes (never stops the release).
 try {
   await (await import('./virustotal.mjs')).addToRelease(`v${version}`, [join('release', `Veyra-Study-Setup-${version}.exe`)])
