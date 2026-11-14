@@ -725,3 +725,8 @@ a.np-row { text-decoration: none; color: inherit; }
 .np-trash-bar { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
 /* The filter panel sits over the list: solid, so the notes under it don't show through. */
 .np-filter-pop, html.material .np-filter-pop { background: var(--bg-elevated, var(--panel)); backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* ---------- folders fold open in place ---------- */
+.np-folder .np-folder-chev { flex: none; color: var(--dim); transition: transform 0.18s var(--ease-out, ease); }
+.np-folder.open .np-folder-chev { transform: rotate(90deg); }
+.np-folder-empty { margin: 2px 0 6px; padding: 4px 12px; font-size: 12.5px; color: var(--dim); }

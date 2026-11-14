@@ -111,7 +111,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   const folders = useFolders('note')
   const [folderId, setFolderId] = useState<string | null>(null)
   const folder = folders.find((f) => f.id === folderId) ?? null
-  const [folderDialog, setFolderDialog] = useState<{ mode: 'new' } | { mode: 'rename'; folder: Rec<'folder'> } | null>(null)
+  const [folderDialog, setFolderDialog] = useState<{ mode: 'new'; parent?: string | null } | { mode: 'rename'; folder: Rec<'folder'> } | null>(null)
   const [movingFolder, setMovingFolder] = useState<Rec<'folder'> | null>(null)
   const parent = folder ? folders.find((f) => f.id === parentOf(folders, folder)) ?? null : null
   const [moveTo, setMoveTo] = useState<Rec<'note'>[] | null>(null)
@@ -273,13 +273,8 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     toast(name ? `Moved ${f.data.name} into ${name}` : `Moved ${f.data.name} to the top level`, { label: 'Undo', run: () => void db.put('folder', before, f.id) })
   }
   const openFolder = (id: string | null) => {
-    const go = () => {
-      setFolderId(id)
-      clearPick()
-    }
-    // On a phone a folder slides in like a page.
-    if (phone) transition(go, id ? 'push' : 'pop')
-    else go()
+    if (id) return toggleFolder(id, true)
+    setFolderId(null)
   }
   // Dragging onto a folder (desktop): notes (the picked ones if the dragged one is picked), or another folder.
   const canDrop = (id: string | null) => {
@@ -410,6 +405,144 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     document.body.classList.toggle('note-open', !!(phone && current && !subjectFilter))
     return () => document.body.classList.remove('note-open')
   }, [phone, current, subjectFilter])
+
+  // A folder opens in place (its folders and notes indented under it), so the rest of the list stays in view.
+  const [openFolders, setOpenFolders] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('veyra.notes.openFolders') ?? '[]'))
+    } catch {
+      return new Set()
+    }
+  })
+  const toggleFolder = (id: string, open?: boolean) =>
+    setOpenFolders((prev) => {
+      const next = new Set(prev)
+      if (open ?? !next.has(id)) next.add(id)
+      else next.delete(id)
+      try {
+        localStorage.setItem('veyra.notes.openFolders', JSON.stringify([...next]))
+      } catch {
+        /* storage unavailable */
+      }
+      return next
+    })
+  const notesIn = (id: string) =>
+    inView
+      .filter((n) => folderOf(n) === id && (!subjectId || n.data.subjectId === subjectId) && (!tag || (n.data.tags ?? []).includes(tag)))
+      .sort((a, b) =>
+        settings.noteSort === 'title' ? (a.data.title || 'Untitled').localeCompare(b.data.title || 'Untitled') : settings.noteSort === 'created' ? b.createdAt - a.createdAt : b.updatedAt - a.updatedAt
+      )
+  const tree = (parentId: string | null, depth: number): React.ReactNode[] =>
+    childrenOf(folders, parentId)
+      .filter((f) => !subjectFilter || folderCount(f.id) > 0)
+      .flatMap((f) => {
+        const open = openFolders.has(f.id)
+        const inside = open ? notesIn(f.id) : []
+        const sub = open ? tree(f.id, depth + 1) : []
+        return [
+          <button
+            key={f.id}
+            className={`np-row np-folder ${dropOn === f.id ? 'drop' : ''} ${open ? 'open' : ''}`}
+            style={depth ? { paddingLeft: 12 + depth * 18 } : undefined}
+            aria-expanded={open}
+            onClick={() => toggleFolder(f.id)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              setFolderCtx({ x: e.clientX, y: e.clientY, folder: f })
+            }}
+            {...dropProps(f.id, f.data.name)}
+            draggable={!phone}
+            onDragStart={(e) => {
+              drag.start({ kind: 'folder', id: f.id, scope: 'note' })
+              e.dataTransfer.effectAllowed = 'move'
+              e.dataTransfer.setData('text/plain', f.data.name)
+            }}
+            onDragEnd={() => {
+              drag.end()
+              setDropOn(null)
+            }}
+          >
+            <ChevronRight size={14} className="np-folder-chev" />
+            {open || dropOn === f.id ? <FolderOpen size={17} className="np-folder-icon" /> : <FolderIcon size={17} className="np-folder-icon" />}
+            <span className="grow trunc np-folder-name">{f.data.name}</span>
+            <span className="np-folder-count">{folderCount(f.id)}</span>
+          </button>,
+          ...sub,
+          ...inside.map((n) => renderRow(n, '', depth + 1)),
+          ...(open && !sub.length && !inside.length
+            ? [
+                <p key={`${f.id}-empty`} className="np-folder-empty" style={{ paddingLeft: 12 + (depth + 1) * 18 }}>
+                  Empty. Drag notes here, or use a note’s Move to folder.
+                </p>
+              ]
+            : [])
+        ]
+      })
+  const renderRow = (n: Rec<'note'>, name: string, depth = 0) => {
+                      const s = subjects.find((x) => x.id === n.data.subjectId)
+                      const isPicked = picked.has(n.id)
+                      const found = terms.length ? snippet(n, terms) : null
+                      const text = found ?? preview(n.data.title, n.data.excerpt)
+                      return (
+                        <button
+                          key={n.id}
+                          style={depth ? { paddingLeft: 12 + depth * 18 } : undefined}
+                          className={`np-row ${isPicked ? 'picked' : ''}`}
+                          aria-current={!selecting && n.id === selected}
+                          aria-pressed={selecting ? isPicked : undefined}
+                          onClick={(e) => onRow(e, n.id)}
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            setCtx({ x: e.clientX, y: e.clientY, id: n.id })
+                          }}
+                          draggable={!phone && view === 'notes'}
+                          onDragStart={(e) => {
+                            drag.start({ kind: 'notes', ids: (isPicked ? pickedNotes : [n]).map((x) => x.id) })
+                            e.dataTransfer.effectAllowed = 'move'
+                            e.dataTransfer.setData('text/plain', n.data.title || 'Untitled')
+                          }}
+                          onDragEnd={() => {
+                            drag.end()
+                            setDropOn(null)
+                          }}
+                        >
+                          {selecting && <span className="pick">{isPicked ? <CheckSquare size={17} /> : <Square size={17} />}</span>}
+                          <span className="np-row-body">
+                            <span className="np-row-title">
+                              {n.data.icon && <span className="np-row-emoji">{n.data.icon}</span>}
+                              <span className="trunc">{terms.length ? <Marked text={n.data.title || 'Untitled'} terms={terms} /> : n.data.title || 'Untitled'}</span>
+                              {n.data.pinned && name !== 'Pinned' && <Pin size={11} className="tert" />}
+                              {sharedIds.has(n.id) && <Users size={11} className="tert" aria-label="Shared" />}
+                            </span>
+                            <span className="np-row-text">
+                              <span className="np-row-date">{view === 'trash' ? `${daysLeft(n)}d left` : shortDate(stampOf(n), hour12)}</span>
+                              {text ? terms.length ? <Marked text={text} terms={terms} /> : text : <span className="tert">No additional text</span>}
+                            </span>
+                            {(s || (n.data.tags ?? []).length > 0 || (!browsing && folderOf(n))) && (
+                              <span className="np-row-meta">
+                                {!browsing && folderOf(n) && (
+                                  <span className="np-row-subject">
+                                    <FolderIcon size={11} />
+                                    {folderPath(folders, folderOf(n)).map((f) => f.data.name).join(' › ')}
+                                  </span>
+                                )}
+                                {s && !subjectFilter && (
+                                  <span className="np-row-subject">
+                                    <i style={{ background: s.data.color }} />
+                                    {s.data.name}
+                                  </span>
+                                )}
+                                {(n.data.tags ?? []).slice(0, 3).map((t) => (
+                                  <span key={t} className="mini-tag">
+                                    #{t}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      )
+  }
 
   return (
     <div className={`notes-page ${subjectFilter ? 'notes-embed' : 'view notes-full'} ${focus ? 'focus' : ''}`}>
@@ -618,105 +751,14 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
               {folderRows.length > 0 && (
                 <section className="np-section">
                   <h3 className="np-section-title">Folders</h3>
-                  <div className="np-group">
-                    {folderRows.map((f) => (
-                      <button
-                        key={f.id}
-                        className={`np-row np-folder ${dropOn === f.id ? 'drop' : ''}`}
-                        onClick={() => openFolder(f.id)}
-                        onContextMenu={(e) => {
-                          e.preventDefault()
-                          setFolderCtx({ x: e.clientX, y: e.clientY, folder: f })
-                        }}
-                        {...dropProps(f.id, f.data.name)}
-                        draggable={!phone}
-                        onDragStart={(e) => {
-                          drag.start({ kind: 'folder', id: f.id, scope: 'note' })
-                          e.dataTransfer.effectAllowed = 'move'
-                          e.dataTransfer.setData('text/plain', f.data.name)
-                        }}
-                        onDragEnd={() => {
-                          drag.end()
-                          setDropOn(null)
-                        }}
-                      >
-                        {dropOn === f.id ? <FolderOpen size={18} className="np-folder-icon" /> : <FolderIcon size={18} className="np-folder-icon" />}
-                        <span className="grow trunc np-folder-name">{f.data.name}</span>
-                        <span className="np-folder-count">{folderCount(f.id)}</span>
-                        <ChevronRight size={15} className="tert" />
-                      </button>
-                    ))}
-                  </div>
+                  <div className="np-group">{tree(null, 0)}</div>
                 </section>
               )}
               {sections.map(([name, list]) => (
                 <section key={name} className="np-section">
                   {!(sections.length === 1 && name === 'Notes') && <h3 className="np-section-title">{name}</h3>}
                   <div className="np-group">
-                    {list.map((n) => {
-                      const s = subjects.find((x) => x.id === n.data.subjectId)
-                      const isPicked = picked.has(n.id)
-                      const found = terms.length ? snippet(n, terms) : null
-                      const text = found ?? preview(n.data.title, n.data.excerpt)
-                      return (
-                        <button
-                          key={n.id}
-                          className={`np-row ${isPicked ? 'picked' : ''}`}
-                          aria-current={!selecting && n.id === selected}
-                          aria-pressed={selecting ? isPicked : undefined}
-                          onClick={(e) => onRow(e, n.id)}
-                          onContextMenu={(e) => {
-                            e.preventDefault()
-                            setCtx({ x: e.clientX, y: e.clientY, id: n.id })
-                          }}
-                          draggable={!phone && view === 'notes'}
-                          onDragStart={(e) => {
-                            drag.start({ kind: 'notes', ids: (isPicked ? pickedNotes : [n]).map((x) => x.id) })
-                            e.dataTransfer.effectAllowed = 'move'
-                            e.dataTransfer.setData('text/plain', n.data.title || 'Untitled')
-                          }}
-                          onDragEnd={() => {
-                            drag.end()
-                            setDropOn(null)
-                          }}
-                        >
-                          {selecting && <span className="pick">{isPicked ? <CheckSquare size={17} /> : <Square size={17} />}</span>}
-                          <span className="np-row-body">
-                            <span className="np-row-title">
-                              {n.data.icon && <span className="np-row-emoji">{n.data.icon}</span>}
-                              <span className="trunc">{terms.length ? <Marked text={n.data.title || 'Untitled'} terms={terms} /> : n.data.title || 'Untitled'}</span>
-                              {n.data.pinned && name !== 'Pinned' && <Pin size={11} className="tert" />}
-                              {sharedIds.has(n.id) && <Users size={11} className="tert" aria-label="Shared" />}
-                            </span>
-                            <span className="np-row-text">
-                              <span className="np-row-date">{view === 'trash' ? `${daysLeft(n)}d left` : shortDate(stampOf(n), hour12)}</span>
-                              {text ? terms.length ? <Marked text={text} terms={terms} /> : text : <span className="tert">No additional text</span>}
-                            </span>
-                            {(s || (n.data.tags ?? []).length > 0 || (!browsing && folderOf(n))) && (
-                              <span className="np-row-meta">
-                                {!browsing && folderOf(n) && (
-                                  <span className="np-row-subject">
-                                    <FolderIcon size={11} />
-                                    {folderPath(folders, folderOf(n)).map((f) => f.data.name).join(' › ')}
-                                  </span>
-                                )}
-                                {s && !subjectFilter && (
-                                  <span className="np-row-subject">
-                                    <i style={{ background: s.data.color }} />
-                                    {s.data.name}
-                                  </span>
-                                )}
-                                {(n.data.tags ?? []).slice(0, 3).map((t) => (
-                                  <span key={t} className="mini-tag">
-                                    #{t}
-                                  </span>
-                                ))}
-                              </span>
-                            )}
-                          </span>
-                        </button>
-                      )
-                    })}
+                    {list.map((n) => renderRow(n, name))}
                   </div>
                 </section>
               ))}
@@ -911,7 +953,8 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
           y={folderCtx.y}
           onClose={() => setFolderCtx(null)}
           items={[
-            ['Open', <FolderOpen size={15} key="o" />, () => openFolder(folderCtx.folder.id)],
+            [openFolders.has(folderCtx.folder.id) ? 'Fold' : 'Open', <FolderOpen size={15} key="o" />, () => toggleFolder(folderCtx.folder.id)],
+            ['New folder inside', <FolderPlus size={15} key="n" />, () => (toggleFolder(folderCtx.folder.id, true), setFolderDialog({ mode: 'new', parent: folderCtx.folder.id }))],
             ['Rename', <Pencil size={15} key="r" />, () => setFolderDialog({ mode: 'rename', folder: folderCtx.folder })],
             ['Move to…', <FolderInput size={15} key="m" />, () => setMovingFolder(folderCtx.folder)],
             ['Delete folder', <Trash2 size={15} key="x" />, () => removeFolder(folderCtx.folder), true]
@@ -936,7 +979,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
           action={folderDialog.mode === 'new' ? 'Create' : 'Rename'}
           initial={folderDialog.mode === 'rename' ? folderDialog.folder.data.name : ''}
           onClose={() => setFolderDialog(null)}
-          onSave={(name) => void (folderDialog.mode === 'new' ? newFolder('note', name, folder?.id ?? null) : renameFolder(folderDialog.folder, name))}
+          onSave={(name) => void (folderDialog.mode === 'new' ? newFolder('note', name, folderDialog.parent ?? folder?.id ?? null) : renameFolder(folderDialog.folder, name))}
         />
       )}
       {movingFolder && (
