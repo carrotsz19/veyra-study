@@ -25,6 +25,15 @@ Your tasks, notes, timetable and study time in one calm app, on **Windows** and 
 - **Google Drive:** an optional backup of your notes, and importing from Drive.
 - **Made to feel right:** Veyra's own title bar and menus on Windows, acrylic glass, spring animations, light and dark, and a lot to customise in Settings, with a whole section for the phone.
 
+## Website
+
+Use Veyra Study in a browser, with nothing to install: **https://veyra-study-web.igreenrobotz.workers.dev**
+
+- **What it has:** the same screens as the phone app. Sign in with your Veyra account for sync and group work, or use it without an account.
+- **Where your data lives:** in the browser you use. Clearing that site's data deletes it, unless you're signed in with sync on.
+- **What it doesn't have:** offline transcription, local AI, and Google Calendar and Drive. Those need the Windows app.
+- **Publishing:** `npm run release:web` (and `npm run release:web:dev` for the test site). RELEASING.md has the details.
+
 ## Run it from the code
 
 Needs [Node.js](https://nodejs.org) 22 or newer.
