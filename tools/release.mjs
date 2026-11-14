@@ -63,6 +63,7 @@ if (dev) {
   rmSync('release-dev', { recursive: true, force: true })
   run('npx', ['electron-vite', 'build'], env)
   run('npx', ['electron-builder', '--win', '--publish', 'never', '--config', 'electron-builder.dev.cjs'], env)
+  run('node', ['tools/native-check.mjs', join('release-dev', 'win-unpacked')])
 
   // A release in the private test-build repo (only you can see it), marked newest:
   // Dev apps read it with their read-only token. Windows looks for latest.yml there.
@@ -110,6 +111,9 @@ console.log(`Publishing Veyra Study ${version}…`)
 // Always a Prod build, whatever is set in the environment.
 const prodEnv = { ...process.env, VEYRA_CHANNEL: 'prod', VEYRA_VERSION: '' }
 run('npm', ['run', 'build'], prodEnv)
+// Package once without publishing, to check for unsigned compiled files before anything goes out.
+run('npx', ['electron-builder', '--win', '--dir', '--publish', 'never'], prodEnv)
+run('node', ['tools/native-check.mjs', join('release', 'win-unpacked')])
 // Make the release first: electron-builder uploads its files in parallel, and when the release
 // doesn't exist yet two uploads each try to create it and one fails.
 // Run directly (not through the shell, which would split the notes at every space).
