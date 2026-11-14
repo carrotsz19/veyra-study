@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { Check, Copy, Eye, Inbox, Link2, Pencil, Send, Trash2, UserRound, X } from 'lucide-react'
+import { Check, Copy, Eye, Link2, Pencil, Send, Trash2, UserRound, Users, X } from 'lucide-react'
 import type { Note, NoteTemplate } from '@shared/types'
 import { Dialog, useToast } from '../ui'
 import { Select } from '../Select'
@@ -299,38 +299,158 @@ export function ShareDialog({ noteId, note, onClose }: { noteId: string; note: (
   )
 }
 
-/* ---------- Notes → Shared with you ---------- */
+/* ---------- Notes → Shared: what people shared with you, and what you've shared ---------- */
 
-type Opened = { id: string; title: string; body: SharedBody; from: Received['from']; role: Role; docId: string; updatedAt: number }
+/** Links opened in this browser without signing in (the website keeps them so they can be found again). */
+export type RecentLink = { id: string; title: string; from: string; at: number }
+const RECENT = 'veyra.recentLinks'
+export function recentLinks(): RecentLink[] {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT) ?? '[]')
+  } catch {
+    return []
+  }
+}
+export function rememberLink(l: RecentLink) {
+  try {
+    localStorage.setItem(RECENT, JSON.stringify([l, ...recentLinks().filter((x) => x.id !== l.id)].slice(0, 30)))
+  } catch {
+    /* storage unavailable */
+  }
+}
+export function forgetLink(id: string) {
+  try {
+    localStorage.setItem(RECENT, JSON.stringify(recentLinks().filter((x) => x.id !== id)))
+  } catch {
+    /* storage unavailable */
+  }
+}
+/** A share link waiting to be opened once you're signed in ("Open in Veyra Study" on a link page). */
+export const PENDING_SHARE = 'veyra.openShare'
+export function takePendingShare(): string | null {
+  try {
+    const id = localStorage.getItem(PENDING_SHARE)
+    if (id) localStorage.removeItem(PENDING_SHARE)
+    return id
+  } catch {
+    return null
+  }
+}
 
-/** What people shared with you: read it, edit it with them (Editors), keep a copy, or take it off the list. `openId` opens a link someone gave you. */
-export function SharedInbox({ onClose, onCopied, openId }: { onClose: () => void; onCopied: (noteId: string) => void; openId?: string }) {
-  const toast = useToast()
-  const [list, setList] = useState<Received[] | null>(null)
+export type SharedPick = { id: string; link: boolean }
+
+/** The Shared tab's list. `mine` are your own shared notes (they open as usual). */
+export function SharedList({
+  signedIn,
+  picked,
+  onPick,
+  mine,
+  onOpenMine,
+  reloadKey
+}: {
+  signedIn: boolean
+  picked: string | null
+  onPick: (p: SharedPick) => void
+  mine: { id: string; title: string; people: number; link: boolean }[]
+  onOpenMine: (noteId: string) => void
+  reloadKey: number
+}) {
+  const [list, setList] = useState<(Received & { link?: boolean })[] | null>(signedIn ? null : [])
   const [error, setError] = useState('')
-  const [pick, setPick] = useState<string | null>(openId ?? null)
-  const [open, setOpen] = useState<Opened | null>(null)
-  const [can, setCan] = useState<LiveDoc['can']>(null)
   useEffect(() => {
+    if (!signedIn) return
     sharedWithMe().then(setList, (e) => {
       setList([])
       setError(clean(e, 'Couldn’t reach the Veyra server.'))
     })
-  }, [])
+  }, [signedIn, reloadKey])
+  const recents = recentLinks().filter((r) => !list?.some((x) => x.id === r.id))
+  return (
+    <>
+      {error && <p className="share-err np-shared-err">{error}</p>}
+      <section className="np-section">
+        <h3 className="np-section-title">Shared with you</h3>
+        {list === null ? (
+          <p className="np-shared-empty">Loading…</p>
+        ) : list.length === 0 && recents.length === 0 ? (
+          <p className="np-shared-empty">{signedIn ? 'Nothing yet. Notes people share with your @username, and links you open, show up here.' : 'Links you open in this browser show up here. Sign in to keep them on all your devices.'}</p>
+        ) : (
+          <div className="np-group">
+            {list.map((x) => (
+              <button key={x.id} className="np-row" aria-current={picked === x.id} onClick={() => onPick({ id: x.id, link: !!x.link })}>
+                <span className="np-row-body">
+                  <span className="np-row-title">
+                    <span className="trunc">{x.title}</span>
+                    {x.role === 'edit' ? <Pencil size={11} className="tert" aria-label="You can edit" /> : <Eye size={11} className="tert" aria-label="You can view" />}
+                  </span>
+                  <span className="np-row-text">
+                    <span className="np-row-date">{formatDistanceToNowStrict(x.updatedAt, { addSuffix: true })}</span>
+                    From {x.from.displayName || x.from.username}
+                    {x.link ? ' · link' : ''}
+                  </span>
+                </span>
+              </button>
+            ))}
+            {recents.map((r) => (
+              <a key={r.id} className="np-row" href={`/s/${r.id}`}>
+                <span className="np-row-body">
+                  <span className="np-row-title">
+                    <span className="trunc">{r.title}</span>
+                    <Link2 size={11} className="tert" />
+                  </span>
+                  <span className="np-row-text">
+                    <span className="np-row-date">{formatDistanceToNowStrict(r.at, { addSuffix: true })}</span>
+                    From {r.from} · opened in this browser
+                  </span>
+                </span>
+              </a>
+            ))}
+          </div>
+        )}
+      </section>
+      {signedIn && (
+        <section className="np-section">
+          <h3 className="np-section-title">Shared by you</h3>
+          {mine.length === 0 ? (
+            <p className="np-shared-empty">Share a note from its ••• menu → Share…</p>
+          ) : (
+            <div className="np-group">
+              {mine.map((m) => (
+                <button key={m.id} className="np-row" onClick={() => onOpenMine(m.id)}>
+                  <span className="np-row-body">
+                    <span className="np-row-title">
+                      <span className="trunc">{m.title || 'Untitled'}</span>
+                      <Users size={11} className="tert" />
+                    </span>
+                    <span className="np-row-text">
+                      {[m.people ? `${m.people} ${m.people === 1 ? 'person' : 'people'}` : '', m.link ? 'link on' : ''].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+    </>
+  )
+}
+
+/** A note someone shared with you, in the Notes pane: live, editable for Editors. */
+export function SharedPane({ pick, who, onCopied, onRemoved, onBack }: { pick: SharedPick; who: string; onCopied: (noteId: string) => void; onRemoved: () => void; onBack?: () => void }) {
+  const toast = useToast()
+  const [open, setOpen] = useState<{ title: string; body: SharedBody; from: Received['from']; docId: string } | null>(null)
+  const [error, setError] = useState('')
+  const [can, setCan] = useState<LiveDoc['can']>(null)
+  const [saving, setSaving] = useState(false)
   useEffect(() => {
-    if (!pick) return setOpen(null)
     setOpen(null)
-    readShare(pick).then(
-      (r) => setOpen({ id: pick, title: r.title, body: parseBody(r.content), from: r.from, role: r.role, docId: r.docId, updatedAt: r.updatedAt }),
+    setError('')
+    readShare(pick.id).then(
+      (r) => setOpen({ title: r.title, body: parseBody(r.content), from: r.from, docId: r.docId }),
       (e) => setError(clean(e, 'Couldn’t open it.'))
     )
-  }, [pick])
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-  const [saving, setSaving] = useState(false)
+  }, [pick.id])
   const keep = async () => {
     if (!open || saving) return
     setSaving(true)
@@ -344,8 +464,8 @@ export function SharedInbox({ onClose, onCopied, openId }: { onClose: () => void
         return null
       }
     }
-    // The newest text (the plain copy is updated a few seconds after people type).
-    const latest = parseBody((await readShare(open.id).catch(() => ({ content: JSON.stringify(open.body) }))).content)
+    // The newest text (the plain copy follows people's typing by a few seconds).
+    const latest = parseBody((await readShare(pick.id).catch(() => ({ content: JSON.stringify(open.body) }))).content)
     let cover = latest.cover ?? null
     if (cover?.startsWith('img:')) {
       const id = await local(cover.slice(4), 'cover.jpg', 'image/jpeg')
@@ -366,81 +486,38 @@ export function SharedInbox({ onClose, onCopied, openId }: { onClose: () => void
     toast('Saved a copy to your notes')
     onCopied(rec.id)
   }
-  const remove = async (id: string) => {
-    await stopSharing(id).catch(() => {})
-    setList((l) => l?.filter((x) => x.id !== id) ?? null)
-    if (pick === id) setPick(null)
+  const remove = async () => {
+    await stopSharing(pick.id).catch(() => {})
+    toast('Removed from Shared')
+    onRemoved()
   }
-  const inList = !!list?.some((s) => s.id === pick)
   return (
-    <div className="scrim hist-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`hist ${pick ? 'hist-reading' : ''}`} role="dialog" aria-modal="true" aria-label="Shared with you">
-        <aside className="hist-list">
-          <div className="hist-head">
-            <Inbox size={17} />
-            <b>Shared with you</b>
-            <button className="iconbtn plain" aria-label="Close" onClick={onClose}>
-              <X size={17} />
-            </button>
-          </div>
-          {error && (
-            <p className="share-err" style={{ margin: '0 16px' }}>
-              {error}
-            </p>
-          )}
-          {list === null ? (
-            <p className="hist-empty">Loading…</p>
-          ) : list.length === 0 ? (
-            <p className="hist-empty">Nothing yet. When someone shares a note with your @username, it shows up here.</p>
-          ) : (
-            <ul>
-              {list.map((s) => (
-                <li key={s.id}>
-                  <button className="hist-row" aria-current={pick === s.id || undefined} onClick={() => setPick(s.id)}>
-                    <b>{s.title}</b>
-                    <span>
-                      {s.role === 'edit' ? 'You can edit' : 'You can view'} · from {s.from.displayName || s.from.username} · {formatDistanceToNowStrict(s.updatedAt, { addSuffix: true })}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="hist-foot">Editors write together and see each other’s changes as they happen. Save a copy to keep your own.</p>
-        </aside>
-        <section className="hist-main">
-          {pick ? (
+    <div className="note-pane shared-pane">
+      <div className="hist-bar">
+        {onBack && (
+          <button className="btn ghost sm" onClick={onBack}>
+            ‹ Shared
+          </button>
+        )}
+        <span className="hist-when">
+          {open ? (
             <>
-              <div className="hist-bar">
-                <button className="btn ghost sm share-back" onClick={() => setPick(null)}>
-                  ‹ Back
-                </button>
-                <span className="hist-when">
-                  {open ? (
-                    <>
-                      {can === 'edit' ? <Pencil size={13} /> : <Eye size={13} />} {can === 'edit' ? 'Editing with' : 'Shared by'} {open.from.displayName || open.from.username}
-                    </>
-                  ) : (
-                    'Opening…'
-                  )}
-                </span>
-                <button className="btn sec sm" disabled={!open || saving} onClick={() => void keep()}>
-                  <Check size={14} /> Save a copy
-                </button>
-                {inList && (
-                  <button className="iconbtn plain" aria-label="Remove from this list" title="Remove from this list" onClick={() => void remove(pick)}>
-                    <Trash2 size={15} />
-                  </button>
-                )}
-              </div>
-              <div className="hist-preview">
-                {open && <SharedDoc key={open.id} title={open.title} body={open.body} files={readSharedFile} docId={open.docId} share={inList ? '' : open.id} call={liveCall} onCan={setCan} />}
-              </div>
+              {can === 'edit' ? <Pencil size={13} /> : <Eye size={13} />} {can === 'edit' ? 'Editing with' : 'Shared by'} {open.from.displayName || open.from.username}
             </>
           ) : (
-            <p className="hist-empty center">Pick a note to read it.</p>
+            'Opening…'
           )}
-        </section>
+        </span>
+        <button className="btn sec sm" disabled={!open || saving} onClick={() => void keep()}>
+          <Check size={14} /> Save a copy
+        </button>
+        <button className="iconbtn plain" aria-label="Remove from Shared" title="Remove from Shared" onClick={() => void remove()}>
+          <Trash2 size={15} />
+        </button>
+      </div>
+      <div className="hist-preview">
+        {error && <p className="share-err">{error}</p>}
+        {open && <SharedDoc key={pick.id} title={open.title} body={open.body} files={readSharedFile} docId={open.docId} share={pick.link ? pick.id : ''} call={liveCall} onCan={setCan} who={who} />}
       </div>
     </div>
   )
@@ -472,6 +549,7 @@ export function PublicSharePage({ id }: { id: string }) {
         const j = await r.json().catch(() => ({}))
         if (!r.ok) throw new Error(r.status === 503 ? 'The Veyra server is resting right now (it sleeps from about 12 am to 8 am). Try again later.' : j.error || 'This link doesn’t work.')
         setState({ title: j.title, body: parseBody(j.content), from: j.from, role: j.role ?? 'view', signin: j.signin !== false, docId: j.docId, updatedAt: j.updatedAt })
+        rememberLink({ id, title: j.title, from: j.from, at: Date.now() })
         document.title = `${j.title} · Veyra Study`
       })
       .catch((e: Error) => setState({ error: e.message }))
@@ -481,7 +559,7 @@ export function PublicSharePage({ id }: { id: string }) {
   const openSignedIn = () => {
     try {
       localStorage.setItem('veyra.lastRoute', 'notes')
-      sessionStorage.setItem('veyra.openShare', id)
+      localStorage.setItem(PENDING_SHARE, id)
     } catch {
       /* the link still opens; the note just isn't picked */
     }
@@ -502,9 +580,13 @@ export function PublicSharePage({ id }: { id: string }) {
             ) : (
               <>Shared by {state.from}</>
             )}
-            {state.role === 'edit' && state.signin && can !== 'edit' && (
+            {state.role === 'edit' && state.signin && can !== 'edit' ? (
               <button className="btn sm" onClick={openSignedIn}>
                 <Pencil size={13} /> Sign in to edit
+              </button>
+            ) : (
+              <button className="btn sec sm" onClick={openSignedIn} title="Keep it in Notes → Shared, on all your devices">
+                Open in Veyra Study
               </button>
             )}
           </span>

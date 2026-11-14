@@ -147,7 +147,16 @@ export function state(): AccountState {
   } catch {
     /* storage unavailable */
   }
+  // The website, with a shared note waiting to be opened ("Open in Veyra Study"): sign in first.
+  if (ON_WEB && !session && pendingShare()) return { mode: 'none', user: null, server: SERVER, notice: 'Sign in to open the shared note (or use Veyra Study without an account).' }
   return { mode: session ? 'account' : guest ? 'guest' : 'none', user: session?.user ?? null, server: SERVER, notice }
+}
+const pendingShare = () => {
+  try {
+    return !!localStorage.getItem('veyra.openShare')
+  } catch {
+    return false
+  }
 }
 
 /** The handle and Cookie header, for the group relay to confirm who this is. Never shown to the UI. */
@@ -237,6 +246,8 @@ export async function signOut(): Promise<AccountState> {
 
 export function continueAsGuest(): AccountState {
   localStorage.setItem(GUEST, 'guest')
+  // No account: the link page is where the note is (it's in Notes → Shared in this browser too).
+  localStorage.removeItem('veyra.openShare')
   notice = undefined
   return state()
 }

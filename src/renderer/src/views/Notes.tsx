@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Archive, ArchiveRestore, ArrowUpDown, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, FileText, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, HardDrive, MoreHorizontal, NotebookPen, Pencil, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, X, Inbox } from 'lucide-react'
+  Archive, ArchiveRestore, ArrowUpDown, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, FileText, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, HardDrive, MoreHorizontal, NotebookPen, Pencil, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, Users, X } from 'lucide-react'
 import { childrenOf, deleteFolder, drag, folderPath, moveFolder, newFolder, parentOf, renameFolder, useFolders, withDescendants } from '../lib/folders'
 import { FolderNameDialog, FolderPickDialog } from '../components/FolderDialogs'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, onExternalChange, useRecords } from '../data/store'
 import { ContextMenu as RowMenu, Dialog, Empty, useToast } from '../components/ui'
-import { SharedInbox } from '../components/notes/Share'
+import { SharedList, SharedPane, recentLinks, takePendingShare, type SharedPick } from '../components/notes/Share'
+import { myShares, onSharesChanged, type ShareInfo } from '../lib/share'
+import { groupCall } from '../data/groups'
 import { useAccount } from '../components/account'
 import { Select } from '../components/Select'
 import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../components/notes/NoteEditor'
@@ -26,7 +28,7 @@ export async function newNote(subjectId: string | null, d?: { noteTemplate: Note
   return rec.id
 }
 
-type View = 'notes' | 'archived' | 'trash'
+type View = 'notes' | 'shared' | 'archived' | 'trash'
 
 /** Text with the words you searched for marked. */
 export function Marked({ text, terms }: { text: string; terms: string[] }) {
@@ -41,22 +43,31 @@ export function Marked({ text, terms }: { text: string; terms: string[] }) {
 
 export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilter?: string }) {
   const signedIn = useAccount()?.state.mode === 'account'
-  const [inbox, setInbox] = useState(false)
-  // A share link opened on the website ("Sign in to edit"): open it here, signed in.
-  const [openShare, setOpenShare] = useState<string | undefined>()
+  const me = useAccount()?.state.user
+  // The Shared tab: notes people shared with you (open in the pane), and yours that you've shared.
+  const [sharedPick, setSharedPick] = useState<SharedPick | null>(null)
+  const [sharedKey, setSharedKey] = useState(0)
+  const [mineShared, setMineShared] = useState<ShareInfo[]>([])
   useEffect(() => {
     if (!signedIn) return
-    try {
-      const id = sessionStorage.getItem('veyra.openShare')
-      if (id) {
-        sessionStorage.removeItem('veyra.openShare')
-        setOpenShare(id)
-        setInbox(true)
-      }
-    } catch {
-      /* storage unavailable */
-    }
+    const read = () => void myShares().then(setMineShared, () => {})
+    read()
+    return onSharesChanged(read)
   }, [signedIn])
+  // A link opened on the website ("Open in Veyra Study" / "Sign in to edit"): kept in Shared, and opened.
+  useEffect(() => {
+    if (!signedIn) return
+    const id = takePendingShare()
+    if (!id) return
+    void groupCall('POST', `/shares/${encodeURIComponent(id)}/save`)
+      .catch(() => {})
+      .finally(() => {
+        setView('shared')
+        setSharedPick({ id, link: true })
+        setSharedKey((k) => k + 1)
+      })
+  }, [signedIn])
+  const sharedIds = useMemo(() => new Set(mineShared.map((x) => x.noteId)), [mineShared])
   const { items: everyNote, loaded } = useRecords('note')
   // Notes in the trash only show under Trash.
   const notes = useMemo(() => everyNote.filter((n) => !n.data.trashedAt), [everyNote])
@@ -427,11 +438,6 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                     <MoreHorizontal size={17} />
                   </button>
                 )}
-                {signedIn && (
-                  <button className="iconbtn plain" onClick={() => setInbox(true)} title="Shared with you" aria-label="Notes shared with you">
-                    <Inbox size={17} />
-                  </button>
-                )}
                 {browsing && (
                   <button className="iconbtn plain" onClick={() => setFolderDialog({ mode: 'new' })} title={folder ? `New folder in ${folder.data.name}` : 'New folder'} aria-label="New folder">
                     <FolderPlus size={17} />
@@ -493,6 +499,11 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                   <button role="tab" aria-selected={view === 'notes'} onClick={() => switchView('notes')}>
                     Notes
                   </button>
+                  {(signedIn || recentLinks().length > 0) && !subjectFilter && (
+                    <button role="tab" aria-selected={view === 'shared'} onClick={() => switchView('shared')}>
+                      Shared
+                    </button>
+                  )}
                   <button role="tab" aria-selected={view === 'archived'} onClick={() => switchView('archived')}>
                     Archived{archivedCount ? ` ${archivedCount}` : ''}
                   </button>
@@ -538,6 +549,24 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             </div>
 
             <div className="np-scroll">
+              {view === 'shared' ? (
+                <SharedList
+                  signedIn={signedIn}
+                  picked={sharedPick?.id ?? null}
+                  onPick={setSharedPick}
+                  reloadKey={sharedKey}
+                  mine={[...new Set(mineShared.map((x) => x.noteId))].flatMap((id) => {
+                    const n = notes.find((x) => x.id === id)
+                    const of = mineShared.filter((x) => x.noteId === id)
+                    return n ? [{ id, title: n.data.title, people: of.filter((x) => x.to).length, link: of.some((x) => !x.to) }] : []
+                  })}
+                  onOpenMine={(id) => {
+                    switchView('notes')
+                    setSelected(id)
+                  }}
+                />
+              ) : (
+              <>
               {folderRows.length > 0 && (
                 <section className="np-section">
                   <h3 className="np-section-title">Folders</h3>
@@ -609,6 +638,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                               {n.data.icon && <span className="np-row-emoji">{n.data.icon}</span>}
                               <span className="trunc">{terms.length ? <Marked text={n.data.title || 'Untitled'} terms={terms} /> : n.data.title || 'Untitled'}</span>
                               {n.data.pinned && name !== 'Pinned' && <Pin size={11} className="tert" />}
+                              {sharedIds.has(n.id) && <Users size={11} className="tert" aria-label="Shared" />}
                             </span>
                             <span className="np-row-text">
                               <span className="np-row-date">{view === 'trash' ? `${daysLeft(n)}d left` : shortDate(stampOf(n), hour12)}</span>
@@ -665,11 +695,34 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                   )}
                 </div>
               )}
+              </>
+              )}
             </div>
           </div>
         )}
 
-        {selecting && picked.size > 0 ? (
+        {view === 'shared' ? (
+          sharedPick ? (
+            <SharedPane
+              key={sharedPick.id}
+              pick={sharedPick}
+              who={me?.displayName || me?.username || 'Guest'}
+              onBack={phone ? () => setSharedPick(null) : undefined}
+              onCopied={(id) => {
+                switchView('notes')
+                setSelected(id)
+              }}
+              onRemoved={() => {
+                setSharedPick(null)
+                setSharedKey((k) => k + 1)
+              }}
+            />
+          ) : (
+            <div className="note-pane note-empty">
+              <Empty icon={Users} title="Shared notes" text="Notes people share with you open here. Editors write together, and everyone sees changes as they happen." />
+            </div>
+          )
+        ) : selecting && picked.size > 0 ? (
           <div className="note-pane bulk-panel">
             {phone && (
               <div className="np-appbar">
@@ -815,16 +868,6 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             ['Move to…', <FolderInput size={15} key="m" />, () => setMovingFolder(folderCtx.folder)],
             ['Delete folder', <Trash2 size={15} key="x" />, () => removeFolder(folderCtx.folder), true]
           ]}
-        />
-      )}
-      {inbox && (
-        <SharedInbox
-          openId={openShare}
-          onClose={() => (setInbox(false), setOpenShare(undefined))}
-          onCopied={(id) => {
-            setInbox(false)
-            setSelected(id)
-          }}
         />
       )}
       {folderDialog && (

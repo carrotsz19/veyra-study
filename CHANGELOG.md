@@ -6,6 +6,9 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **See where others are typing:** in a shared note, everyone's cursor shows with their name and colour, like Google Docs.
+- **Notes → Shared:** a tab beside Notes, Archived and Trash with everything shared with you (notes sent to you and links you've opened) and what you've shared; shared notes open right there, editable for Editors. Your shared notes are marked in the list.
+- **Share links:** "Open in Veyra Study" (and "Sign in to edit") asks you to sign in if needed, then opens the note and keeps it in Shared. Links opened without an account are remembered in that browser. (Needs group server 1.8.0.)
 - **Edit shared notes together, like Google Docs:** in Share…, each person is a Viewer or an Editor, and the link is off, view-only or editable (you choose whether link editors must sign in). Editors type in the note at the same time and see each other's changes within a second or two; nothing anyone types is lost, even offline (it goes when you're back). Viewers see changes as they happen. New pictures and files in a shared note are shared too. Shared with you opens notes you can edit right there. (Needs group server 1.7.0; everyone editing needs this version.)
 - **Shared notes include their pictures, files and cover:** they're uploaded once each (up to 15 MB a file, 300 MB in all) and show for the people you share with and on the link page. Save a copy keeps them on your device too. (Needs group server 1.6.0.)
 - **Note menu (•••):** the things you do most (share, version history, pin, duplicate, export, archive, trash) come first, with layout, font and cover below; the menu fits the window and scrolls, so nothing is cut off.
