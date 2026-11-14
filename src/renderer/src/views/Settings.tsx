@@ -1342,9 +1342,13 @@ function SoftwareUpdate() {
   }, [])
   if (!u) return null
   const mb = (b?: number) => ((b ?? 0) / 1048576).toFixed(0)
-  const android = onAndroid()
+  // The website is always the newest version: nothing to download or install.
+  const web = onWeb()
+  const android = onAndroid() && !web
 
-  const status =
+  const status = web
+    ? 'The website is always the newest version'
+    :
     u.status === 'checking'
       ? 'Checking for updates…'
       : u.status === 'available'
@@ -1373,7 +1377,7 @@ function SoftwareUpdate() {
             <div className="upd-name">
               Veyra Study {IS_DEV && <span className="dev-pill">DEV</span>}
             </div>
-            <div className="sm dim">Version {u.current || __APP_VERSION__}{android ? ' for Android' : ''}</div>
+            <div className="sm dim">Version {u.current || __APP_VERSION__}{android ? ' for Android' : web ? ' (website)' : ''}</div>
             {IS_DEV && <div className="xs dim">A test build. Updates come from the newest test build, not from the public releases.</div>}
             <div className={`upd-status ${u.status}`}>
               {u.status === 'checking' && <RefreshCw size={13} className="spin" />}
@@ -1397,7 +1401,7 @@ function SoftwareUpdate() {
                 <RefreshCw size={15} className={u.status === 'checking' ? 'spin' : ''} /> Check for updates
               </button>
             ))}
-            {!u.supported && (
+            {!u.supported && !web && (
               <button className="btn sec" onClick={() => void window.veyra.open(RELEASES)}>
                 <ExternalLink size={14} /> {android ? 'Get the latest' : 'All releases'}
               </button>
@@ -1418,7 +1422,7 @@ function SoftwareUpdate() {
         </Group>
       )}
 
-      <Group title="Automatic updates" footer={android ? 'Android asks you to confirm each install. The first time, it also asks you to let Veyra Study install apps.' : undefined}>
+      {!web && <Group title="Automatic updates" footer={android ? 'Android asks you to confirm each install. The first time, it also asks you to let Veyra Study install apps.' : undefined}>
         <Row
           label={android ? 'Look for updates when Veyra opens' : 'Update automatically'}
           hint={
@@ -1430,7 +1434,7 @@ function SoftwareUpdate() {
         >
           <Toggle label="Check for updates automatically" on={s.checkUpdatesAtStart} onChange={(checkUpdatesAtStart) => set({ checkUpdatesAtStart })} />
         </Row>
-      </Group>
+      </Group>}
 
       <Group title="About">
         <Row label="All versions and what changed" keywords="releases changelog history">

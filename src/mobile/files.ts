@@ -8,6 +8,7 @@ import { Capacitor } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
 import { FileOpener } from '@capacitor-community/file-opener'
 import type { Attachment } from '@shared/types'
+import { ON_WEB } from '@shared/channel'
 
 const DIR = 'attachments'
 const MAX = 150 * 1024 * 1024
@@ -77,6 +78,13 @@ export async function read(id: string): Promise<Uint8Array> {
 
 export async function open(id: string): Promise<void> {
   if (!ID.test(id)) throw new Error('That file isn’t on this phone.')
+  // The website: the browser shows it in a new tab (or downloads what it can't show).
+  if (ON_WEB) {
+    const u = URL.createObjectURL(new Blob([(await read(id)) as BlobPart], { type: MIME[extOf(id)] ?? 'application/octet-stream' }))
+    window.open(u, '_blank')
+    setTimeout(() => URL.revokeObjectURL(u), 120_000)
+    return
+  }
   const { uri } = await Filesystem.getUri({ path: `${DIR}/${id}`, directory: Directory.Data })
   await FileOpener.open({ filePath: uri, contentType: MIME[extOf(id)], openWithDefault: true }).catch(() => {
     throw new Error('No app on this phone opens that kind of file.')

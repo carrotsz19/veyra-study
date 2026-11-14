@@ -17,18 +17,38 @@ const SVG = {
   trash: icon16('<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>')
 }
 
+/**
+ * The website keeps attachments in the browser's own storage, which has no file address:
+ * each is shown from a temporary blob address, made when it's first needed.
+ */
+const onWebsite = () => document.documentElement.classList.contains('web')
+const blobs = new Map<string, Promise<string>>()
+function blobUrl(id: string, mime: string): Promise<string> {
+  let p = blobs.get(id)
+  if (!p) {
+    p = files.read(id).then((b) => URL.createObjectURL(new Blob([b as BlobPart], { type: mime || 'application/octet-stream' })))
+    p.catch(() => blobs.delete(id))
+    blobs.set(id, p)
+  }
+  return p
+}
+/** Points an image or player at a file (on the website, once it has been read). */
+function showFile(el: HTMLImageElement | HTMLAudioElement, id: string, mime: string, onFail: () => void) {
+  if (!onWebsite()) return void (el.src = fileUrl(id))
+  blobUrl(id, mime).then((u) => (el.src = u), onFail)
+}
+
 /** Saves a copy of an attached file where you choose (the phone hands it to the share sheet instead). */
-async function download(id: string, name: string): Promise<void> {
-  if (onAndroid() && !document.documentElement.classList.contains('web')) return files.open(id)
-  const blob = await (await fetch(fileUrl(id))).blob()
-  const url = URL.createObjectURL(blob)
+async function download(id: string, name: string, mime = ''): Promise<void> {
+  if (onAndroid() && !onWebsite()) return files.open(id)
+  const url = onWebsite() ? await blobUrl(id, mime) : URL.createObjectURL(await (await fetch(fileUrl(id))).blob())
   const a = document.createElement('a')
   a.href = url
   a.download = name
   document.body.appendChild(a)
   a.click()
   a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  if (!onWebsite()) setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 export const fileUrl = (id: string) => files.url?.(id) || `veyra-file://f/${encodeURIComponent(id)}`
@@ -162,7 +182,7 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
         const small = dom.querySelector('small')!
         small.textContent = fileSize(size)
         const audio = dom.querySelector('audio')!
-        audio.src = fileUrl(id)
+        showFile(audio, id, mime, missing)
         audio.addEventListener('error', missing)
         const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`
         const playBtn = dom.querySelector('.att-play') as HTMLButtonElement
@@ -224,7 +244,7 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
         moreBtn.addEventListener('click', () => setMenu(menu.hidden))
         dom.querySelector('.att-dl')!.addEventListener('click', () => {
           setMenu(false)
-          void download(id, name).catch((e: unknown) => report(clean(e, 'Couldn’t download it.')))
+          void download(id, name, mime).catch((e: unknown) => report(clean(e, 'Couldn’t download it.')))
         })
         dom.querySelector('.att-del')!.addEventListener('click', () => {
           setMenu(false)
@@ -283,7 +303,7 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
       } else if (isImage(mime)) {
         dom.classList.add('att-image')
         const img = document.createElement('img')
-        img.src = fileUrl(id)
+        showFile(img, id, mime, missing)
         img.alt = name
         img.draggable = false
         img.title = `${name}. Double-click to open.`
