@@ -6,6 +6,7 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **A tidier Notes page:** one clear New button (New folder and Select are under ⋯); subject, tag and sort filters sit behind the button next to search, and what's filtering shows as pills you can remove; Notes · Shared · Archived · Trash tabs on their own row. Folders open in place, with their notes indented under them, so you never lose the rest of your list (a folder's menu can make one inside it). With nothing open, Notes shows your recent notes to pick up where you left off.
 - **Share links work like Google Docs:** the link page is the document. If you're signed in on the website it opens ready to edit (with your name on your cursor); "Sign in to edit" signs you in right there and brings you back to the same document. Signed-in visitors also find it in Notes → Shared afterwards.
 - **See where others are typing:** in a shared note, everyone's cursor shows with their name and colour, like Google Docs.
 - **Notes → Shared:** a tab beside Notes, Archived and Trash with everything shared with you (notes sent to you and links you've opened) and what you've shared; shared notes open right there, editable for Editors. Your shared notes are marked in the list.

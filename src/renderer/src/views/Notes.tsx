@@ -10,6 +10,7 @@ import { SharedList, SharedPane, recentLinks, takePendingShare, type SharedPick 
 import { myShares, onSharesChanged, type ShareInfo } from '../lib/share'
 import { groupCall } from '../data/groups'
 import { useAccount } from '../components/account'
+import { formatDistanceToNowStrict } from 'date-fns'
 import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../components/notes/NoteEditor'
 import { useSettings } from '../data/settings'
 import { preview, section, shortDate } from '../components/notes/listing'
@@ -160,10 +161,6 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   const archivedCount = notes.filter((n) => n.data.archived).length
   const pickedNotes = notes.filter((n) => picked.has(n.id))
 
-  // Open the most recent note when nothing is picked yet (on a computer; a phone shows the list first).
-  useEffect(() => {
-    if (loaded && !selected && shown.length && !phone) setSelected(shown[0].id)
-  }, [loaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Focus mode hides the sidebar and the list.
   useEffect(() => {
@@ -907,6 +904,42 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             />
           </div>
         ) : (
+          view === 'notes' && !subjectFilter && notes.some((n) => !n.data.archived) ? (
+            // Nothing open: your most recent notes, to pick up where you left off.
+            <div className="note-pane notes-home">
+              <div className="nh-head">
+                <h2>Pick up where you left off</h2>
+                <button className="btn" onClick={create}>
+                  <Plus size={16} /> New note
+                </button>
+              </div>
+              <div className="nh-grid">
+                {notes
+                  .filter((n) => !n.data.archived)
+                  .sort((a, b) => b.updatedAt - a.updatedAt)
+                  .slice(0, 8)
+                  .map((n) => {
+                    const sj = subjects.find((x) => x.id === n.data.subjectId)
+                    return (
+                      <button key={n.id} className="nh-card" onClick={() => setSelected(n.id)}>
+                        <span className="nh-strip" style={{ background: n.data.cover && NOTE_COVERS[n.data.cover] ? NOTE_COVERS[n.data.cover] : sj?.data.color ?? 'var(--fill-secondary)' }} />
+                        <span className="nh-title">
+                          {n.data.icon && <span>{n.data.icon}</span>}
+                          <span className="trunc">{n.data.title || 'Untitled'}</span>
+                        </span>
+                        <span className="nh-text">{preview(n.data.title, n.data.excerpt) || 'No text yet'}</span>
+                        <span className="nh-meta">
+                          {sj && <i style={{ background: sj.data.color }} />}
+                          {sj ? `${sj.data.name} · ` : ''}
+                          {formatDistanceToNowStrict(n.updatedAt, { addSuffix: true })}
+                        </span>
+                      </button>
+                    )
+                  })}
+              </div>
+              <p className="nh-tip">Ctrl+N makes a new note anywhere. Right-click a note for more.</p>
+            </div>
+          ) : (
           <div className="note-pane note-empty">
             <Empty
               icon={NotebookPen}
@@ -919,6 +952,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
               }
             />
           </div>
+          )
         )}
       </div>
 

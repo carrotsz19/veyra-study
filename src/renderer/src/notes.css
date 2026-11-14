@@ -730,3 +730,21 @@ a.np-row { text-decoration: none; color: inherit; }
 .np-folder .np-folder-chev { flex: none; color: var(--dim); transition: transform 0.18s var(--ease-out, ease); }
 .np-folder.open .np-folder-chev { transform: rotate(90deg); }
 .np-folder-empty { margin: 2px 0 6px; padding: 4px 12px; font-size: 12.5px; color: var(--dim); }
+
+/* ---------- Notes with nothing open: your recent notes ---------- */
+.notes-home { overflow-y: auto; padding: 36px 40px 40px; }
+.nh-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.notes-home .nh-head h2 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; text-transform: none; color: var(--ink); }
+.nh-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.nh-card {
+  display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 0 14px 14px; overflow: hidden; min-height: 132px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); font: inherit; cursor: pointer;
+  transition: transform 0.15s var(--ease-out, ease), box-shadow 0.15s, border-color 0.15s;
+}
+.nh-card:hover { transform: translateY(-2px); box-shadow: var(--elev-2); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.nh-strip { height: 8px; margin: 0 -14px 6px; flex: none; }
+.nh-title { display: flex; gap: 6px; font-weight: 700; font-size: 14.5px; min-width: 0; }
+.nh-text { font-size: 12.5px; color: var(--dim); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; flex: 1; }
+.nh-meta { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--dim); }
+.nh-meta i { width: 7px; height: 7px; border-radius: 99px; display: inline-block; }
+.nh-tip { margin-top: 18px; font-size: 12.5px; color: var(--dim); }
