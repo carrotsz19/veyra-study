@@ -1,4 +1,5 @@
 import * as Y from 'yjs'
+import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness'
 
 /**
  * Editing a shared note together (server: /docs). The note's text lives in a Yjs document;
@@ -41,6 +42,8 @@ const REMOTE = 'remote'
 
 export class LiveDoc {
   readonly doc = new Y.Doc()
+  /** Who else is here and where their cursor is (shown in the main notes area). */
+  readonly awareness = new Awareness(this.doc)
   /** Edit, view, or not allowed (known once the server has answered). */
   can: Can = null
   /** The server has been reached at least once (or there's a copy on this device). */
@@ -53,6 +56,7 @@ export class LiveDoc {
   private sinceSnapshot = 0
   private listeners = new Set<() => void>()
   private markReady!: () => void
+  private presenceTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
     readonly id: string,
@@ -74,6 +78,15 @@ export class LiveDoc {
         /* start fresh */
       }
     }
+    // Our cursor (and name) goes out a moment after it moves; Awareness repeats it every 15 s.
+    this.awareness.on('update', ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }, origin: unknown) => {
+      if (origin === REMOTE || ![...added, ...updated, ...removed].includes(this.doc.clientID)) return
+      if (this.presenceTimer) return
+      this.presenceTimer = setTimeout(() => {
+        this.presenceTimer = null
+        void this.sendPresence()
+      }, 250)
+    })
     this.doc.on('update', (u: Uint8Array, origin: unknown) => {
       this.save()
       if (origin === REMOTE) return
@@ -102,7 +115,28 @@ export class LiveDoc {
     }, 1500)
   }
 
-  private apply(r: { snapshot: string | null; updates: string[]; seq: number; can: Can }) {
+  private async sendPresence(gone = false) {
+    if (!this.awareness.getLocalState()?.user && !gone) return
+    try {
+      await this.call('POST', `/docs/${this.id}/presence?x=1${this.q()}`, {
+        client: this.doc.clientID,
+        data: b64(encodeAwarenessUpdate(this.awareness, [this.doc.clientID])),
+        ...(gone ? { gone: true } : {})
+      })
+    } catch {
+      /* the next move sends it again */
+    }
+  }
+
+  private apply(r: { snapshot: string | null; updates: string[]; seq: number; can: Can; presence?: { client: number; data: string }[] }) {
+    for (const p of r.presence ?? []) {
+      if (p.client === this.doc.clientID) continue
+      try {
+        applyAwarenessUpdate(this.awareness, unb64(p.data), REMOTE)
+      } catch {
+        /* someone's cursor from an older app */
+      }
+    }
     Y.transact(this.doc, () => {
       if (r.snapshot) Y.applyUpdate(this.doc, unb64(r.snapshot), REMOTE)
       for (const u of r.updates) Y.applyUpdate(this.doc, unb64(u), REMOTE)
@@ -174,6 +208,10 @@ export class LiveDoc {
     this.stopped = true
     if (this.timer) clearTimeout(this.timer)
     void this.send()
+    // Leaving: our cursor goes from everyone else's screen.
+    void this.sendPresence(true)
+    removeAwarenessStates(this.awareness, [this.doc.clientID], 'local')
+    this.awareness.destroy()
   }
 }
 

@@ -1,4 +1,6 @@
 import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCaret from '@tiptap/extension-collaboration-caret'
+import type { Awareness } from 'y-protocols/awareness'
 import type * as Y from 'yjs'
 import { Extension, Node, mergeAttributes, type Editor, type Range } from '@tiptap/core'
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from '@tiptap/suggestion'
@@ -201,7 +203,7 @@ export const SlashCommand = Extension.create({
 
 /** Every extension a note uses. `slash` is off for the small Cornell side editors; `attach` is off in shared group notes. */
 /** A shared note's live document, and which of its areas (content, cues, summary) this editor shows. */
-export type CollabArea = { doc: Y.Doc; field: string }
+export type CollabArea = { doc: Y.Doc; field: string; caret?: { awareness: Awareness; user: { name: string; color: string } } }
 
 export function noteExtensions(placeholder: string, slash = true, attach = true, collab?: CollabArea) {
   return [
@@ -211,6 +213,8 @@ export function noteExtensions(placeholder: string, slash = true, attach = true,
     // Editing together: Yjs keeps the history (the editor's own undo would undo other people's typing).
     StarterKit.configure({ link: { openOnClick: false, autolink: true }, ...(collab ? { undoRedo: false as const } : {}) }),
     ...(collab ? [Collaboration.configure({ document: collab.doc, field: collab.field })] : []),
+    // Other people's cursors, with their name (like Google Docs).
+    ...(collab?.caret ? [CollaborationCaret.configure({ provider: { awareness: collab.caret.awareness }, user: collab.caret.user })] : []),
     Highlight.configure({ multicolor: true }),
     Typography,
     TaskList,

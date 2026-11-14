@@ -688,3 +688,11 @@ main.main.main-notes { padding: 0; overflow: hidden; }
 .share-to .share-role, .share-people .share-role { flex: none; width: 116px; }
 .share-link-mode { width: 100%; margin-bottom: 10px; }
 .share-signin { margin: 0 0 12px; }
+
+/* ---------- other people's cursors (CollaborationCaret) ---------- */
+.collaboration-carets__caret { position: relative; margin-left: -1px; margin-right: -1px; border-left: 2px solid; border-right: 0; word-break: normal; pointer-events: none; }
+.collaboration-carets__label {
+  position: absolute; top: -1.45em; left: -2px; padding: 1px 6px; border-radius: 6px 6px 6px 0;
+  font-size: 11.5px; font-weight: 650; line-height: 1.35; white-space: nowrap; color: #fff; user-select: none; pointer-events: none;
+}
+.collaboration-carets__selection { opacity: 0.25; }

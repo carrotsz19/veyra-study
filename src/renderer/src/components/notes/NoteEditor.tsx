@@ -33,6 +33,7 @@ import { noteSaved, onSharesChanged, promoteFiles, sharesOf } from '../../lib/sh
 import { openLive, releaseLive, type LiveDoc } from '../../lib/live'
 import { groupCall } from '../../data/groups'
 import { useAccount } from '../account'
+import { personColor } from '../../lib/people'
 import { NoteHistory } from './History'
 import { beforeSave, keepVersion } from '../../lib/history'
 import type { NoteVersion } from '@shared/types'
@@ -232,7 +233,9 @@ export function Area({
       on = false
     }
   }, [live?.doc]) // eslint-disable-line react-hooks/exhaustive-deps
-  const collab = live && liveReady ? { doc: live.doc.doc, field: live.field } : undefined
+  const me = useAccount()?.state.user
+  const name = me?.displayName || me?.username || 'You'
+  const collab = live && liveReady ? { doc: live.doc.doc, field: live.field, ...(live.field === 'content' ? { caret: { awareness: live.doc.awareness, user: { name, color: personColor(name) } } } : {}) } : undefined
   const editor = useEditor(
     {
       extensions: [...noteExtensions(useSlash ? `${placeholder} Type / for blocks.` : placeholder, useSlash, attach, collab), ...(ownSpelling ? [Spelling] : [])],

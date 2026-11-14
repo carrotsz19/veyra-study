@@ -26,6 +26,7 @@ import {
 import { openLive, releaseLive, type Caller, type LiveDoc } from '../../lib/live'
 import { fileSrc, setRemoteFiles, type RemoteFiles } from './attachment'
 import { NOTE_COVERS } from './covers'
+import { personColor } from '../../lib/people'
 
 const clean = (e: unknown, fallback: string) => {
   const m = e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : fallback
@@ -42,7 +43,7 @@ function StaticArea({ doc }: { doc: unknown }) {
 }
 
 /** One area of a shared note on its live document: everyone's changes show as they happen. */
-function LiveArea({ live, field, editable, onEditor }: { live: LiveDoc; field: string; editable: boolean; onEditor: (e: Editor) => void }) {
+function LiveArea({ live, field, editable, onEditor, who }: { live: LiveDoc; field: string; editable: boolean; onEditor: (e: Editor) => void; who: string }) {
   const [ready, setReady] = useState(false)
   useEffect(() => {
     let on = true
@@ -53,7 +54,7 @@ function LiveArea({ live, field, editable, onEditor }: { live: LiveDoc; field: s
   }, [live])
   const editor = useEditor(
     {
-      extensions: noteExtensions(editable ? 'Write here…' : '', false, false, ready ? { doc: live.doc, field } : undefined),
+      extensions: noteExtensions(editable ? 'Write here…' : '', false, false, ready ? { doc: live.doc, field, ...(field === 'content' ? { caret: { awareness: live.awareness, user: { name: who, color: personColor(who) } } } : {}) } : undefined),
       editable: false,
       immediatelyRender: true,
       onCreate: ({ editor: e }) => onEditor(e)
@@ -94,7 +95,8 @@ export function SharedDoc({
   docId,
   share = '',
   call,
-  onCan
+  onCan,
+  who = 'Guest'
 }: {
   title: string
   body: SharedBody
@@ -103,6 +105,8 @@ export function SharedDoc({
   share?: string
   call?: Caller
   onCan?: (can: LiveDoc['can']) => void
+  /** The name on your cursor. */
+  who?: string
 }) {
   setRemoteFiles(files)
   const [live, setLive] = useState<LiveDoc | null>(null)
@@ -140,7 +144,7 @@ export function SharedDoc({
   }
   const cornell = body.template === 'cornell' || !!docText(body.cues) || !!docText(body.summary)
   const area = (field: 'content' | 'cues' | 'summary') =>
-    live ? <LiveArea live={live} field={field} editable={can === 'edit'} onEditor={onEditor(field)} /> : <StaticArea doc={body[field]} />
+    live ? <LiveArea live={live} field={field} editable={can === 'edit'} onEditor={onEditor(field)} who={who} /> : <StaticArea doc={body[field]} />
   return (
     <div className="share-doc">
       <SharedCover cover={body.cover} />
