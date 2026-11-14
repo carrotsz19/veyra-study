@@ -6,6 +6,7 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **Edit shared notes together, like Google Docs:** in Share…, each person is a Viewer or an Editor, and the link is off, view-only or editable (you choose whether link editors must sign in). Editors type in the note at the same time and see each other's changes within a second or two; nothing anyone types is lost, even offline (it goes when you're back). Viewers see changes as they happen. New pictures and files in a shared note are shared too. Shared with you opens notes you can edit right there. (Needs group server 1.7.0; everyone editing needs this version.)
 - **Shared notes include their pictures, files and cover:** they're uploaded once each (up to 15 MB a file, 300 MB in all) and show for the people you share with and on the link page. Save a copy keeps them on your device too. (Needs group server 1.6.0.)
 - **Note menu (•••):** the things you do most (share, version history, pin, duplicate, export, archive, trash) come first, with layout, font and cover below; the menu fits the window and scrolls, so nothing is cut off.
 - **Share a note without a group** (signed in): a note's ••• menu → Share… makes a link anyone can read on the website, or sends it to someone's @username. They get a read-only copy that stays up to date as you edit; you can stop sharing any time. Notes people send you are under the inbox button in Notes, where you can read them, save a copy, or remove them. Pictures and attachments stay on your device. (Needs group server 1.5.0.)

@@ -677,3 +677,12 @@ main.main.main-notes { padding: 0; overflow: hidden; }
 .share-page .share-cover { margin: -32px 0 22px; border-radius: 16px; height: 180px; }
 .share-cover.note-cover-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 @media (max-width: 720px) { .share-cover { margin: -16px -18px 14px; } }
+
+/* ---------- editing a shared note together ---------- */
+.share-role, .share-link-mode { font: inherit; font-size: 13px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 5px 8px; }
+.share-link-mode { width: 100%; margin-bottom: 8px; }
+.share-check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin: 2px 0 10px; }
+.share-check input { margin-top: 2px; }
+.live-wait { color: var(--dim); font-size: 13px; padding: 8px 0; }
+.live-editable .ProseMirror { min-height: 120px; outline: none; }
+.share-page-meta { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }

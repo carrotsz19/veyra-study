@@ -42,6 +42,21 @@ export function Marked({ text, terms }: { text: string; terms: string[] }) {
 export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilter?: string }) {
   const signedIn = useAccount()?.state.mode === 'account'
   const [inbox, setInbox] = useState(false)
+  // A share link opened on the website ("Sign in to edit"): open it here, signed in.
+  const [openShare, setOpenShare] = useState<string | undefined>()
+  useEffect(() => {
+    if (!signedIn) return
+    try {
+      const id = sessionStorage.getItem('veyra.openShare')
+      if (id) {
+        sessionStorage.removeItem('veyra.openShare')
+        setOpenShare(id)
+        setInbox(true)
+      }
+    } catch {
+      /* storage unavailable */
+    }
+  }, [signedIn])
   const { items: everyNote, loaded } = useRecords('note')
   // Notes in the trash only show under Trash.
   const notes = useMemo(() => everyNote.filter((n) => !n.data.trashedAt), [everyNote])
@@ -804,7 +819,8 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
       )}
       {inbox && (
         <SharedInbox
-          onClose={() => setInbox(false)}
+          openId={openShare}
+          onClose={() => (setInbox(false), setOpenShare(undefined))}
           onCopied={(id) => {
             setInbox(false)
             setSelected(id)

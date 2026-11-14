@@ -1,3 +1,5 @@
+import Collaboration from '@tiptap/extension-collaboration'
+import type * as Y from 'yjs'
 import { Extension, Node, mergeAttributes, type Editor, type Range } from '@tiptap/core'
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from '@tiptap/suggestion'
 import StarterKit from '@tiptap/starter-kit'
@@ -198,12 +200,17 @@ export const SlashCommand = Extension.create({
 })
 
 /** Every extension a note uses. `slash` is off for the small Cornell side editors; `attach` is off in shared group notes. */
-export function noteExtensions(placeholder: string, slash = true, attach = true) {
+/** A shared note's live document, and which of its areas (content, cues, summary) this editor shows. */
+export type CollabArea = { doc: Y.Doc; field: string }
+
+export function noteExtensions(placeholder: string, slash = true, attach = true, collab?: CollabArea) {
   return [
     AttachmentNode.configure({ enabled: attach }),
     Drawing,
     ...(attach ? [AttachmentDrop] : []),
-    StarterKit.configure({ link: { openOnClick: false, autolink: true } }),
+    // Editing together: Yjs keeps the history (the editor's own undo would undo other people's typing).
+    StarterKit.configure({ link: { openOnClick: false, autolink: true }, ...(collab ? { undoRedo: false as const } : {}) }),
+    ...(collab ? [Collaboration.configure({ document: collab.doc, field: collab.field })] : []),
     Highlight.configure({ multicolor: true }),
     Typography,
     TaskList,

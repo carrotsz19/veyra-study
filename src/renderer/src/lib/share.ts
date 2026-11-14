@@ -1,5 +1,7 @@
 import type { Note } from '@shared/types'
+import type { Editor } from '@tiptap/core'
 import { groupCall } from '../data/groups'
+import { setRemoteFiles } from '../components/notes/attachment'
 
 /**
  * Sharing a note without a group (server: /shares). A share is a read-only copy of the
@@ -17,12 +19,21 @@ export interface ShareInfo {
   id: string
   noteId: string
   to: { username: string; displayName: string; photoUrl?: string } | null
+  /** Viewer or Editor (Google Docs style). */
+  role: Role
+  /** A link that lets people edit: do they have to sign in first? */
+  signin: boolean
+  /** The note's live document (edited together). */
+  docId: string
   updatedAt: number
 }
+export type Role = 'view' | 'edit'
 export interface Received {
   id: string
   title: string
   from: { username: string; displayName: string; photoUrl?: string }
+  role: Role
+  docId: string
   updatedAt: number
 }
 /** What a share carries: the note's text areas (as TipTap documents) and how it's laid out. */
@@ -45,7 +56,7 @@ const toB64 = (bytes: Uint8Array) => {
 // Files already on the server this session (the server keeps them while a share uses them).
 const known = new Map<string, Promise<string | null>>()
 /** The server's id for one of your files: asked by its fingerprint, uploaded only if it's new. Null if it can't be read here. */
-function serverFile(localId: string, name: string, mime: string): Promise<string | null> {
+export function serverFile(localId: string, name: string, mime: string): Promise<string | null> {
   if (localId.startsWith('sf_')) return Promise.resolve(localId)
   let p = known.get(localId)
   if (!p) {
@@ -117,15 +128,27 @@ export function myShares(fresh = false): Promise<ShareInfo[]> {
   return loading
 }
 export const sharesOf = async (noteId: string) => (await myShares()).filter((s) => s.noteId === noteId)
+/** Runs after you share, stop sharing or change someone's role (an open note switches to editing together). */
+const changed = new Set<() => void>()
+export const onSharesChanged = (f: () => void) => (changed.add(f), () => void changed.delete(f))
+const announce = () => changed.forEach((f) => f())
 
-export async function shareNote(noteId: string, note: Note, to?: string): Promise<ShareInfo> {
-  const r = await groupCall<{ share: ShareInfo }>('POST', '/shares', { noteId, ...(await payload(note)), ...(to ? { to } : {}) })
+export async function shareNote(noteId: string, note: Note, to?: string, role: Role = 'view', signin = true): Promise<ShareInfo> {
+  const r = await groupCall<{ share: ShareInfo }>('POST', '/shares', { noteId, ...(await payload(note)), role, signin, ...(to ? { to } : {}) })
   await myShares(true)
+  announce()
   return r.share
+}
+/** Viewer or Editor (and for a link, whether editors must sign in). */
+export async function setRole(id: string, role: Role, signin?: boolean): Promise<void> {
+  await groupCall('PATCH', `/shares/${encodeURIComponent(id)}`, { role, ...(signin === undefined ? {} : { signin }) })
+  await myShares(true)
+  announce()
 }
 export async function stopSharing(id: string): Promise<void> {
   await groupCall('DELETE', `/shares/${encodeURIComponent(id)}`)
   if (mine) mine = mine.filter((s) => s.id !== id)
+  announce()
 }
 
 /** After a shared note is saved: send its newest text (a few seconds after the last change). */
@@ -151,4 +174,34 @@ setTimeout(() => void myShares().catch(() => {}), 4000)
 export const sharedWithMe = () => groupCall<{ shares: Received[] }>('GET', '/shares/inbox').then((r) => r.shares)
 /** A shared file, read while signed in (the person it was sent to, or its owner). */
 export const readSharedFile = (id: string) => groupCall<{ mime: string; data: string; name: string }>('GET', `/files/${encodeURIComponent(id)}`)
-export const readShare = (id: string) => groupCall<{ title: string; content: string; from: Received['from']; updatedAt: number }>('GET', `/shares/${encodeURIComponent(id)}`)
+// Shared pictures and files open in the app while signed in.
+setRemoteFiles((id) => readSharedFile(id))
+
+/**
+ * In a note edited together, pictures and files added on this device are uploaded and the note
+ * points at the server's copy, so everyone else sees them too.
+ */
+let promoting = false
+export async function promoteFiles(editor: Editor): Promise<void> {
+  if (promoting || editor.isDestroyed) return
+  const found: { id: string; name: string; mime: string }[] = []
+  editor.state.doc.descendants((n) => {
+    if (n.type.name === 'attachment' && typeof n.attrs.id === 'string' && !n.attrs.id.startsWith('sf_')) found.push({ id: n.attrs.id, name: n.attrs.name, mime: n.attrs.mime })
+  })
+  if (!found.length) return
+  promoting = true
+  try {
+    for (const f of found) {
+      const id = await serverFile(f.id, f.name, f.mime).catch(() => null)
+      if (!id || editor.isDestroyed) continue
+      editor.state.doc.descendants((n, pos) => {
+        if (n.type.name !== 'attachment' || n.attrs.id !== f.id) return true
+        editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...n.attrs, id }))
+        return false
+      })
+    }
+  } finally {
+    promoting = false
+  }
+}
+export const readShare = (id: string) => groupCall<{ title: string; content: string; from: Received['from']; role: Role; signin: boolean; docId: string; mine: boolean; updatedAt: number }>('GET', `/shares/${encodeURIComponent(id)}`)

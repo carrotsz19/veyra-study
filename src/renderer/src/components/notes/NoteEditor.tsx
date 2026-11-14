@@ -29,7 +29,9 @@ import { Select } from '../Select'
 import { Spelling } from './spelling'
 import { fileSrc } from './attachment'
 import { ShareDialog } from './Share'
-import { noteSaved } from '../../lib/share'
+import { noteSaved, onSharesChanged, promoteFiles, sharesOf } from '../../lib/share'
+import { openLive, releaseLive, type LiveDoc } from '../../lib/live'
+import { groupCall } from '../../data/groups'
 import { useAccount } from '../account'
 import { NoteHistory } from './History'
 import { beforeSave, keepVersion } from '../../lib/history'
@@ -199,10 +201,13 @@ export function Area({
   className,
   onChange,
   onActive,
-  onReady
+  onReady,
+  live
 }: {
   content: unknown
   placeholder: string
+  /** A shared note: this area is edited together (the live document holds the text; `seed` fills it the first time). */
+  live?: { doc: LiveDoc; field: string; seed?: unknown }
   slash?: boolean
   /** Off in shared group notes: attached files would only be on your computer. */
   attach?: boolean
@@ -216,17 +221,41 @@ export function Area({
   const useSlash = slash && s.noteToolbar !== 'bar'
   // Computer: Veyra's own spell check (underlines and right-click fixes). Phone: the keyboard's.
   const ownSpelling = s.spellcheck && !onAndroid()
+  // A shared note waits for its live document (instant when this device already has a copy).
+  const [liveReady, setLiveReady] = useState(!live)
+  useEffect(() => {
+    if (!live) return setLiveReady(true)
+    let on = true
+    setLiveReady(false)
+    void live.doc.ready.then(() => on && setLiveReady(true))
+    return () => {
+      on = false
+    }
+  }, [live?.doc]) // eslint-disable-line react-hooks/exhaustive-deps
+  const collab = live && liveReady ? { doc: live.doc.doc, field: live.field } : undefined
   const editor = useEditor(
     {
-      extensions: [...noteExtensions(useSlash ? `${placeholder} Type / for blocks.` : placeholder, useSlash, attach), ...(ownSpelling ? [Spelling] : [])],
-      content: (content as object) ?? '',
+      extensions: [...noteExtensions(useSlash ? `${placeholder} Type / for blocks.` : placeholder, useSlash, attach, collab), ...(ownSpelling ? [Spelling] : [])],
+      content: collab ? undefined : ((content as object) ?? ''),
       editorProps: { attributes: { class: `tiptap ${className ?? ''}`, spellcheck: s.spellcheck && !ownSpelling ? 'true' : 'false' } },
       onUpdate: ({ editor: e }) => onChange(e.getJSON(), e.getText()),
       onFocus: ({ editor: e }) => onActive?.(e),
-      onCreate: ({ editor: e }) => onReady?.(e)
+      onCreate: ({ editor: e }) => {
+        // The first time a note is shared, its text goes into the live document (only once, from the owner).
+        if (collab && live?.seed && live.doc.can !== 'view' && live.doc.isEmpty(live.field)) e.commands.setContent(live.seed as object)
+        onReady?.(e)
+      }
     },
-    [useSlash, s.spellcheck, attach]
+    [useSlash, s.spellcheck, attach, collab?.doc]
   )
+  // New pictures and files in a shared note go to the server, so everyone sees them.
+  useEffect(() => {
+    if (!editor || !collab) return
+    const run = () => void promoteFiles(editor)
+    editor.on('update', run)
+    return () => void editor.off('update', run)
+  }, [editor, collab?.doc]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (live && !liveReady) return <p className="live-wait">Loading the shared note… (the first time on this device it needs the Veyra server, which sleeps from about 12 am to 8 am)</p>
   if (!editor) return null
   return (
     <>
@@ -501,6 +530,20 @@ export function NoteEditor({
   const saved = useRef({ data: note.data, at: note.updatedAt })
   const [history, setHistory] = useState(false)
   const [sharing, setSharing] = useState(false)
+  // Shared: the note is edited together (its text lives in a live document on the server too).
+  const [docId, setDocId] = useState<string | null>(null)
+  useEffect(() => {
+    const read = () => void sharesOf(note.id).then((l) => setDocId(l[0]?.docId ?? null), () => {})
+    read()
+    return onSharesChanged(read)
+  }, [note.id])
+  const [liveDoc, setLiveDoc] = useState<LiveDoc | null>(null)
+  useEffect(() => {
+    if (!docId) return setLiveDoc(null)
+    setLiveDoc(openLive(docId, '', groupCall))
+    return () => releaseLive(docId)
+  }, [docId])
+  const liveArea = (field: 'content' | 'cues' | 'summary') => (liveDoc ? { doc: liveDoc, field, seed: latest.current[field] } : undefined)
   const signedIn = useAccount()?.state.mode === 'account'
   const flush = () => {
     if (timer.current) clearTimeout(timer.current)
@@ -799,20 +842,20 @@ export function NoteEditor({
             <div className="cornell">
               <div className="cornell-cues">
                 <div className="cornell-label">Cues &amp; questions</div>
-                <Area content={data.cues} placeholder="Key words, questions…" slash className="cues" onChange={onArea('cues')} onActive={setActive} />
+                <Area content={data.cues} placeholder="Key words, questions…" slash className="cues" onChange={onArea('cues')} onActive={setActive} live={liveArea('cues')} />
               </div>
               <div className="cornell-notes note-main">
                 <div className="cornell-label">Notes</div>
-                <Area content={data.content} placeholder="Take notes during the lecture." onChange={onArea('content')} onActive={setActive} onReady={mainActive} />
+                <Area content={data.content} placeholder="Take notes during the lecture." onChange={onArea('content')} onActive={setActive} onReady={mainActive} live={liveArea('content')} />
               </div>
               <div className="cornell-summary">
                 <div className="cornell-label">Summary</div>
-                <Area content={data.summary} placeholder="Sum up the page in a few sentences, in your own words." slash onChange={onArea('summary')} onActive={setActive} />
+                <Area content={data.summary} placeholder="Sum up the page in a few sentences, in your own words." slash onChange={onArea('summary')} onActive={setActive} live={liveArea('summary')} />
               </div>
             </div>
           ) : (
             <div className="note-main">
-              <Area content={data.content} placeholder="Start writing." onChange={onArea('content')} onActive={setActive} onReady={mainActive} />
+              <Area content={data.content} placeholder="Start writing." onChange={onArea('content')} onActive={setActive} onReady={mainActive} live={liveArea('content')} />
             </div>
           )}
         </div>
