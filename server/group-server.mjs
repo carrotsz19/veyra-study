@@ -28,13 +28,13 @@ import { createServer } from 'node:http'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 import { createGzip } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION = '1.5.0'
+const VERSION = '1.6.0'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -581,6 +581,10 @@ route('POST', '/shares', ({ me, body }) => {
   if (old) q('UPDATE shares SET title = ?, content = ?, updated_at = ?, dismissed = 0 WHERE id = ?').run(title, content, t, old.id)
   else q('INSERT INTO shares (id, owner, note_id, to_user, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(randomBytes(16).toString('base64url'), me, noteId, to, title, content, t, t)
   if (to) notify([to])
+  const linked = q(
+    `SELECT id FROM shares WHERE owner = ? AND note_id = ? AND ${to ? 'to_user = ?' : 'to_user IS NULL'}`
+  ).get(...(to ? [me, noteId, to] : [me, noteId]))
+  linkFiles(linked.id, me, content)
   const row = q(`SELECT * FROM shares WHERE owner = ? AND note_id = ? AND ${to ? 'to_user = ?' : 'to_user IS NULL'}`).get(...(to ? [me, noteId, to] : [me, noteId]))
   return { share: shareView(row) }
 })
@@ -593,6 +597,7 @@ route('POST', '/shares/update', ({ me, body }) => {
   const rows = q('SELECT * FROM shares WHERE owner = ? AND note_id = ?').all(me, noteId)
   if (!rows.length) return { updated: 0 }
   q('UPDATE shares SET title = ?, content = ?, updated_at = ? WHERE owner = ? AND note_id = ?').run(title, content, now(), me, noteId)
+  for (const r of rows) linkFiles(r.id, me, content)
   const people = rows.map((r) => r.to_user).filter(Boolean)
   if (people.length) notify(people)
   return { updated: rows.length }
@@ -611,6 +616,7 @@ route('DELETE', '/shares/:id', ({ me, params }) => {
   if (!r) return { ok: true }
   if (r.owner === me) {
     q('DELETE FROM shares WHERE id = ?').run(r.id)
+    q('DELETE FROM share_files WHERE share_id = ?').run(r.id)
     if (r.to_user) notify([r.to_user])
   } else if (r.to_user === me) q('UPDATE shares SET dismissed = 1 WHERE id = ?').run(r.id)
   else throw new HttpError(404, 'That shared note isn’t there any more.')
@@ -630,6 +636,93 @@ route(
   },
   false
 )
+
+/* ---------- pictures and files in shared notes ---------- */
+/*
+ * When you share a note, your app uploads its pictures, attachments and picture cover here
+ * (once each), and the shared copy points at them by id ("sf_..."). A file can be read by
+ * its owner, by someone a note with it was shared with, or by anyone holding that note's link.
+ * Files no shared note mentions any more are deleted after a day.
+ */
+const FILE_DIR = join(DATA_DIR, 'files')
+mkdirSync(FILE_DIR, { recursive: true })
+const FILE_MAX = 15 * 1024 * 1024
+const FILE_TOTAL = 300 * 1024 * 1024
+const MAX_FILE_BODY = Math.ceil((FILE_MAX * 4) / 3) + 8192
+const FILE_ID = /^sf_[A-Za-z0-9_-]{22}$/
+db.exec(`
+  CREATE TABLE IF NOT EXISTS files (
+    id TEXT PRIMARY KEY, owner TEXT NOT NULL, sha TEXT NOT NULL, name TEXT NOT NULL,
+    mime TEXT NOT NULL, size INTEGER NOT NULL, created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS files_owner ON files(owner, sha);
+  CREATE TABLE IF NOT EXISTS share_files (share_id TEXT NOT NULL, file_id TEXT NOT NULL, PRIMARY KEY (share_id, file_id));
+`)
+function linkFiles(shareId, owner, content) {
+  const ids = [...new Set(String(content).match(/sf_[A-Za-z0-9_-]{22}/g) ?? [])]
+  q('DELETE FROM share_files WHERE share_id = ?').run(shareId)
+  for (const id of ids)
+    if (q('SELECT 1 FROM files WHERE id = ? AND owner = ?').get(id, owner)) q('INSERT OR IGNORE INTO share_files (share_id, file_id) VALUES (?, ?)').run(shareId, id)
+}
+
+// Already uploaded? (by the file's SHA-256), so edits don't upload the same pictures again.
+route('POST', '/files/have', ({ me, body }) => {
+  const sha = typeof body?.sha === 'string' && /^[0-9a-f]{64}$/.test(body.sha) ? body.sha : ''
+  return { id: (sha && q('SELECT id FROM files WHERE owner = ? AND sha = ?').get(me, sha)?.id) || null }
+})
+
+route('POST', '/files', ({ me, body }) => {
+  limit(`file:${me}`, 200, 3600_000)
+  const data = typeof body?.data === 'string' ? Buffer.from(body.data, 'base64') : null
+  if (!data?.length) throw new HttpError(400, 'Nothing to upload.')
+  if (data.length > FILE_MAX) throw new HttpError(413, 'That file is over 15 MB, too big to share.')
+  const hash = createHash('sha256').update(data).digest('hex')
+  const old = q('SELECT id FROM files WHERE owner = ? AND sha = ?').get(me, hash)
+  if (old) return { id: old.id }
+  const used = q('SELECT COALESCE(SUM(size), 0) AS n FROM files WHERE owner = ?').get(me).n
+  if (used + data.length > FILE_TOTAL) throw new HttpError(413, 'Your shared pictures and files are over 300 MB. Stop sharing some notes with big files first.')
+  const id = 'sf_' + randomBytes(16).toString('base64url')
+  writeFileSync(join(FILE_DIR, id), data)
+  const name = String(body.name || 'File').replace(/[\u0000-\u001f]/g, '').slice(0, 160) || 'File'
+  const mime = /^[\w.+-]+\/[\w.+-]+$/.test(String(body.mime || '')) ? String(body.mime) : 'application/octet-stream'
+  q('INSERT INTO files (id, owner, sha, name, mime, size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, me, hash, name, mime, data.length, now())
+  return { id }
+})
+
+route(
+  'GET',
+  '/files/:id',
+  ({ params, url, req, ip }) => {
+    limit(`file-read:${ip}`, 600, 60_000)
+    const f = FILE_ID.test(params.id) ? q('SELECT * FROM files WHERE id = ?').get(params.id) : null
+    if (!f) throw new HttpError(404, 'That file isn’t there any more.')
+    let me = null
+    try {
+      me = sessionUser(req).me
+    } catch {
+      /* not signed in: only a link can open it */
+    }
+    const share = url.searchParams.get('share') || ''
+    const allowed =
+      (me && me === f.owner) ||
+      q(
+        `SELECT 1 FROM share_files sf JOIN shares s ON s.id = sf.share_id WHERE sf.file_id = ? AND (${me ? 's.to_user = ? OR ' : ''}(s.id = ? AND s.to_user IS NULL))`
+      ).get(...(me ? [f.id, me, share] : [f.id, share]))
+    if (!allowed) throw new HttpError(404, 'That file isn’t shared with you.')
+    return { name: f.name, mime: f.mime, data: readFileSync(join(FILE_DIR, f.id)).toString('base64') }
+  },
+  false
+)
+
+function clearUnsharedFiles() {
+  const old = q('SELECT id FROM files WHERE created_at < ? AND id NOT IN (SELECT file_id FROM share_files)').all(now() - 86400_000)
+  for (const { id } of old) {
+    rmSync(join(FILE_DIR, id), { force: true })
+    q('DELETE FROM files WHERE id = ?').run(id)
+  }
+  if (old.length) log(`deleted ${old.length} files no shared note uses`)
+}
+setInterval(clearUnsharedFiles, 6 * 3600_000).unref()
 
 /* ---------- the owner's view: users, groups and moderation (Settings → Owner in the app) ---------- */
 // /me also says whether you're an owner, so the app knows to show the Owner section.
@@ -920,7 +1013,7 @@ const server = createServer(async (req, res) => {
       const params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]))
       limit(`all:${ip}`, 1200, 60_000)
       const auth = r.auth ? sessionUser(req) : {}
-      const body = req.method === 'GET' || req.method === 'DELETE' ? null : await readBody(req, url.pathname === '/sync/push' ? MAX_SYNC_BODY : MAX_BODY)
+      const body = req.method === 'GET' || req.method === 'DELETE' ? null : await readBody(req, url.pathname === '/sync/push' ? MAX_SYNC_BODY : url.pathname === '/files' ? MAX_FILE_BODY : MAX_BODY)
       const out = await r.handler({ ...auth, params, body, url, req, ip })
       return send(200, out)
     }

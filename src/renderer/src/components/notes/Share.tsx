@@ -6,7 +6,9 @@ import type { Note, NoteTemplate } from '@shared/types'
 import { Dialog, useToast } from '../ui'
 import { noteExtensions, docText } from './extensions'
 import { db } from '../../data/store'
-import { parseBody, readShare, shareLink, shareNote, sharedWithMe, sharesOf, stopSharing, type Received, type SharedBody, type ShareInfo } from '../../lib/share'
+import { parseBody, readShare, readSharedFile, shareLink, shareNote, sharedWithMe, sharesOf, stopSharing, swapFiles, type Received, type SharedBody, type ShareInfo } from '../../lib/share'
+import { fileSrc, setRemoteFiles, type RemoteFiles } from './attachment'
+import { NOTE_COVERS } from './covers'
 
 const clean = (e: unknown, fallback: string) => {
   const m = e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : fallback
@@ -20,10 +22,24 @@ function Area({ doc }: { doc: unknown }) {
   return <EditorContent editor={editor} className="hist-doc" />
 }
 
-/** A shared note as its reader sees it: title, the notes, and (Cornell) cues and summary. */
-export function SharedDoc({ title, body }: { title: string; body: SharedBody }) {
+/** A shared note's cover: a gradient, or its picture (from the server). */
+function SharedCover({ cover }: { cover?: string | null }) {
+  const [src, setSrc] = useState<string | null>(null)
+  useEffect(() => {
+    setSrc(null)
+    if (cover?.startsWith('img:')) fileSrc(cover.slice(4), 'image/jpeg').then(setSrc, () => setSrc(null))
+  }, [cover])
+  if (!cover) return null
+  if (cover.startsWith('img:')) return src ? <div className="share-cover note-cover-img"><img src={src} alt="" /></div> : null
+  return NOTE_COVERS[cover] ? <div className="share-cover" style={{ background: NOTE_COVERS[cover] }} /> : null
+}
+
+/** A shared note as its reader sees it: cover, title, the notes, and (Cornell) cues and summary. `files` fetches its pictures and attachments. */
+export function SharedDoc({ title, body, files }: { title: string; body: SharedBody; files: RemoteFiles }) {
+  setRemoteFiles(files)
   return (
     <div className="share-doc">
+      <SharedCover cover={body.cover} />
       {body.icon && <div className="share-icon">{body.icon}</div>}
       <h1 className="hist-title">{title}</h1>
       <Area doc={body.content} />
@@ -77,9 +93,10 @@ export function ShareDialog({ noteId, note, onClose }: { noteId: string; note: (
   return (
     <Dialog title="Share this note" onClose={onClose} width={480}>
       <p className="sm dim" style={{ marginTop: -6 }}>
-        People get a read-only copy that stays up to date as you edit. Pictures and attachments stay on your device.
+        People get a read-only copy that stays up to date as you edit, with its pictures and files (up to 15 MB each).
       </p>
       {error && <p className="share-err">{error}</p>}
+      {busy && <p className="sm dim">Sharing… (pictures and files upload the first time)</p>}
 
       <h4 className="share-h">
         <Link2 size={15} /> Link
@@ -167,19 +184,39 @@ export function SharedInbox({ onClose, onCopied }: { onClose: () => void; onCopi
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+  const [saving, setSaving] = useState(false)
   const keep = async () => {
-    if (!open) return
+    if (!open || saving) return
+    setSaving(true)
+    // The copy is yours: its pictures and files are saved to this device too.
+    const local = async (id: string, name: string, mime: string) => {
+      if (!id.startsWith('sf_')) return null
+      try {
+        const f = await readSharedFile(id)
+        const a = await window.veyra.files.fromBytes(name || f.name, mime || f.mime, Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0)))
+        return a.id
+      } catch {
+        return null
+      }
+    }
     const b = open.body
+    let cover = b.cover ?? null
+    if (cover?.startsWith('img:')) {
+      const id = await local(cover.slice(4), 'cover.jpg', 'image/jpeg')
+      cover = id ? `img:${id}` : null
+    }
     const rec = await db.put('note', {
       title: open.title,
       subjectId: null,
-      content: b.content ?? null,
-      cues: b.cues ?? undefined,
-      summary: b.summary ?? undefined,
+      cover,
+      content: (await swapFiles(b.content ?? null, local)) ?? null,
+      cues: (await swapFiles(b.cues ?? null, local)) ?? undefined,
+      summary: (await swapFiles(b.summary ?? null, local)) ?? undefined,
       template: (b.template as NoteTemplate) || undefined,
       icon: b.icon || undefined,
       excerpt: [docText(b.content), docText(b.cues), docText(b.summary)].join(' ').slice(0, 300)
     })
+    setSaving(false)
     toast('Saved a copy to your notes')
     onCopied(rec.id)
   }
@@ -228,14 +265,14 @@ export function SharedInbox({ onClose, onCopied }: { onClose: () => void; onCopi
                   ‹ Back
                 </button>
                 <span className="hist-when">{open ? `From ${open.from.displayName || open.from.username}` : 'Opening…'}</span>
-                <button className="btn sec sm" disabled={!open} onClick={() => void keep()}>
+                <button className="btn sec sm" disabled={!open || saving} onClick={() => void keep()}>
                   <Check size={14} /> Save a copy
                 </button>
                 <button className="iconbtn plain" aria-label="Remove from this list" title="Remove from this list" onClick={() => void remove(pick)}>
                   <Trash2 size={15} />
                 </button>
               </div>
-              <div className="hist-preview">{open && <SharedDoc title={open.title} body={open.body} />}</div>
+              <div className="hist-preview">{open && <SharedDoc title={open.title} body={open.body} files={readSharedFile} />}</div>
             </>
           ) : (
             <p className="hist-empty center">Pick a note to read it.</p>
@@ -272,7 +309,7 @@ export function PublicSharePage({ id }: { id: string }) {
         )}
       </header>
       <main className="share-page-body">
-        {!state ? <p className="dim">Opening…</p> : 'error' in state ? <p className="share-err">{state.error}</p> : <SharedDoc title={state.title} body={state.body} />}
+        {!state ? <p className="dim">Opening…</p> : 'error' in state ? <p className="share-err">{state.error}</p> : <SharedDoc title={state.title} body={state.body} files={(fid) => fetch(`/api/group/files/${encodeURIComponent(fid)}?share=${encodeURIComponent(id)}`).then(async (r) => { if (!r.ok) throw new Error('unavailable'); return r.json() })} />}
       </main>
     </div>
   )

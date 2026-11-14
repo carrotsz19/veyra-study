@@ -5,7 +5,8 @@ import { groupCall } from '../data/groups'
  * Sharing a note without a group (server: /shares). A share is a read-only copy of the
  * note, kept up to date from here: after you edit a shared note, its newest text is sent.
  * A link opens on the website for anyone who has it; a note sent to someone shows under
- * "Shared with you" in their Notes. Pictures and attachments stay on your device.
+ * "Shared with you" in their Notes. Its pictures, attachments and picture cover are uploaded
+ * once each and the copy points at them ("sf_..." ids on the server).
  */
 
 /** Where share links open: the website (the same for every build). */
@@ -31,12 +32,72 @@ export interface SharedBody {
   summary?: unknown
   template?: string
   icon?: string
+  /** A cover gradient's name, or "img:sf_..." for a picture. */
+  cover?: string | null
 }
 
-const payload = (n: Note) => ({
-  title: n.title?.trim() || 'Untitled',
-  content: JSON.stringify({ content: n.content ?? null, cues: n.cues ?? null, summary: n.summary ?? null, template: n.template ?? 'page', icon: n.icon ?? '' } satisfies SharedBody)
-})
+/* ---------- files: uploaded once, then the shared copy points at them ---------- */
+const toB64 = (bytes: Uint8Array) => {
+  let s = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(s)
+}
+// Files already on the server this session (the server keeps them while a share uses them).
+const known = new Map<string, Promise<string | null>>()
+/** The server's id for one of your files: asked by its fingerprint, uploaded only if it's new. Null if it can't be read here. */
+function serverFile(localId: string, name: string, mime: string): Promise<string | null> {
+  if (localId.startsWith('sf_')) return Promise.resolve(localId)
+  let p = known.get(localId)
+  if (!p) {
+    p = (async () => {
+      let bytes: Uint8Array
+      try {
+        bytes = await window.veyra.files.read(localId)
+      } catch {
+        return null
+      }
+      const sha = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource))].map((b) => b.toString(16).padStart(2, '0')).join('')
+      const have = await groupCall<{ id: string | null }>('POST', '/files/have', { sha })
+      return have.id ?? (await groupCall<{ id: string }>('POST', '/files', { name, mime, data: toB64(bytes) })).id
+    })()
+    p.catch(() => known.delete(localId))
+    known.set(localId, p)
+  }
+  return p
+}
+type Node = { type?: string; attrs?: Record<string, unknown>; content?: Node[] }
+/** A copy of a document with each attachment's id swapped (or left alone when swap gives null). */
+export async function swapFiles(doc: unknown, swap: (id: string, name: string, mime: string) => Promise<string | null>): Promise<unknown> {
+  const walk = async (n: Node): Promise<Node> => {
+    if (!n || typeof n !== 'object') return n
+    const out: Node = { ...n }
+    if (n.type === 'attachment' && typeof n.attrs?.id === 'string') {
+      const id = await swap(n.attrs.id, String(n.attrs.name ?? 'File'), String(n.attrs.mime ?? ''))
+      if (id) out.attrs = { ...n.attrs, id }
+    }
+    if (Array.isArray(n.content)) out.content = await Promise.all(n.content.map(walk))
+    return out
+  }
+  return doc ? walk(doc as Node) : doc
+}
+
+async function payload(n: Note) {
+  const up = (id: string, name: string, mime: string) => serverFile(id, name, mime)
+  let cover: string | null = n.cover ?? null
+  if (cover?.startsWith('img:')) {
+    const id = await serverFile(cover.slice(4), 'cover', 'image/jpeg').catch(() => null)
+    cover = id ? `img:${id}` : null
+  }
+  const body: SharedBody = {
+    content: await swapFiles(n.content ?? null, up),
+    cues: await swapFiles(n.cues ?? null, up),
+    summary: await swapFiles(n.summary ?? null, up),
+    template: n.template ?? 'page',
+    icon: n.icon ?? '',
+    cover
+  }
+  return { title: n.title?.trim() || 'Untitled', content: JSON.stringify(body) }
+}
 export const parseBody = (text: string): SharedBody => {
   try {
     return JSON.parse(text) as SharedBody
@@ -58,7 +119,7 @@ export function myShares(fresh = false): Promise<ShareInfo[]> {
 export const sharesOf = async (noteId: string) => (await myShares()).filter((s) => s.noteId === noteId)
 
 export async function shareNote(noteId: string, note: Note, to?: string): Promise<ShareInfo> {
-  const r = await groupCall<{ share: ShareInfo }>('POST', '/shares', { noteId, ...payload(note), ...(to ? { to } : {}) })
+  const r = await groupCall<{ share: ShareInfo }>('POST', '/shares', { noteId, ...(await payload(note)), ...(to ? { to } : {}) })
   await myShares(true)
   return r.share
 }
@@ -77,7 +138,9 @@ export function noteSaved(noteId: string, note: Note): void {
     noteId,
     setTimeout(() => {
       waiting.delete(noteId)
-      void groupCall('POST', '/shares/update', { noteId, ...payload(note) }).catch(() => {})
+      void payload(note)
+        .then((p) => groupCall('POST', '/shares/update', { noteId, ...p }))
+        .catch(() => {})
     }, 4000)
   )
 }
@@ -86,4 +149,6 @@ setTimeout(() => void myShares().catch(() => {}), 4000)
 
 /* ---------- notes shared with you ---------- */
 export const sharedWithMe = () => groupCall<{ shares: Received[] }>('GET', '/shares/inbox').then((r) => r.shares)
+/** A shared file, read while signed in (the person it was sent to, or its owner). */
+export const readSharedFile = (id: string) => groupCall<{ mime: string; data: string; name: string }>('GET', `/files/${encodeURIComponent(id)}`)
 export const readShare = (id: string) => groupCall<{ title: string; content: string; from: Received['from']; updatedAt: number }>('GET', `/shares/${encodeURIComponent(id)}`)

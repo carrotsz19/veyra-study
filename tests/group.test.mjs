@@ -396,3 +396,32 @@ test('sharing a note: a link anyone can read, or one person; updates, removing a
   await api(a, 'DELETE', `/shares/${link}`)
   assert.equal((await api(null, 'GET', `/shares/public/${link}`)).status, 404)
 })
+
+test('files in shared notes: only the owner, the person shared with, or the link can read them', async () => {
+  const a = await login('filer')
+  const b = await login('friend')
+  const c = await login('stranger')
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+  let r = await api(a, 'POST', '/files', { name: 'cell.png', mime: 'image/png', data: png.toString('base64') })
+  assert.equal(r.status, 200)
+  const fid = r.body.id
+  assert.match(fid, /^sf_/)
+  // The same picture again is the same file.
+  assert.equal((await api(a, 'POST', '/files', { name: 'again.png', mime: 'image/png', data: png.toString('base64') })).body.id, fid)
+  // Not shared yet: only the owner.
+  assert.equal((await api(a, 'GET', `/files/${fid}`)).status, 200)
+  assert.equal((await api(b, 'GET', `/files/${fid}`)).status, 404)
+  const content = JSON.stringify({ content: { type: 'doc', content: [{ type: 'attachment', attrs: { id: fid, name: 'cell.png', mime: 'image/png', size: png.length } }] } })
+  const link = (await api(a, 'POST', '/shares', { noteId: 'f1', title: 'Cells', content })).body.share.id
+  await api(a, 'POST', '/shares', { noteId: 'f1', title: 'Cells', content, to: 'friend' })
+  // The person it was sent to, and anyone with the link (no sign-in), can read it; others can't.
+  r = await api(b, 'GET', `/files/${fid}`)
+  assert.equal(r.status, 200)
+  assert.equal(Buffer.from(r.body.data, 'base64').equals(png), true)
+  assert.equal((await api(null, 'GET', `/files/${fid}?share=${link}`)).status, 200)
+  assert.equal((await api(null, 'GET', `/files/${fid}`)).status, 404)
+  assert.equal((await api(c, 'GET', `/files/${fid}`)).status, 404)
+  // Stopping the link stops the link's access.
+  await api(a, 'DELETE', `/shares/${link}`)
+  assert.equal((await api(null, 'GET', `/files/${fid}?share=${link}`)).status, 404)
+})

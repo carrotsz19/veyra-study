@@ -22,6 +22,26 @@ const SVG = {
  * each is shown from a temporary blob address, made when it's first needed.
  */
 const onWebsite = () => document.documentElement.classList.contains('web')
+
+/**
+ * Files in a shared note live on the Veyra server ("sf_..." ids). Whoever shows a shared note
+ * says how to fetch them (signed in, or through the note's link); each is shown from a blob address.
+ */
+export type RemoteFiles = (id: string) => Promise<{ mime: string; data: string; name?: string }>
+let remote: RemoteFiles | null = null
+export const setRemoteFiles = (r: RemoteFiles | null) => void (remote = r)
+export const isRemoteFile = (id: string) => id.startsWith('sf_')
+const remoteBlobs = new Map<string, Promise<string>>()
+function remoteUrl(id: string): Promise<string> {
+  let p = remoteBlobs.get(id)
+  if (!p) {
+    if (!remote) return Promise.reject(new Error('Not shared here.'))
+    p = remote(id).then((r) => URL.createObjectURL(new Blob([Uint8Array.from(atob(r.data), (c) => c.charCodeAt(0))], { type: r.mime || 'application/octet-stream' })))
+    p.catch(() => remoteBlobs.delete(id))
+    remoteBlobs.set(id, p)
+  }
+  return p
+}
 const blobs = new Map<string, Promise<string>>()
 function blobUrl(id: string, mime: string): Promise<string> {
   let p = blobs.get(id)
@@ -33,25 +53,26 @@ function blobUrl(id: string, mime: string): Promise<string> {
   return p
 }
 /** An address that shows a file (on the website, once it has been read). */
-export const fileSrc = (id: string, mime: string): Promise<string> => (onWebsite() ? blobUrl(id, mime) : Promise.resolve(fileUrl(id)))
+export const fileSrc = (id: string, mime: string): Promise<string> => (isRemoteFile(id) ? remoteUrl(id) : onWebsite() ? blobUrl(id, mime) : Promise.resolve(fileUrl(id)))
 
 /** Points an image or player at a file (on the website, once it has been read). */
 function showFile(el: HTMLImageElement | HTMLAudioElement, id: string, mime: string, onFail: () => void) {
+  if (isRemoteFile(id)) return void remoteUrl(id).then((u) => (el.src = u), onFail)
   if (!onWebsite()) return void (el.src = fileUrl(id))
   blobUrl(id, mime).then((u) => (el.src = u), onFail)
 }
 
 /** Saves a copy of an attached file where you choose (the phone hands it to the share sheet instead). */
 async function download(id: string, name: string, mime = ''): Promise<void> {
-  if (onAndroid() && !onWebsite()) return files.open(id)
-  const url = onWebsite() ? await blobUrl(id, mime) : URL.createObjectURL(await (await fetch(fileUrl(id))).blob())
+  if (onAndroid() && !onWebsite() && !isRemoteFile(id)) return files.open(id)
+  const url = isRemoteFile(id) ? await remoteUrl(id) : onWebsite() ? await blobUrl(id, mime) : URL.createObjectURL(await (await fetch(fileUrl(id))).blob())
   const a = document.createElement('a')
   a.href = url
   a.download = name
   document.body.appendChild(a)
   a.click()
   a.remove()
-  if (!onWebsite()) setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  if (!onWebsite() && !isRemoteFile(id)) setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 export const fileUrl = (id: string) => files.url?.(id) || `veyra-file://f/${encodeURIComponent(id)}`
@@ -166,7 +187,8 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
       const dom = document.createElement('div')
       dom.className = 'att'
       dom.contentEditable = 'false'
-      const open = () => files.open(id).catch((e: unknown) => report(clean(e, 'Couldn’t open it.')))
+      // A shared note's file: a copy is saved where you choose (there's no file on this device to open).
+      const open = () => (isRemoteFile(id) ? download(id, name, mime) : files.open(id)).catch((e: unknown) => report(clean(e, 'Couldn’t open it.')))
       const missing = () => {
         dom.className = 'att att-missing'
         dom.textContent = ''

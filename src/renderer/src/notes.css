@@ -672,3 +672,8 @@ main.main.main-notes { padding: 0; overflow: hidden; }
 .share-brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; color: var(--ink); text-decoration: none; }
 .share-brand img { border-radius: 6px; }
 .share-page-body { max-width: 760px; margin: 0 auto; padding: 32px 20px 80px; }
+
+.share-cover { height: 150px; margin: -24px -40px 18px; border-radius: 0; }
+.share-page .share-cover { margin: -32px 0 22px; border-radius: 16px; height: 180px; }
+.share-cover.note-cover-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (max-width: 720px) { .share-cover { margin: -16px -18px 14px; } }
