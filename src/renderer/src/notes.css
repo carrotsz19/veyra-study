@@ -706,3 +706,22 @@ a.np-row { text-decoration: none; color: inherit; }
 
 .share-me { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ink); }
 .share-me-dot { width: 9px; height: 9px; border-radius: 99px; }
+
+/* ---------- Notes list: a calmer top (title + New, search + filter, tabs) ---------- */
+.np-new-btn { flex: none; gap: 5px; }
+.np-searchrow { position: relative; display: flex; gap: 6px; align-items: center; }
+.np-searchrow .np-search { flex: 1; min-width: 0; margin: 0; }
+.np-filter-btn { position: relative; flex: none; width: 36px; height: 36px; border-radius: 10px; background: var(--fill-tertiary); color: var(--dim); }
+.np-filter-btn.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.np-filter-dot { position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border-radius: 99px; background: var(--accent); }
+.np-filter-pop { top: calc(100% + 6px); right: 0; width: 280px; max-height: min(420px, 70vh); overflow-y: auto; }
+.np-filter-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.np-sort-seg { display: flex; }
+.np-sort-seg button { flex: 1; }
+.np-active { display: flex; flex-wrap: wrap; gap: 6px; }
+.np-active .np-chip svg { margin-left: 2px; opacity: 0.7; }
+.np-tools .np-seg { width: 100%; display: flex; }
+.np-tools .np-seg button { flex: 1; }
+.np-trash-bar { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
+/* The filter panel sits over the list: solid, so the notes under it don't show through. */
+.np-filter-pop, html.material .np-filter-pop { background: var(--bg-elevated, var(--panel)); backdrop-filter: none; -webkit-backdrop-filter: none; }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Archive, ArchiveRestore, ArrowUpDown, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, FileText, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, HardDrive, MoreHorizontal, NotebookPen, Pencil, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, Users, X } from 'lucide-react'
+  Archive, ArchiveRestore, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, FileText, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, HardDrive, MoreHorizontal, NotebookPen, Pencil, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, Users, X, SlidersHorizontal } from 'lucide-react'
 import { childrenOf, deleteFolder, drag, folderPath, moveFolder, newFolder, parentOf, renameFolder, useFolders, withDescendants } from '../lib/folders'
 import { FolderNameDialog, FolderPickDialog } from '../components/FolderDialogs'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
@@ -10,7 +10,6 @@ import { SharedList, SharedPane, recentLinks, takePendingShare, type SharedPick 
 import { myShares, onSharesChanged, type ShareInfo } from '../lib/share'
 import { groupCall } from '../data/groups'
 import { useAccount } from '../components/account'
-import { Select } from '../components/Select'
 import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../components/notes/NoteEditor'
 import { useSettings } from '../data/settings'
 import { preview, section, shortDate } from '../components/notes/listing'
@@ -67,6 +66,24 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
         setSharedKey((k) => k + 1)
       })
   }, [signedIn])
+  const [moreMenu, setMoreMenu] = useState<{ x: number; y: number } | null>(null)
+  const [filterOpen, setFilterOpen] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!filterOpen) return
+    const away = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      if (filterRef.current?.contains(t) || t.closest?.('.np-filter-btn')) return
+      setFilterOpen(false)
+    }
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setFilterOpen(false)
+    document.addEventListener('mousedown', away)
+    document.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('mousedown', away)
+      document.removeEventListener('keydown', esc)
+    }
+  }, [filterOpen])
   const sharedIds = useMemo(() => new Set(mineShared.map((x) => x.noteId)), [mineShared])
   const { items: everyNote, loaded } = useRecords('note')
   // Notes in the trash only show under Trash.
@@ -438,61 +455,107 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                     <MoreHorizontal size={17} />
                   </button>
                 )}
-                {browsing && (
-                  <button className="iconbtn plain" onClick={() => setFolderDialog({ mode: 'new' })} title={folder ? `New folder in ${folder.data.name}` : 'New folder'} aria-label="New folder">
-                    <FolderPlus size={17} />
-                  </button>
-                )}
+                {/* One clear action; the rest is in ⋯ (and right-click). */}
                 <button
-                  className={`iconbtn plain ${selecting ? 'on' : ''}`}
-                  aria-pressed={selecting}
-                  onClick={() => (selecting ? clearPick() : setSelecting(true))}
-                  title={selecting ? 'Done selecting' : 'Select several notes (or Ctrl-click them)'}
-                  aria-label={selecting ? 'Done selecting' : 'Select notes'}
+                  className={`iconbtn plain ${moreMenu ? 'on' : ''}`}
+                  aria-label="More"
+                  title="New folder, select notes…"
+                  aria-expanded={!!moreMenu}
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect()
+                    setMoreMenu({ x: r.right - 220, y: r.bottom + 4 })
+                  }}
                 >
-                  <CheckSquare size={17} />
+                  <MoreHorizontal size={17} />
                 </button>
-                {drive?.connected && drive.canPick && !onAndroid() && (
-                  <button className="iconbtn plain" onClick={fromDrive} title={importing ? 'Closed the picker? Click to open it again.' : 'Open Google Docs and files from your Drive'} aria-label="From Google Drive">
-                    <HardDrive size={17} />
-                  </button>
-                )}
-                <button className="iconbtn np-new" onClick={create} title="New note (Ctrl+N)" aria-label="New note">
-                  <SquarePen size={17} />
+                <button className="btn sm np-new-btn" onClick={create} title="New note (Ctrl+N)">
+                  <SquarePen size={15} /> New
                 </button>
               </div>
 
-              <label className="np-search">
-                <Search size={15} aria-hidden="true" />
-                <input ref={searchRef} placeholder="Search notes and #tags" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search notes" />
-                {q && (
-                  <button className="np-clear" aria-label="Clear search" onClick={() => setQ('')}>
-                    <X size={12} />
-                  </button>
-                )}
-              </label>
-
-              {(!subjectFilter && activeSubjects.length > 0) || allTags.length > 0 ? (
-                <div className="np-chips" aria-label="Filter notes">
-                  {!subjectFilter && activeSubjects.length > 0 && (
-                    <>
-                      <button className="np-chip" aria-pressed={!subjectId} onClick={() => setSubjectId(null)}>
-                        All
-                      </button>
-                      {activeSubjects.map((x) => (
-                        <button key={x.id} className="np-chip" aria-pressed={subjectId === x.id} onClick={() => setSubjectId(subjectId === x.id ? null : x.id)}>
-                          <i style={{ background: x.data.color }} /> {x.data.name}
+              {/* Search, with filters and sort behind one button. */}
+              <div className="np-searchrow">
+                <label className="np-search">
+                  <Search size={15} aria-hidden="true" />
+                  <input ref={searchRef} placeholder="Search notes and #tags" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search notes" />
+                  {q && (
+                    <button className="np-clear" aria-label="Clear search" onClick={() => setQ('')}>
+                      <X size={12} />
+                    </button>
+                  )}
+                </label>
+                <button
+                  className={`iconbtn np-filter-btn ${filterOpen || subjectId || tag ? 'on' : ''}`}
+                  aria-label="Filter and sort"
+                  title="Filter by subject or tag, and sort"
+                  aria-expanded={filterOpen}
+                  onClick={() => setFilterOpen((v) => !v)}
+                >
+                  <SlidersHorizontal size={16} />
+                  {(subjectId || tag) && <span className="np-filter-dot" />}
+                </button>
+                {filterOpen && (
+                  <div className="popover np-filter-pop" ref={filterRef} role="dialog" aria-label="Filter and sort">
+                    {!subjectFilter && activeSubjects.length > 0 && (
+                      <>
+                        <h2>Subject</h2>
+                        <div className="np-filter-list">
+                          <button className="np-chip" aria-pressed={!subjectId} onClick={() => setSubjectId(null)}>
+                            All subjects
+                          </button>
+                          {activeSubjects.map((x) => (
+                            <button key={x.id} className="np-chip" aria-pressed={subjectId === x.id} onClick={() => setSubjectId(subjectId === x.id ? null : x.id)}>
+                              <i style={{ background: x.data.color }} /> {x.data.name}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    {allTags.length > 0 && (
+                      <>
+                        <h2>Tag</h2>
+                        <div className="np-filter-list">
+                          {allTags.map((t) => (
+                            <button key={t} className="np-chip tag-chip" aria-pressed={tag === t} onClick={() => setTag(tag === t ? null : t)}>
+                              #{t}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    <h2>Sort</h2>
+                    <div className="seg np-sort-seg">
+                      {(
+                        [
+                          ['edited', 'Edited'],
+                          ['created', 'Newest'],
+                          ['title', 'A–Z']
+                        ] as const
+                      ).map(([v, l]) => (
+                        <button key={v} aria-selected={settings.noteSort === v} onClick={() => setSetting({ noteSort: v })}>
+                          {l}
                         </button>
                       ))}
-                    </>
-                  )}
-                  {allTags.map((t) => (
-                    <button key={t} className="np-chip tag-chip" aria-pressed={tag === t} onClick={() => setTag(tag === t ? null : t)}>
-                      #{t}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* What's filtering the list right now (each one comes off with ×). */}
+              {(subjectId || tag) && (
+                <div className="np-active">
+                  {subjectId && (
+                    <button className="np-chip" aria-pressed="true" onClick={() => setSubjectId(null)} aria-label="Stop filtering by subject">
+                      <i style={{ background: activeSubjects.find((x) => x.id === subjectId)?.data.color }} /> {activeSubjects.find((x) => x.id === subjectId)?.data.name ?? 'Subject'} <X size={11} />
                     </button>
-                  ))}
+                  )}
+                  {tag && (
+                    <button className="np-chip tag-chip" aria-pressed="true" onClick={() => setTag(null)} aria-label="Stop filtering by tag">
+                      #{tag} <X size={11} />
+                    </button>
+                  )}
                 </div>
-              ) : null}
+              )}
 
               <div className="np-tools">
                 <div className="seg np-seg" role="tablist" aria-label="Which notes">
@@ -507,36 +570,21 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                   <button role="tab" aria-selected={view === 'archived'} onClick={() => switchView('archived')}>
                     Archived{archivedCount ? ` ${archivedCount}` : ''}
                   </button>
-                  {(trash.length > 0 || view === 'trash') && !subjectFilter && (
+                  {!subjectFilter && (
                     <button role="tab" aria-selected={view === 'trash'} onClick={() => switchView('trash')}>
                       Trash{trash.length ? ` ${trash.length}` : ''}
                     </button>
                   )}
                 </div>
-                <span className="grow" />
-                {view === 'trash' ? (
-                  trash.length > 0 && (
-                    <button className="linkbtn xs danger-link" onClick={() => setForever(trash)}>
-                      Empty trash
-                    </button>
-                  )
-                ) : (
-                <span className="np-sort">
-                  <ArrowUpDown size={13} aria-hidden="true" />
-                  <Select
-                    className="quiet"
-                    label="Sort notes"
-                    value={settings.noteSort}
-                    onChange={(v) => setSetting({ noteSort: v as typeof settings.noteSort })}
-                    options={[
-                      { value: 'edited', label: 'Last edited' },
-                      { value: 'created', label: 'Newest' },
-                      { value: 'title', label: 'A–Z' }
-                    ]}
-                  />
-                </span>
-                )}
               </div>
+              {view === 'trash' && trash.length > 0 && (
+                <div className="np-trash-bar">
+                  <span className="xs dim grow">Notes here are deleted for good after {TRASH_DAYS} days.</span>
+                  <button className="linkbtn xs danger-link" onClick={() => setForever(trash)}>
+                    Empty trash
+                  </button>
+                </div>
+              )}
 
               {selecting && (
                 <div className="bulk-bar">
@@ -867,6 +915,18 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             ['Rename', <Pencil size={15} key="r" />, () => setFolderDialog({ mode: 'rename', folder: folderCtx.folder })],
             ['Move to…', <FolderInput size={15} key="m" />, () => setMovingFolder(folderCtx.folder)],
             ['Delete folder', <Trash2 size={15} key="x" />, () => removeFolder(folderCtx.folder), true]
+          ]}
+        />
+      )}
+      {moreMenu && (
+        <RowMenu
+          x={moreMenu.x}
+          y={moreMenu.y}
+          onClose={() => setMoreMenu(null)}
+          items={[
+            ...(browsing ? [[folder ? `New folder in ${folder.data.name}` : 'New folder', <FolderPlus size={15} key="i" />, () => setFolderDialog({ mode: 'new' })] as [string, React.ReactNode, () => void]] : []),
+            [selecting ? 'Done selecting' : 'Select notes', <CheckSquare size={15} key="i" />, () => (selecting ? clearPick() : setSelecting(true))],
+            ...(drive?.connected && drive.canPick && !onAndroid() ? [[importing ? 'Open the Drive picker again' : 'From Google Drive', <HardDrive size={15} key="i" />, () => void fromDrive()] as [string, React.ReactNode, () => void]] : [])
           ]}
         />
       )}
