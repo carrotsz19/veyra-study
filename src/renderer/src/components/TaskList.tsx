@@ -1,12 +1,14 @@
 import { useRef, useState, type ReactNode } from 'react'
-import { Bell, Check, ChevronDown, Flag, ListChecks, Repeat as RepeatIcon, Trash2, Undo2 } from 'lucide-react'
+import { ArrowDown, Bell, CalendarDays, CalendarX, Check, ChevronDown, Copy, Flag, ListChecks, Repeat as RepeatIcon, Timer as TimerIcon, Trash2, Undo2 } from 'lucide-react'
 import { usePhone } from '../lib/phone'
 import type { Rec, TaskStep } from '@shared/types'
 import { repeatLabel } from '@shared/repeat'
 import { db, useRecords } from '../data/store'
 import { dueLabel, isOverdue } from '../lib/dates'
-import { nextWhen, toggleTask } from '../lib/tasks'
-import { useToast } from './ui'
+import { dayFromNow, freshTask, nextWhen, setDue, toggleTask } from '../lib/tasks'
+import { useTimer } from './timer'
+import { useNav } from '../nav'
+import { ContextMenu, useToast, type MenuItem } from './ui'
 import { TaskDialog } from './editors'
 import { useSettings } from '../data/settings'
 import type { TaskSort } from '@shared/settings'
@@ -59,8 +61,68 @@ export function TaskRow({ task, showSubject = true, onOpen }: { task: Rec<'task'
     await db.remove('task', task.id)
     toast('Task deleted', { label: 'Undo', run: () => void db.put('task', task.data, task.id) })
   }
+
+  // Right-click (on a computer): the quick changes, without opening the task.
+  const timer = useTimer()
+  const nav = useNav()
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const due = async (day: string | null) => {
+    const undo = await setDue([await freshTask(task)], day)
+    toast(day ? `Due ${nextWhen(day).replace(/^on /, '')}` : 'No due date now', { label: 'Undo', run: () => void undo() })
+  }
+  const priority = async (p: 'low' | 'normal' | 'high') => {
+    const t = await freshTask(task)
+    await db.put('task', { ...t.data, priority: p }, t.id)
+  }
+  const menuItems = (): MenuItem[] => {
+    const d = task.data
+    const items: MenuItem[] = [[d.done ? 'Mark not done' : 'Mark done', <Check size={15} key="i" />, () => void tick()]]
+    if (!d.done && nav)
+      items.push([
+        'Focus on this task',
+        <TimerIcon size={15} key="i" />,
+        () => {
+          timer.focusOn({ id: task.id, subjectId: d.subjectId ?? null })
+          nav.go({ name: 'timer' })
+        }
+      ])
+    if (!d.done) {
+      items.push(
+        'sep',
+        ['Due today', <CalendarDays size={15} key="i" />, () => void due(dayFromNow(0))],
+        ['Due tomorrow', <CalendarDays size={15} key="i" />, () => void due(dayFromNow(1))],
+        ['In a week', <CalendarDays size={15} key="i" />, () => void due(dayFromNow(7))]
+      )
+      if (d.due) items.push(['No due date', <CalendarX size={15} key="i" />, () => void due(null)])
+      items.push('sep')
+      if (d.priority !== 'high') items.push(['High priority', <Flag size={15} key="i" />, () => void priority('high')])
+      if (d.priority !== 'normal') items.push(['Normal priority', <Flag size={15} key="i" />, () => void priority('normal')])
+      if (d.priority !== 'low') items.push(['Low priority', <ArrowDown size={15} key="i" />, () => void priority('low')])
+    }
+    items.push(
+      'sep',
+      [
+        'Duplicate',
+        <Copy size={15} key="i" />,
+        () =>
+          void db.put('task', { ...d, done: false, completedAt: null, nextId: null }).then(() => toast('Task duplicated'))
+      ],
+      ['Delete', <Trash2 size={15} key="i" />, () => void remove(), true]
+    )
+    return items
+  }
   const row = (
-    <div className={`ig-row tap task-row ${task.data.done ? 'task-done' : ''} ${open && steps.length ? 'steps-open' : ''}`} onClick={onOpen} role="button" tabIndex={0} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onOpen() } }}>
+    <div
+      className={`ig-row tap task-row ${task.data.done ? 'task-done' : ''} ${open && steps.length ? 'steps-open' : ''}`}
+      onContextMenu={
+        phone
+          ? undefined
+          : (e) => {
+              e.preventDefault()
+              setMenu({ x: e.clientX, y: e.clientY })
+            }
+      }
+      onClick={onOpen} role="button" tabIndex={0} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onOpen() } }}>
       <button
         className="tick"
         role="checkbox"
@@ -142,7 +204,10 @@ export function TaskRow({ task, showSubject = true, onOpen }: { task: Rec<'task'
       {row}
     </SwipeRow>
   ) : (
-    row
+    <>
+      {row}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} />}
+    </>
   )
 }
 

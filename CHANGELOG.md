@@ -6,6 +6,9 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **Right-click a task** (on a computer): mark it done, start a focus block on it, set it due today, tomorrow or in a week, change its priority, duplicate or delete it.
+- **Move all to today:** after a busy week, one button puts every overdue task on today (Undo puts them back).
+- **Small fixes:** tasks added from a calendar day use your default priority; archived subjects' tasks stay out of the calendar and the phone's overdue count; Cornell notes' cues and summary take "/" commands too.
 - **Website:** images, recordings and files attached on the website now show and open (it keeps them in your browser). The site has its own icon, and Software update says the website is always the newest version.
 - **Repeating tasks and the focus timer:** "Mark done" at the end of a focus block now makes the task's next one, like ticking it anywhere else.
 - **Undo messages:** a message stays while you point at it, and Ctrl+Z takes back the last thing it offers to undo.

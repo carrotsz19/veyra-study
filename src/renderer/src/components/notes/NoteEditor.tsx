@@ -719,7 +719,7 @@ export function NoteEditor({
             <div className="cornell">
               <div className="cornell-cues">
                 <div className="cornell-label">Cues &amp; questions</div>
-                <Area content={data.cues} placeholder="Key words, questions…" slash={false} className="cues" onChange={onArea('cues')} onActive={setActive} />
+                <Area content={data.cues} placeholder="Key words, questions…" slash className="cues" onChange={onArea('cues')} onActive={setActive} />
               </div>
               <div className="cornell-notes note-main">
                 <div className="cornell-label">Notes</div>
@@ -727,7 +727,7 @@ export function NoteEditor({
               </div>
               <div className="cornell-summary">
                 <div className="cornell-label">Summary</div>
-                <Area content={data.summary} placeholder="Sum up the page in a few sentences, in your own words." slash={false} onChange={onArea('summary')} onActive={setActive} />
+                <Area content={data.summary} placeholder="Sum up the page in a few sentences, in your own words." slash onChange={onArea('summary')} onActive={setActive} />
               </div>
             </div>
           ) : (

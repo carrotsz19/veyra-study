@@ -26,8 +26,11 @@ export function usePrefetchCalendar(weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6, on:
 }
 
 export function Calendar() {
-  const { items: tasks } = useRecords('task')
+  const { items: allTasks } = useRecords('task')
   const { items: subjects } = useRecords('subject')
+  // Archived subjects keep their tasks out of sight here too, as on Today and Tasks.
+  const archived = new Set(subjects.filter((x) => x.data.archived).map((x) => x.id))
+  const tasks = allTasks.filter((t) => !t.data.subjectId || !archived.has(t.data.subjectId))
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
   const [newOn, setNewOn] = useState<{ due: string; title?: string } | null>(null)
   const [editing, setEditing] = useState<Rec<'task'> | null>(null)

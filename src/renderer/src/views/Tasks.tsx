@@ -10,6 +10,7 @@ import { TaskList } from '../components/TaskList'
 import { SubjectSelect, TaskDialog } from '../components/editors'
 import { useSettings } from '../data/settings'
 import { defaultDueDate } from '../lib/subjects'
+import { dayFromNow, setDue } from '../lib/tasks'
 
 type Filter = 'open' | 'overdue' | 'done' | 'all'
 
@@ -30,6 +31,10 @@ export function Tasks() {
   const { items: allTasks, loaded } = useRecords('task')
   const { items: subjects } = useRecords('subject')
   const toast = useToast()
+  const moveToToday = async (list: Rec<'task'>[]) => {
+    const undo = await setDue(list, dayFromNow(0))
+    toast(`Moved ${list.length} tasks to today`, { label: 'Undo', run: () => void undo() })
+  }
   const [filter, setFilter] = useState<Filter>('open')
   const [subjectId, setSubjectId] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -151,8 +156,14 @@ export function Tasks() {
         sections ? (
           sections.map(([title, list]) => (
             <section key={title} className="task-group">
-              <h2>
+              <h2 className="task-group-head">
                 {title} <span className="tert">{list.length}</span>
+                {/* After a busy week: every late task back on today, in one go (and back again with Undo). */}
+                {title === 'Overdue' && list.length > 1 && (
+                  <button className="btn ghost sm task-group-act" onClick={() => void moveToToday(list)}>
+                    Move all to today
+                  </button>
+                )}
               </h2>
               <TaskList tasks={list} />
             </section>

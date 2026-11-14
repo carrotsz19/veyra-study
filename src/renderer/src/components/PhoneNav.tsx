@@ -47,7 +47,9 @@ export function PhoneNav({ route, go }: { route: Route; go: (r: Route) => void }
   const { s } = useSettings()
   const timer = useTimer()
   const user = useAccount().state.user
-  const late = tasks.filter((t) => isOverdue(t.data.due, t.data.done)).length
+  // Like the sidebar's count: archived subjects don't count, and Settings can hide it.
+  const archived = new Set(subjects.filter((x) => x.data.archived).map((x) => x.id))
+  const late = s.showCounts ? tasks.filter((t) => isOverdue(t.data.due, t.data.done) && !(t.data.subjectId && archived.has(t.data.subjectId))).length : 0
   // The four screens you chose for the bar (Settings → Phone); the rest are under More.
   const tabs: [Route['name'], string, typeof Home, string?][] = s.phoneTabs.map((id) => [id, SCREENS[id][0], SCREENS[id][1], id === 'today' && late ? String(late) : undefined])
   const moreScreens = (Object.keys(SCREENS) as NavId[]).filter((id) => !s.phoneTabs.includes(id))

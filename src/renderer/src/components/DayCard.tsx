@@ -4,7 +4,7 @@ import { Check, ChevronLeft, ChevronRight, MapPin, Plus, Sun } from 'lucide-reac
 import type { GoogleEvent, Rec } from '@shared/types'
 import { db } from '../data/store'
 import { dayKey, todayKey } from '../lib/dates'
-import { useTimeFormat } from '../data/settings'
+import { useSettings, useTimeFormat } from '../data/settings'
 import { useExit } from '../lib/motion'
 import { usePhone } from '../lib/phone'
 import { toggleTask } from './TaskList'
@@ -102,10 +102,11 @@ export function DayCard({
     if (s?.on && Math.abs(s.dx) > 70) go(s.dx < 0 ? 1 : -1)
   }
 
+  const { s: settings } = useSettings()
   const add = async () => {
     const title = text.trim()
     if (!title) return onNewTask('')
-    await db.put('task', { title, subjectId: null, done: false, completedAt: null, due: day, priority: 'normal' })
+    await db.put('task', { title, subjectId: null, done: false, completedAt: null, due: day, priority: settings.defaultPriority })
     setText('')
     toast(`Added “${title}” on ${format(date, 'd MMM')}`)
   }

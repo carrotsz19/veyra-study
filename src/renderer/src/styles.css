@@ -1143,3 +1143,7 @@ button.dc-row:hover, .dc-row.task:hover { background: var(--fill-tertiary); }
 }
 .srv-banner svg { flex: none; margin-top: 2px; color: #6c7bd9; }
 .sync-row .srv-banner { margin: 10px 0 0; }
+
+/* Tasks: an action beside a group's title ("Move all to today"). */
+.task-group-head { display: flex; align-items: center; gap: 6px; }
+.task-group-act { margin-left: auto; font-size: 12.5px; text-transform: none; letter-spacing: 0; }
