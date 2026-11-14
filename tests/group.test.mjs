@@ -478,3 +478,29 @@ test('roles and editing together: viewers read, editors write, links can ask edi
   assert.equal((await api(c, 'POST', `/docs/${doc}/text?share=${link.id}`, { content: JSON.stringify({ content: { type: 'doc' } }) })).status, 200)
   assert.equal((await api(null, 'GET', `/shares/public/${link.id}`)).body.role, 'edit')
 })
+
+test('cursors and saved links: presence reaches others; opened links stay in Shared with me', async () => {
+  const a = await login('host3')
+  const b = await login('guest3')
+  const content = JSON.stringify({ content: null })
+  const link = (await api(a, 'POST', '/shares', { noteId: 'p1', title: 'Plan', content, role: 'edit' })).body.share
+  const doc = link.docId
+  // Someone's cursor shows up for the others (and wakes anyone waiting).
+  const waiting = api(a, 'GET', `/docs/${doc}?since=999999&wait=1`)
+  await new Promise((r) => setTimeout(r, 150))
+  assert.equal((await api(b, 'POST', `/docs/${doc}/presence?share=${link.id}`, { client: 42, data: 'Q1VSU09S' })).status, 200)
+  assert.deepEqual((await waiting).body.presence, [{ client: 42, data: 'Q1VSU09S' }])
+  await api(b, 'POST', `/docs/${doc}/presence?share=${link.id}`, { client: 42, data: 'x', gone: true })
+  assert.deepEqual((await api(a, 'GET', `/docs/${doc}?since=0`)).body.presence, [])
+  // Strangers without the link can't post cursors.
+  assert.equal((await api(b, 'POST', `/docs/${doc}/presence`, { client: 1, data: 'x' })).status, 404)
+  // A link opened while signed in is kept in Shared with me, until removed.
+  await api(b, 'POST', `/shares/${link.id}/save`)
+  let inbox = (await api(b, 'GET', '/shares/inbox')).body.shares
+  assert.equal(inbox.find((s) => s.id === link.id)?.link, true)
+  await api(b, 'DELETE', `/shares/${link.id}`)
+  inbox = (await api(b, 'GET', '/shares/inbox')).body.shares
+  assert.equal(inbox.some((s) => s.id === link.id), false)
+  // ...and removing it from the list doesn't stop the owner's link.
+  assert.equal((await api(null, 'GET', `/shares/public/${link.id}`)).status, 200)
+})

@@ -34,7 +34,7 @@ import { createGzip } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION = '1.7.0'
+const VERSION = '1.8.0'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -565,10 +565,23 @@ function sharePayload(body) {
 
 route('GET', '/shares/mine', ({ me }) => ({ shares: q('SELECT * FROM shares WHERE owner = ? ORDER BY created_at').all(me).map(shareView) }))
 
+db.exec('CREATE TABLE IF NOT EXISTS share_saved (username TEXT NOT NULL, share_id TEXT NOT NULL, saved_at INTEGER NOT NULL, PRIMARY KEY (username, share_id))')
+route('POST', '/shares/:id/save', ({ me, params }) => {
+  const r = q('SELECT * FROM shares WHERE id = ? AND to_user IS NULL').get(params.id)
+  if (!r) throw new HttpError(404, 'That link doesn’t work any more.')
+  if (r.owner !== me) q('INSERT OR IGNORE INTO share_saved (username, share_id, saved_at) VALUES (?, ?, ?)').run(me, r.id, now())
+  return { ok: true }
+})
+
 route('GET', '/shares/inbox', ({ me }) => ({
   shares: q('SELECT * FROM shares WHERE to_user = ? AND dismissed = 0 ORDER BY updated_at DESC')
     .all(me)
     .map((r) => ({ id: r.id, title: r.title, from: userCard(getUser(r.owner)) ?? { username: r.owner, displayName: r.owner }, role: role(r.role), docId: docFor(r.owner, r.note_id), updatedAt: r.updated_at }))
+    .concat(
+      q('SELECT s.* FROM share_saved v JOIN shares s ON s.id = v.share_id WHERE v.username = ? ORDER BY s.updated_at DESC')
+        .all(me)
+        .map((r) => ({ id: r.id, title: r.title, from: userCard(getUser(r.owner)) ?? { username: r.owner, displayName: r.owner }, role: role(r.role), docId: docFor(r.owner, r.note_id), link: true, updatedAt: r.updated_at }))
+    )
 }))
 
 // Share a note: a link (no "to"), or with one person ("to": their username). Sharing again updates it.
@@ -635,8 +648,10 @@ route('DELETE', '/shares/:id', ({ me, params }) => {
   if (r.owner === me) {
     q('DELETE FROM shares WHERE id = ?').run(r.id)
     q('DELETE FROM share_files WHERE share_id = ?').run(r.id)
+    q('DELETE FROM share_saved WHERE share_id = ?').run(r.id)
     if (r.to_user) notify([r.to_user])
   } else if (r.to_user === me) q('UPDATE shares SET dismissed = 1 WHERE id = ?').run(r.id)
+  else if (r.to_user === null && q('DELETE FROM share_saved WHERE username = ? AND share_id = ?').run(me, r.id).changes) return { ok: true }
   else throw new HttpError(404, 'That shared note isn’t there any more.')
   return { ok: true }
 })
@@ -696,6 +711,15 @@ const signedIn = (req) => {
     return null
   }
 }
+const presence = new Map() // doc id → Map(client id → { data, at })
+const PRESENCE_TTL = 35_000
+function presenceOf(id) {
+  const m = presence.get(id)
+  if (!m) return []
+  const t = now()
+  for (const [k, v] of m) if (t - v.at > PRESENCE_TTL) m.delete(k)
+  return [...m.entries()].map(([client, v]) => ({ client, data: v.data }))
+}
 const docWaiters = new Map()
 const wakeDoc = (id) => {
   for (const w of docWaiters.get(id) ?? []) w()
@@ -730,7 +754,27 @@ route(
       })
       out = docSince(params.id, since)
     }
-    return { ...out, can }
+    return { ...out, can, presence: presenceOf(params.id) }
+  },
+  false
+)
+
+// Where someone's cursor is (a Yjs awareness update, base64): anyone who can open the note.
+route(
+  'POST',
+  '/docs/:id/presence',
+  ({ params, url, req, body, ip }) => {
+    const me = signedIn(req)
+    limit(`doc-presence:${me || ip}`, 600, 60_000)
+    if (!docAccess(params.id, me, url.searchParams.get('share') || '')) throw new HttpError(404, 'That shared note isn’t there any more.')
+    const client = Number(body?.client)
+    if (!Number.isInteger(client) || typeof body?.data !== 'string' || body.data.length > 4000) throw new HttpError(400, 'Bad request.')
+    const m = presence.get(params.id) ?? new Map()
+    if (body.gone) m.delete(client)
+    else m.set(client, { data: body.data, at: now() })
+    presence.set(params.id, m)
+    wakeDoc(params.id)
+    return { ok: true }
   },
   false
 )
