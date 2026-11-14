@@ -127,6 +127,8 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   // The folder a note is in (none if it was in one that's gone).
   const folderOf = (n: Rec<'note'>) => (n.data.folderId && folders.some((f) => f.id === n.data.folderId) ? n.data.folderId : null)
   // Searching or filtering looks through every folder; otherwise you're in one folder (or the top level).
+  // A subject chosen in the filter (not just the subject page you're on).
+  const pickedSubject = !!subjectId && subjectId !== subjectFilter
   const filtering = !!terms.length || !!tag || (!!subjectId && subjectId !== subjectFilter)
   const browsing = view === 'notes' && !filtering
   // Notes in a folder, counting the folders inside it.
@@ -403,6 +405,24 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     return () => document.body.classList.remove('note-open')
   }, [phone, current, subjectFilter])
 
+  // Inside a subject page: the notes fill the rest of the window instead of a fixed height that
+  // makes the page scroll (it still scrolls when the window is too small for a usable list).
+  const embedRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = embedRef.current
+    const main = el?.closest('main')
+    if (!el || !main || phone) return
+    const fit = () => {
+      const top = el.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop
+      const below = parseFloat(getComputedStyle(main).paddingBottom) || 0
+      el.style.setProperty('--embed-h', `${Math.max(420, Math.floor(main.clientHeight - top - below))}px`)
+    }
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(main)
+    return () => ro.disconnect()
+  }, [phone, subjectFilter])
+
   // A folder opens in place (its folders and notes indented under it), so the rest of the list stays in view.
   const [openFolders, setOpenFolders] = useState<Set<string>>(() => {
     try {
@@ -542,7 +562,7 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
   }
 
   return (
-    <div className={`notes-page ${subjectFilter ? 'notes-embed' : 'view notes-full'} ${focus ? 'focus' : ''}`}>
+    <div ref={subjectFilter ? embedRef : undefined} className={`notes-page ${subjectFilter ? 'notes-embed' : 'view notes-full'} ${focus ? 'focus' : ''}`}>
       <div className={`notes-layout ${openOnPhone ? 'phone-open' : ''}`}>
         {!focus && (
           <div className="notes-list">
@@ -615,14 +635,14 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                   )}
                 </label>
                 <button
-                  className={`iconbtn np-filter-btn ${filterOpen || subjectId || tag ? 'on' : ''}`}
+                  className={`iconbtn np-filter-btn ${filterOpen || pickedSubject || tag ? 'on' : ''}`}
                   aria-label="Filter and sort"
                   title="Filter by subject or tag, and sort"
                   aria-expanded={filterOpen}
                   onClick={() => setFilterOpen((v) => !v)}
                 >
                   <SlidersHorizontal size={16} />
-                  {(subjectId || tag) && <span className="np-filter-dot" />}
+                  {(pickedSubject || tag) && <span className="np-filter-dot" />}
                 </button>
                 {filterOpen && (
                   <div className="popover np-filter-pop" ref={filterRef} role="dialog" aria-label="Filter and sort">
@@ -672,9 +692,9 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
               </div>
 
               {/* What's filtering the list right now (each one comes off with ×). */}
-              {(subjectId || tag) && (
+              {(pickedSubject || tag) && (
                 <div className="np-active">
-                  {subjectId && (
+                  {pickedSubject && (
                     <button className="np-chip" aria-pressed="true" onClick={() => setSubjectId(null)} aria-label="Stop filtering by subject">
                       <i style={{ background: activeSubjects.find((x) => x.id === subjectId)?.data.color }} /> {activeSubjects.find((x) => x.id === subjectId)?.data.name ?? 'Subject'} <X size={11} />
                     </button>
