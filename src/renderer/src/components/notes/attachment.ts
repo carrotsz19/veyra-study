@@ -32,6 +32,9 @@ function blobUrl(id: string, mime: string): Promise<string> {
   }
   return p
 }
+/** An address that shows a file (on the website, once it has been read). */
+export const fileSrc = (id: string, mime: string): Promise<string> => (onWebsite() ? blobUrl(id, mime) : Promise.resolve(fileUrl(id)))
+
 /** Points an image or player at a file (on the website, once it has been read). */
 function showFile(el: HTMLImageElement | HTMLAudioElement, id: string, mime: string, onFail: () => void) {
   if (!onWebsite()) return void (el.src = fileUrl(id))

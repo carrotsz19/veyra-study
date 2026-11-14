@@ -644,3 +644,12 @@ main.main.main-notes { padding: 0; overflow: hidden; }
   padding: 8px 12px; border-radius: 12px; font-size: 13px; line-height: 1.4; text-align: center;
   background: color-mix(in srgb, #e5a50a 22%, var(--bg-elevated)); color: var(--ink); box-shadow: var(--elev-2);
 }
+
+/* ---------- your own cover picture (NoteEditor: CoverPicture) ---------- */
+.note-cover-img { height: 190px; overflow: hidden; background: var(--fill-tertiary); }
+.note-cover-img img, .note-cover-img .cover-fallback { display: block; width: 100%; height: 100%; object-fit: cover; }
+.cover-chip-img { overflow: hidden; padding: 0; }
+.cover-chip-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cover-chip-up { display: grid; place-items: center; color: var(--dim); border-style: dashed; }
+.cover-chip-up:hover { color: var(--accent); border-color: var(--accent); }
+@media (max-width: 720px) { .note-cover-img { height: 150px; } }

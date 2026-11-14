@@ -5,7 +5,7 @@ import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/r
 import { BubbleMenu } from '@tiptap/react/menus'
 import { formatDistanceToNowStrict } from 'date-fns'
 import {
-  Archive, ArchiveRestore, Bold, Code, Copy, Download, FileUp, Hash, History as HistoryIcon, Italic, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, Pin, PinOff,
+  Archive, ArchiveRestore, Bold, Code, Copy, Download, FileUp, Hash, History as HistoryIcon, ImagePlus, Italic, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, Pin, PinOff,
   Sparkles, Strikethrough, Trash2, Underline
 } from 'lucide-react'
 import type { Note, NoteFont, NoteTemplate, Rec } from '@shared/types'
@@ -27,18 +27,69 @@ import { useSettings } from '../../data/settings'
 import { registerOpenNote, trashNotes } from '../../lib/notes'
 import { Select } from '../Select'
 import { Spelling } from './spelling'
+import { fileSrc } from './attachment'
 import { NoteHistory } from './History'
 import { beforeSave, keepVersion } from '../../lib/history'
 import type { NoteVersion } from '@shared/types'
 
+/** Note covers: soft gradients (the keys are stored in notes, so keep them). A custom picture is "img:<file id>". */
 export const NOTE_COVERS: Record<string, string> = {
-  clay: 'linear-gradient(120deg,#e9b9a4,#d9825f 55%,#b3492b)',
-  sage: 'linear-gradient(120deg,#cfe0c9,#8fb08a 60%,#3f6b4a)',
-  sky: 'linear-gradient(120deg,#cfe0ee,#86aed0 60%,#2f5f8a)',
-  dusk: 'linear-gradient(120deg,#ddd0ea,#a98bc6 60%,#5c3f80)',
-  honey: 'linear-gradient(120deg,#f4e3b5,#e2b55a 60%,#a86f1d)',
-  sand: 'linear-gradient(120deg,#f1ece2,#ddd2bf 60%,#b8a98e)',
-  ink: 'linear-gradient(120deg,#5b5a55,#2f2e2b 60%,#1b1a18)'
+  clay: 'radial-gradient(120% 140% at 12% 18%, #ffe1cf 0%, transparent 55%), radial-gradient(90% 130% at 88% 85%, #c2532f 0%, transparent 60%), linear-gradient(135deg, #f2b896, #d97a58)',
+  sage: 'radial-gradient(120% 140% at 12% 18%, #eef5e6 0%, transparent 55%), radial-gradient(90% 130% at 88% 85%, #4e7656 0%, transparent 60%), linear-gradient(135deg, #c1d8b8, #86a984)',
+  sky: 'radial-gradient(120% 140% at 12% 18%, #eef5fd 0%, transparent 55%), radial-gradient(90% 130% at 88% 85%, #356a9c 0%, transparent 60%), linear-gradient(135deg, #b3cfeb, #6f9dcb)',
+  dusk: 'radial-gradient(120% 140% at 12% 18%, #f5ecfb 0%, transparent 55%), radial-gradient(90% 130% at 88% 85%, #5f428a 0%, transparent 60%), linear-gradient(135deg, #d2bde6, #9677bf)',
+  honey: 'radial-gradient(120% 140% at 12% 18%, #fff5d6 0%, transparent 55%), radial-gradient(90% 130% at 88% 85%, #c4841f 0%, transparent 60%), linear-gradient(135deg, #f6dc93, #e3ae4c)',
+  sand: 'radial-gradient(120% 140% at 12% 18%, #fffcf6 0%, transparent 55%), radial-gradient(90% 130% at 88% 85%, #b9a685 0%, transparent 60%), linear-gradient(135deg, #f1e9da, #d9cab0)',
+  ink: 'radial-gradient(120% 140% at 12% 18%, #55544f 0%, transparent 55%), radial-gradient(90% 130% at 88% 85%, #0c0c0b 0%, transparent 60%), linear-gradient(135deg, #38372f, #1c1b19)',
+  sunset: 'radial-gradient(120% 140% at 12% 18%, #ffd29a 0%, transparent 55%), radial-gradient(90% 130% at 88% 85%, #d9446f 0%, transparent 60%), linear-gradient(135deg, #ffad7a, #e8607e)',
+  lagoon: 'radial-gradient(120% 140% at 12% 18%, #c8fbf3 0%, transparent 55%), radial-gradient(90% 130% at 88% 85%, #1f6fd1 0%, transparent 60%), linear-gradient(135deg, #7fdcd8, #3c8fd8)',
+  blossom: 'radial-gradient(120% 140% at 12% 18%, #fff0f6 0%, transparent 55%), radial-gradient(90% 130% at 88% 85%, #d9578f 0%, transparent 60%), linear-gradient(135deg, #ffc6dc, #ee8db5)',
+  meadow: 'radial-gradient(120% 140% at 12% 18%, #fbffd8 0%, transparent 55%), radial-gradient(90% 130% at 88% 85%, #3d8f5a 0%, transparent 60%), linear-gradient(135deg, #cfe8a0, #76b471)',
+  aurora: 'radial-gradient(70% 130% at 18% 100%, #2fd8a8 0%, transparent 62%), radial-gradient(60% 120% at 78% 0%, #8a63ff 0%, transparent 60%), radial-gradient(50% 90% at 55% 60%, #2a8fd8 0%, transparent 65%), linear-gradient(135deg, #0b1b29, #142b3d)'
+}
+
+/* ---------- your own cover picture ---------- */
+export const isImageCover = (c?: string | null): c is string => !!c && c.startsWith('img:')
+
+/** Asks for a picture and keeps it like an attachment; returns the cover value (or null if none was picked). */
+export function pickCover(): Promise<string | null> {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/png,image/jpeg,image/webp,image/gif'
+    input.oncancel = () => resolve(null)
+    input.onchange = async () => {
+      const f = input.files?.[0]
+      if (!f) return resolve(null)
+      if (f.size > 15 * 1024 * 1024) return reject(new Error('That picture is over 15 MB. Pick a smaller one.'))
+      try {
+        const a = await window.veyra.files.fromBytes(f.name, f.type || 'image/jpeg', new Uint8Array(await f.arrayBuffer()))
+        resolve(`img:${a.id}`)
+      } catch (e) {
+        reject(e)
+      }
+    }
+    input.click()
+  })
+}
+
+/** The picture itself. Pictures stay on the device they were added on; elsewhere a soft gradient stands in. */
+function CoverPicture({ cover }: { cover: string }) {
+  const [src, setSrc] = useState<string | null>(null)
+  const [gone, setGone] = useState(false)
+  useEffect(() => {
+    let live = true
+    setGone(false)
+    fileSrc(cover.slice(4), '').then(
+      (u) => live && setSrc(u),
+      () => live && setGone(true)
+    )
+    return () => {
+      live = false
+    }
+  }, [cover])
+  if (gone) return <span className="cover-fallback" style={{ background: NOTE_COVERS.sand }} title="This picture is on another device" />
+  return src ? <img src={src} alt="" draggable={false} onError={() => setGone(true)} /> : null
 }
 
 export const NOTE_ICONS = ['📝', '📘', '📗', '📕', '📙', '🧪', '🧬', '🔬', '🧮', '📐', '📊', '💻', '🌍', '🏛️', '⚖️', '🎨', '🎵', '🗣️', '🧠', '💡', '⭐', '🎯', '📌', '🗂️', '✏️', '🔖', '🧭', '🌱', '⚛️', '🩺', '💰', '📜']
@@ -267,6 +318,14 @@ function PageMenu({
         {Object.entries(NOTE_COVERS).map(([k, bg]) => (
           <button key={k} className="cover-chip" aria-pressed={data.cover === k} aria-label={`${k} cover`} style={{ background: bg }} onClick={() => set({ cover: k })} />
         ))}
+        {isImageCover(data.cover) && (
+          <button className="cover-chip cover-chip-img" aria-pressed="true" aria-label="Your picture">
+            <CoverPicture cover={data.cover} />
+          </button>
+        )}
+        <button className="cover-chip cover-chip-up" aria-label="Use your own picture" title="Use your own picture" onClick={() => void pickCover().then((c) => c && set({ cover: c }), (e: unknown) => alert(e instanceof Error ? e.message : 'Couldn’t use that picture.'))}>
+          <ImagePlus size={14} />
+        </button>
       </div>
       <h2>Formatting tools</h2>
       <div className="seg" style={{ display: 'flex' }} title="Applies to all notes">
@@ -613,7 +672,13 @@ export function NoteEditor({
             </button>
           </div>
         )}
-        {data.cover && NOTE_COVERS[data.cover] && <div className="note-cover" style={{ background: NOTE_COVERS[data.cover] }} />}
+        {isImageCover(data.cover) ? (
+          <div className="note-cover note-cover-img">
+            <CoverPicture cover={data.cover} />
+          </div>
+        ) : (
+          data.cover && NOTE_COVERS[data.cover] && <div className="note-cover" style={{ background: NOTE_COVERS[data.cover] }} />
+        )}
         <div className={`note-sheet ${data.cover ? 'has-cover' : ''}`}>
           <div className="note-actions">
             {!data.icon && (

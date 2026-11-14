@@ -6,6 +6,7 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **Note covers:** softer, nicer gradients, five new ones (sunset, lagoon, blossom, meadow, aurora), and your own picture as a cover (the picture button at the end of the covers). Like attachments, a picture stays on the device you added it on.
 - **Right-click a task** (on a computer): mark it done, start a focus block on it, set it due today, tomorrow or in a week, change its priority, duplicate or delete it.
 - **Move all to today:** after a busy week, one button puts every overdue task on today (Undo puts them back).
 - **Small fixes:** tasks added from a calendar day use your default priority; archived subjects' tasks stay out of the calendar and the phone's overdue count; Cornell notes' cues and summary take "/" commands too.
