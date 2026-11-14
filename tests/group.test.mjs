@@ -358,3 +358,41 @@ test('only an owner can use /admin; it lists users and groups and can moderate',
   assert.equal((await api(boss, 'DELETE', `/admin/groups/${g.id}`)).status, 200)
   assert.equal((await api(boss, 'GET', `/admin/groups/${g.id}`)).status, 404)
 })
+
+test('sharing a note: a link anyone can read, or one person; updates, removing and stopping', async () => {
+  const a = await login('sharer')
+  const b = await login('reader')
+  const doc = (t) => JSON.stringify({ content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }] } })
+
+  // A link: readable without signing in, but only through /shares/public.
+  let r = await api(a, 'POST', '/shares', { noteId: 'n1', title: 'Cells', content: doc('v1') })
+  assert.equal(r.status, 200)
+  const link = r.body.share.id
+  assert.equal(r.body.share.to, null)
+  assert.ok(link.length >= 20)
+  r = await api(null, 'GET', `/shares/public/${link}`)
+  assert.equal(r.body.title, 'Cells')
+  assert.equal((await api(b, 'GET', `/shares/${link}`)).status, 404)
+
+  // One person: unknown people and yourself are explained; they see it in their list.
+  assert.equal((await api(a, 'POST', '/shares', { noteId: 'n1', title: 'Cells', content: doc('v1'), to: '@nobody-here' })).status, 404)
+  assert.equal((await api(a, 'POST', '/shares', { noteId: 'n1', title: 'Cells', content: doc('v1'), to: 'sharer' })).status, 400)
+  r = await api(a, 'POST', '/shares', { noteId: 'n1', title: 'Cells', content: doc('v1'), to: '@Reader' })
+  assert.equal(r.status, 200)
+  const personal = r.body.share.id
+  assert.equal((await api(b, 'GET', '/shares/inbox')).body.shares[0].title, 'Cells')
+  // ...and a note sent to a person never opens as a public link.
+  assert.equal((await api(null, 'GET', `/shares/public/${personal}`)).status, 404)
+
+  // Editing the note updates every share of it.
+  assert.equal((await api(a, 'POST', '/shares/update', { noteId: 'n1', title: 'Cells 2', content: doc('v2') })).body.updated, 2)
+  assert.equal((await api(b, 'GET', `/shares/${personal}`)).body.title, 'Cells 2')
+  assert.equal((await api(null, 'GET', `/shares/public/${link}`)).body.title, 'Cells 2')
+  assert.equal((await api(a, 'GET', '/shares/mine')).body.shares.length, 2)
+
+  // The reader removes it from their list; the owner stops the link.
+  await api(b, 'DELETE', `/shares/${personal}`)
+  assert.equal((await api(b, 'GET', '/shares/inbox')).body.shares.length, 0)
+  await api(a, 'DELETE', `/shares/${link}`)
+  assert.equal((await api(null, 'GET', `/shares/public/${link}`)).status, 404)
+})

@@ -653,3 +653,22 @@ main.main.main-notes { padding: 0; overflow: hidden; }
 .cover-chip-up { display: grid; place-items: center; color: var(--dim); border-style: dashed; }
 .cover-chip-up:hover { color: var(--accent); border-color: var(--accent); }
 @media (max-width: 720px) { .note-cover-img { height: 150px; } }
+
+/* ---------- sharing a note (components/notes/Share.tsx) ---------- */
+.share-h { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; margin: 18px 0 8px; }
+.share-err { color: var(--bad); font-size: 13px; margin: 6px 0; }
+.share-link, .share-to { display: flex; gap: 8px; align-items: center; }
+.share-link input, .share-to input { flex: 1; min-width: 0; }
+.share-people { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; }
+.share-people li { display: flex; align-items: center; gap: 8px; padding: 6px 4px 6px 10px; border-radius: 10px; background: var(--fill-tertiary); font-size: 13.5px; }
+.share-doc .share-icon { font-size: 40px; margin-bottom: 6px; }
+.share-extra { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); }
+.share-extra h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); margin: 0 0 8px; }
+.share-back { display: none; }
+.hist.hist-reading .share-back { display: inline-flex; }
+@media (min-width: 721px) { .hist.hist-reading .share-back { display: none; } }
+.share-page { min-height: 100vh; background: var(--bg); color: var(--ink); }
+.share-page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.share-brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; color: var(--ink); text-decoration: none; }
+.share-brand img { border-radius: 6px; }
+.share-page-body { max-width: 760px; margin: 0 auto; padding: 32px 20px 80px; }

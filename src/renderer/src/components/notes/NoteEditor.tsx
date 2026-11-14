@@ -5,7 +5,7 @@ import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/r
 import { BubbleMenu } from '@tiptap/react/menus'
 import { formatDistanceToNowStrict } from 'date-fns'
 import {
-  Archive, ArchiveRestore, Bold, Code, Copy, Download, FileUp, Hash, History as HistoryIcon, ImagePlus, Italic, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, Pin, PinOff,
+  Archive, ArchiveRestore, Bold, Code, Copy, Download, FileUp, Hash, History as HistoryIcon, ImagePlus, Italic, Share2, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, Pin, PinOff,
   Sparkles, Strikethrough, Trash2, Underline
 } from 'lucide-react'
 import type { Note, NoteFont, NoteTemplate, Rec } from '@shared/types'
@@ -28,6 +28,9 @@ import { registerOpenNote, trashNotes } from '../../lib/notes'
 import { Select } from '../Select'
 import { Spelling } from './spelling'
 import { fileSrc } from './attachment'
+import { ShareDialog } from './Share'
+import { noteSaved } from '../../lib/share'
+import { useAccount } from '../account'
 import { NoteHistory } from './History'
 import { beforeSave, keepVersion } from '../../lib/history'
 import type { NoteVersion } from '@shared/types'
@@ -265,6 +268,7 @@ function PageMenu({
   onExport,
   onSaveDocs,
   onHistory,
+  onShare,
   onClose
 }: {
   data: Note
@@ -272,6 +276,8 @@ function PageMenu({
   onDelete: () => void
   onDuplicate: () => void
   onHistory: () => void
+  /** Share… (only when signed in to a Veyra account). */
+  onShare?: () => void
   onExport: () => void
   onSaveDocs: () => void
   onClose: () => void
@@ -345,6 +351,11 @@ function PageMenu({
       <button className="menu-row" onClick={() => set({ pinned: !data.pinned })}>
         {data.pinned ? <PinOff size={15} /> : <Pin size={15} />} {data.pinned ? 'Unpin' : 'Pin to top'}
       </button>
+      {onShare && (
+        <button className="menu-row" onClick={onShare}>
+          <Share2 size={15} /> Share…
+        </button>
+      )}
       <button className="menu-row" onClick={onHistory}>
         <HistoryIcon size={15} /> Version history
       </button>
@@ -491,6 +502,8 @@ export function NoteEditor({
   // The note as last saved (and when): kept as a version before a new stretch of editing (lib/history.ts).
   const saved = useRef({ data: note.data, at: note.updatedAt })
   const [history, setHistory] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const signedIn = useAccount()?.state.mode === 'account'
   const flush = () => {
     if (timer.current) clearTimeout(timer.current)
     timer.current = null
@@ -498,6 +511,7 @@ export function NoteEditor({
     saved.current = { data: latest.current, at: Date.now() }
     void beforeSave(note.id, before.data, before.at, latest.current).catch(() => {})
     db.put('note', latest.current, note.id).then((r) => setSavedAt(r.updatedAt))
+    noteSaved(note.id, latest.current)
   }
   const update = (patch: Partial<Note>, now = false) => {
     latest.current = { ...latest.current, ...patch }
@@ -705,7 +719,10 @@ export function NoteEditor({
                 <MoreHorizontal size={18} />
               </button>
               {menu === 'page' && (
-                <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportMd} onSaveDocs={saveDocs} onHistory={() => (setMenu(null), setHistory(true))} onClose={() => setMenu(null)} />
+                <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportMd} onSaveDocs={saveDocs} onHistory={() => (setMenu(null), setHistory(true))} onShare={signedIn ? () => (setMenu(null), flush(), setSharing(true)) : undefined} onClose={() => setMenu(null)} />
+              )}
+              {sharing && (
+                <ShareDialog noteId={note.id} note={() => latest.current} onClose={() => setSharing(false)} />
               )}
               {history && (
                 <NoteHistory noteId={note.id} currentWords={words} onRestore={(v) => void restore(v)} onClose={() => setHistory(false)} />

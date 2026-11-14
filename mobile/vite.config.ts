@@ -8,7 +8,8 @@ import react from '@vitejs/plugin-react'
 const web = process.env.VEYRA_WEB === '1'
 export default defineConfig({
   root: resolve(__dirname),
-  base: './',
+  // The website has pages under /s/ (share links), so its files load from the root; the phone app's from its folder.
+  base: web ? '/' : './',
   resolve: { alias: { '@shared': resolve(__dirname, '../src/shared') } },
   plugins: [react()],
   define: {

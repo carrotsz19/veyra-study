@@ -34,7 +34,7 @@ import { createGzip } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const VERSION = '1.4.0'
+const VERSION = '1.5.0'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -530,6 +530,106 @@ route('DELETE', '/groups/:id/items/:item', ({ me, params }) => {
   q('UPDATE items SET deleted = 1, data = ?, updated_by = ?, updated_at = ?, seq = ? WHERE id = ?').run('{}', me, now(), s, row.id)
   return { ok: true }
 })
+
+/* ---------- sharing a note, without a group ---------- */
+/*
+ * A share is a read-only copy of one of your notes, kept up to date by your app when you edit it.
+ * Either a link (to_user is null: anyone with its unguessable id can read it on the website), or
+ * for one person (they see it under Shared in their Notes). The owner can stop it any time;
+ * the person it was sent to can remove it from their list.
+ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS shares (
+    id TEXT PRIMARY KEY, owner TEXT NOT NULL, note_id TEXT NOT NULL, to_user TEXT,
+    title TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+    dismissed INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS shares_owner ON shares(owner, note_id);
+  CREATE INDEX IF NOT EXISTS shares_to ON shares(to_user);
+`)
+const SHARE_MAX = 500_000
+const shareView = (r) => ({ id: r.id, noteId: r.note_id, to: r.to_user ? userCard(getUser(r.to_user)) ?? { username: r.to_user, displayName: r.to_user } : null, updatedAt: r.updated_at })
+function sharePayload(body) {
+  const title = typeof body?.title === 'string' ? body.title.slice(0, 300) : ''
+  const content = typeof body?.content === 'string' ? body.content : ''
+  if (!content || content.length > SHARE_MAX) throw new HttpError(413, 'That note is too large to share.')
+  return { title: title || 'Untitled', content }
+}
+
+route('GET', '/shares/mine', ({ me }) => ({ shares: q('SELECT * FROM shares WHERE owner = ? ORDER BY created_at').all(me).map(shareView) }))
+
+route('GET', '/shares/inbox', ({ me }) => ({
+  shares: q('SELECT * FROM shares WHERE to_user = ? AND dismissed = 0 ORDER BY updated_at DESC')
+    .all(me)
+    .map((r) => ({ id: r.id, title: r.title, from: userCard(getUser(r.owner)) ?? { username: r.owner, displayName: r.owner }, updatedAt: r.updated_at }))
+}))
+
+// Share a note: a link (no "to"), or with one person ("to": their username). Sharing again updates it.
+route('POST', '/shares', ({ me, body }) => {
+  limit(`share:${me}`, 60, 3600_000)
+  const noteId = typeof body?.noteId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(body.noteId) ? body.noteId : null
+  if (!noteId) throw new HttpError(400, 'Which note?')
+  const { title, content } = sharePayload(body)
+  let to = null
+  if (body?.to) {
+    to = String(body.to).trim().replace(/^@/, '').toLowerCase()
+    if (to === me) throw new HttpError(400, 'That’s you. Pick someone else.')
+    if (!getUser(to)) throw new HttpError(404, `No one called @${to} uses Veyra Study sharing yet. They need to open Group work once while signed in.`)
+  }
+  const t = now()
+  const old = q(`SELECT * FROM shares WHERE owner = ? AND note_id = ? AND ${to ? 'to_user = ?' : 'to_user IS NULL'}`).get(...(to ? [me, noteId, to] : [me, noteId]))
+  if (old) q('UPDATE shares SET title = ?, content = ?, updated_at = ?, dismissed = 0 WHERE id = ?').run(title, content, t, old.id)
+  else q('INSERT INTO shares (id, owner, note_id, to_user, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(randomBytes(16).toString('base64url'), me, noteId, to, title, content, t, t)
+  if (to) notify([to])
+  const row = q(`SELECT * FROM shares WHERE owner = ? AND note_id = ? AND ${to ? 'to_user = ?' : 'to_user IS NULL'}`).get(...(to ? [me, noteId, to] : [me, noteId]))
+  return { share: shareView(row) }
+})
+
+// Your app sends the note's newest text after you edit it: every share of it gets it.
+route('POST', '/shares/update', ({ me, body }) => {
+  limit(`share-update:${me}`, 240, 60_000)
+  const noteId = typeof body?.noteId === 'string' ? body.noteId : ''
+  const { title, content } = sharePayload(body)
+  const rows = q('SELECT * FROM shares WHERE owner = ? AND note_id = ?').all(me, noteId)
+  if (!rows.length) return { updated: 0 }
+  q('UPDATE shares SET title = ?, content = ?, updated_at = ? WHERE owner = ? AND note_id = ?').run(title, content, now(), me, noteId)
+  const people = rows.map((r) => r.to_user).filter(Boolean)
+  if (people.length) notify(people)
+  return { updated: rows.length }
+})
+
+// Read one: the owner, or the person it was sent to.
+route('GET', '/shares/:id', ({ me, params }) => {
+  const r = q('SELECT * FROM shares WHERE id = ?').get(params.id)
+  if (!r || (r.owner !== me && r.to_user !== me)) throw new HttpError(404, 'That shared note isn’t there any more.')
+  return { title: r.title, content: r.content, from: userCard(getUser(r.owner)) ?? { username: r.owner, displayName: r.owner }, updatedAt: r.updated_at }
+})
+
+// The owner stops sharing; the person it was sent to takes it off their list.
+route('DELETE', '/shares/:id', ({ me, params }) => {
+  const r = q('SELECT * FROM shares WHERE id = ?').get(params.id)
+  if (!r) return { ok: true }
+  if (r.owner === me) {
+    q('DELETE FROM shares WHERE id = ?').run(r.id)
+    if (r.to_user) notify([r.to_user])
+  } else if (r.to_user === me) q('UPDATE shares SET dismissed = 1 WHERE id = ?').run(r.id)
+  else throw new HttpError(404, 'That shared note isn’t there any more.')
+  return { ok: true }
+})
+
+// A link: anyone with it can read it (no account needed). Only links, never notes sent to a person.
+route(
+  'GET',
+  '/shares/public/:id',
+  ({ params, ip }) => {
+    limit(`share-public:${ip}`, 300, 60_000)
+    const r = q('SELECT * FROM shares WHERE id = ? AND to_user IS NULL').get(params.id)
+    if (!r) throw new HttpError(404, 'This link doesn’t work any more. The person who shared it may have stopped sharing.')
+    const u = getUser(r.owner)
+    return { title: r.title, content: r.content, from: u ? u.display_name || u.username : r.owner, updatedAt: r.updated_at }
+  },
+  false
+)
 
 /* ---------- the owner's view: users, groups and moderation (Settings → Owner in the app) ---------- */
 // /me also says whether you're an owner, so the app knows to show the Owner section.

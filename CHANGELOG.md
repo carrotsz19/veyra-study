@@ -6,6 +6,7 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **Share a note without a group** (signed in): a note's ••• menu → Share… makes a link anyone can read on the website, or sends it to someone's @username. They get a read-only copy that stays up to date as you edit; you can stop sharing any time. Notes people send you are under the inbox button in Notes, where you can read them, save a copy, or remove them. Pictures and attachments stay on your device. (Needs group server 1.5.0.)
 - **Note covers:** softer, nicer gradients, five new ones (sunset, lagoon, blossom, meadow, aurora), and your own picture as a cover (the picture button at the end of the covers). Like attachments, a picture stays on the device you added it on.
 - **Right-click a task** (on a computer): mark it done, start a focus block on it, set it due today, tomorrow or in a week, change its priority, duplicate or delete it.
 - **Move all to today:** after a busy week, one button puts every overdue task on today (Undo puts them back).

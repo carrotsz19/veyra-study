@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Archive, ArchiveRestore, ArrowUpDown, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, FileText, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, HardDrive, MoreHorizontal, NotebookPen, Pencil, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, X
-} from 'lucide-react'
+  Archive, ArchiveRestore, ArrowUpDown, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, FileText, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, HardDrive, MoreHorizontal, NotebookPen, Pencil, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, X, Inbox } from 'lucide-react'
 import { childrenOf, deleteFolder, drag, folderPath, moveFolder, newFolder, parentOf, renameFolder, useFolders, withDescendants } from '../lib/folders'
 import { FolderNameDialog, FolderPickDialog } from '../components/FolderDialogs'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, onExternalChange, useRecords } from '../data/store'
 import { ContextMenu as RowMenu, Dialog, Empty, useToast } from '../components/ui'
+import { SharedInbox } from '../components/notes/Share'
+import { useAccount } from '../components/account'
 import { Select } from '../components/Select'
 import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../components/notes/NoteEditor'
 import { useSettings } from '../data/settings'
@@ -39,6 +40,8 @@ export function Marked({ text, terms }: { text: string; terms: string[] }) {
 }
 
 export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilter?: string }) {
+  const signedIn = useAccount()?.state.mode === 'account'
+  const [inbox, setInbox] = useState(false)
   const { items: everyNote, loaded } = useRecords('note')
   // Notes in the trash only show under Trash.
   const notes = useMemo(() => everyNote.filter((n) => !n.data.trashedAt), [everyNote])
@@ -407,6 +410,11 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                     }}
                   >
                     <MoreHorizontal size={17} />
+                  </button>
+                )}
+                {signedIn && (
+                  <button className="iconbtn plain" onClick={() => setInbox(true)} title="Shared with you" aria-label="Notes shared with you">
+                    <Inbox size={17} />
                   </button>
                 )}
                 {browsing && (
@@ -792,6 +800,15 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             ['Move to…', <FolderInput size={15} key="m" />, () => setMovingFolder(folderCtx.folder)],
             ['Delete folder', <Trash2 size={15} key="x" />, () => removeFolder(folderCtx.folder), true]
           ]}
+        />
+      )}
+      {inbox && (
+        <SharedInbox
+          onClose={() => setInbox(false)}
+          onCopied={(id) => {
+            setInbox(false)
+            setSelected(id)
+          }}
         />
       )}
       {folderDialog && (
