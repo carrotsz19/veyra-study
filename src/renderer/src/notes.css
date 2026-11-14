@@ -703,3 +703,6 @@ main.main.main-notes { padding: 0; overflow: hidden; }
 a.np-row { text-decoration: none; color: inherit; }
 .shared-pane { display: flex; flex-direction: column; min-height: 0; }
 .shared-pane .hist-preview { flex: 1; overflow-y: auto; }
+
+.share-me { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ink); }
+.share-me-dot { width: 9px; height: 9px; border-radius: 99px; }

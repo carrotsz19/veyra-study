@@ -27,6 +27,7 @@ import { openLive, releaseLive, type Caller, type LiveDoc } from '../../lib/live
 import { fileSrc, setRemoteFiles, type RemoteFiles } from './attachment'
 import { NOTE_COVERS } from './covers'
 import { personColor } from '../../lib/people'
+import { Welcome } from '../account'
 
 const clean = (e: unknown, fallback: string) => {
   const m = e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : fallback
@@ -517,7 +518,7 @@ export function SharedPane({ pick, who, onCopied, onRemoved, onBack }: { pick: S
       </div>
       <div className="hist-preview">
         {error && <p className="share-err">{error}</p>}
-        {open && <SharedDoc key={pick.id} title={open.title} body={open.body} files={readSharedFile} docId={open.docId} share={pick.link ? pick.id : ''} call={liveCall} onCan={setCan} who={who} />}
+        {open && <SharedDoc key={pick.id} title={open.title} body={open.body} files={(fid) => readSharedFile(fid, pick.link ? pick.id : '')} docId={open.docId} share={pick.link ? pick.id : ''} call={liveCall} onCan={setCan} who={who} />}
       </div>
     </div>
   )
@@ -539,10 +540,15 @@ const webCall: Caller = async (method, path, body) => {
   return j
 }
 
-/** The note, live; editable right here when the link lets anyone edit without signing in. */
+/** The document behind a link, like a Google Doc: read it, or edit it with others (signed in, or when the link allows anyone). */
 export function PublicSharePage({ id }: { id: string }) {
   const [state, setState] = useState<{ title: string; body: SharedBody; from: string; role: Role; signin: boolean; docId?: string; updatedAt: number } | { error: string } | null>(null)
   const [can, setCan] = useState<LiveDoc['can']>(null)
+  const [account, setAccount] = useState<{ signedIn: boolean; name: string } | null>(null)
+  const [signingIn, setSigningIn] = useState(false)
+  useEffect(() => {
+    void window.veyra.account.state().then((a) => setAccount({ signedIn: a.mode === 'account', name: a.user?.displayName || a.user?.username || 'Guest' }))
+  }, [])
   useEffect(() => {
     fetch(`/api/group/shares/public/${encodeURIComponent(id)}`)
       .then(async (r) => {
@@ -554,17 +560,30 @@ export function PublicSharePage({ id }: { id: string }) {
       })
       .catch((e: Error) => setState({ error: e.message }))
   }, [id])
-  const files: RemoteFiles = (fid) => webCall('GET', `/files/${encodeURIComponent(fid)}?share=${encodeURIComponent(id)}`)
-  // Editing that needs an account happens in the full website, signed in.
-  const openSignedIn = () => {
+  // Signed in: it's kept in your Notes → Shared too, on every device.
+  useEffect(() => {
+    if (account?.signedIn) void liveCall('POST', `/shares/${encodeURIComponent(id)}/save`).catch(() => {})
+  }, [account?.signedIn, id])
+  if (!account) return null
+  if (signingIn)
+    return (
+      <Welcome
+        notice="Sign in to edit this note. You'll come straight back to it."
+        onDone={() => location.reload()}
+        onCancel={() => setSigningIn(false)}
+      />
+    )
+  const call: Caller = account.signedIn ? liveCall : webCall
+  const files: RemoteFiles = (fid) => call('GET', `/files/${encodeURIComponent(fid)}?share=${encodeURIComponent(id)}`)
+  const openInApp = () => {
     try {
-      localStorage.setItem('veyra.lastRoute', 'notes')
       localStorage.setItem(PENDING_SHARE, id)
     } catch {
-      /* the link still opens; the note just isn't picked */
+      /* it still opens Notes */
     }
-    location.href = '/'
+    location.href = '/#notes'
   }
+  const editableHere = state && 'role' in state && state.role === 'edit'
   return (
     <div className="share-page">
       <header className="share-page-head">
@@ -575,17 +594,29 @@ export function PublicSharePage({ id }: { id: string }) {
           <span className="sm dim share-page-meta">
             {can === 'edit' ? (
               <>
-                <Pencil size={13} /> You can edit · shared by {state.from}
+                <Pencil size={13} /> Editing · shared by {state.from}
               </>
             ) : (
-              <>Shared by {state.from}</>
+              <>
+                <Eye size={13} /> {editableHere && !account.signedIn ? 'Viewing' : 'View only'} · shared by {state.from}
+              </>
             )}
-            {state.role === 'edit' && state.signin && can !== 'edit' ? (
-              <button className="btn sm" onClick={openSignedIn}>
+            {account.signedIn ? (
+              <span className="share-me" title={`Signed in as ${account.name}`}>
+                <span className="share-me-dot" style={{ background: personColor(account.name) }} />
+                {account.name}
+              </span>
+            ) : editableHere && state.signin ? (
+              <button className="btn sm" onClick={() => setSigningIn(true)}>
                 <Pencil size={13} /> Sign in to edit
               </button>
             ) : (
-              <button className="btn sec sm" onClick={openSignedIn} title="Keep it in Notes → Shared, on all your devices">
+              <button className="btn sec sm" onClick={() => setSigningIn(true)}>
+                Sign in
+              </button>
+            )}
+            {account.signedIn && (
+              <button className="btn sec sm" onClick={openInApp} title="Opens Veyra Study, with this note in Notes → Shared">
                 Open in Veyra Study
               </button>
             )}
@@ -598,7 +629,7 @@ export function PublicSharePage({ id }: { id: string }) {
         ) : 'error' in state ? (
           <p className="share-err">{state.error}</p>
         ) : (
-          <SharedDoc title={state.title} body={state.body} files={files} docId={state.docId} share={id} call={webCall} onCan={setCan} />
+          <SharedDoc key={account.signedIn ? 'in' : 'out'} title={state.title} body={state.body} files={files} docId={state.docId} share={id} call={call} onCan={setCan} who={account.name} />
         )}
       </main>
     </div>

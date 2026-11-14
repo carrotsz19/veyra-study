@@ -173,7 +173,8 @@ setTimeout(() => void myShares().catch(() => {}), 4000)
 /* ---------- notes shared with you ---------- */
 export const sharedWithMe = () => groupCall<{ shares: Received[] }>('GET', '/shares/inbox').then((r) => r.shares)
 /** A shared file, read while signed in (the person it was sent to, or its owner). */
-export const readSharedFile = (id: string) => groupCall<{ mime: string; data: string; name: string }>('GET', `/files/${encodeURIComponent(id)}`)
+export const readSharedFile = (id: string, share = '') =>
+  groupCall<{ mime: string; data: string; name: string }>('GET', `/files/${encodeURIComponent(id)}${share ? `?share=${encodeURIComponent(share)}` : ''}`)
 // Shared pictures and files open in the app while signed in.
 setRemoteFiles((id) => readSharedFile(id))
 

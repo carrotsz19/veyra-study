@@ -22,13 +22,12 @@ function applyTheme() {
 }
 
 /**
- * A share link on the website (/s/<id>): only the shared note, read-only, with no account
- * and none of the app. The note's editor code reads window.veyra when it loads, so a
- * stand-in that does nothing is put there first.
+ * A share link on the website (/s/<id>): the document itself, like a Google Doc. It uses the
+ * website's account connection, so if you're signed in here you edit it with your name on
+ * your cursor; signing in happens on this page and you stay on it.
  */
 async function sharePage(id: string) {
-  const nothing: unknown = new Proxy(() => nothing, { get: (_t, k) => (k === 'then' ? undefined : nothing), apply: () => Promise.resolve(undefined) })
-  ;(window as unknown as { veyra: unknown }).veyra = nothing
+  await installBridge()
   document.documentElement.classList.add('web', 'share-only')
   applyTheme()
   const [{ createElement }, { createRoot }, { PublicSharePage }] = await Promise.all([import('react'), import('react-dom/client'), import('../renderer/src/components/notes/SharePage')])
