@@ -4,6 +4,7 @@ import { formatDistanceToNowStrict } from 'date-fns'
 import { Check, Copy, Eye, Inbox, Link2, Pencil, Send, Trash2, UserRound, X } from 'lucide-react'
 import type { Note, NoteTemplate } from '@shared/types'
 import { Dialog, useToast } from '../ui'
+import { Select } from '../Select'
 import { noteExtensions, docText } from './extensions'
 import { db } from '../../data/store'
 import {
@@ -164,14 +165,18 @@ export function SharedDoc({
 
 /* ---------- Share… (like Google Docs: who can view, who can edit) ---------- */
 
+const ROLES = [
+  { value: 'view', label: 'Viewer' },
+  { value: 'edit', label: 'Editor' }
+]
 function RoleSelect({ value, onChange, disabled, label }: { value: Role; onChange: (r: Role) => void; disabled?: boolean; label: string }) {
-  return (
-    <select className="share-role" aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as Role)}>
-      <option value="view">Viewer</option>
-      <option value="edit">Editor</option>
-    </select>
-  )
+  return <Select className="share-role" label={label} value={value} disabled={disabled} options={ROLES} onChange={(v) => onChange(v as Role)} />
 }
+const LINK_MODES = [
+  { value: 'off', label: 'Off: only the people above' },
+  { value: 'view', label: 'Anyone with the link can view' },
+  { value: 'edit', label: 'Anyone with the link can edit' }
+]
 
 /** Note ••• → Share: the link (off, view or edit) and people, each a Viewer or an Editor. */
 export function ShareDialog({ noteId, note, onClose }: { noteId: string; note: () => Note; onClose: () => void }) {
@@ -266,17 +271,14 @@ export function ShareDialog({ noteId, note, onClose }: { noteId: string; note: (
         <p className="sm dim">Loading…</p>
       ) : (
         <>
-          <select className="share-link-mode" aria-label="Who the link lets in" value={linkMode} disabled={busy} onChange={(e) => setLink(e.target.value as 'off' | Role)}>
-            <option value="off">Off: only the people above</option>
-            <option value="view">Anyone with the link can view</option>
-            <option value="edit">Anyone with the link can edit</option>
-          </select>
+          <Select className="share-link-mode" label="Who the link lets in" value={linkMode} disabled={busy} options={LINK_MODES} onChange={(v) => setLink(v as 'off' | Role)} />
           {link?.role === 'edit' && (
-            <label className="share-check">
-              <input type="checkbox" checked={link.signin} disabled={busy} onChange={(e) => void run(() => setRole(link.id, 'edit', e.target.checked))} />
+            <label className="toggle-row share-signin">
               <span>
-                Editors must sign in <span className="dim">(so every change has a name; off lets anyone with the link edit)</span>
+                <b>Editors must sign in</b>
+                <span className="sm dim">{link.signin ? 'Every change has a name on it.' : 'Anyone with the link can edit, without an account.'}</span>
               </span>
+              <input type="checkbox" className="switch" checked={link.signin} disabled={busy} onChange={(e) => void run(() => setRole(link.id, 'edit', e.target.checked))} />
             </label>
           )}
           {link && (
