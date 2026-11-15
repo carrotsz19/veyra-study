@@ -28,6 +28,7 @@ import { Select as Dropdown } from '../components/Select'
 import { TimeField } from '../components/DateTime'
 import { IS_DEV } from '@shared/channel'
 import { BetaNote } from '../components/BetaNotice'
+import { installWebApp, useWebApp } from '../lib/webapp'
 
 /* =====================================================================
    Settings: categories on the left, one category at a time on the
@@ -80,6 +81,34 @@ function Row({ label, hint, children, stack, keywords }: { label: string; hint?:
       </div>
       <div className="set-control">{children}</div>
     </div>
+  )
+}
+
+/** The website: install it as an app (its own window and icon, and it opens without a connection). */
+function WebAppInstall() {
+  const s = useWebApp()
+  const toast = useToast()
+  const hint =
+    s === 'app'
+      ? 'You’re using Veyra Study as an app. It’s with your other apps.'
+      : s === 'installed'
+        ? 'Installed. Veyra Study is with your other apps now.'
+        : s === 'ready'
+          ? 'Veyra Study in its own window with its own icon, like any app. It opens even without a connection.'
+          : s === 'ios'
+            ? 'In Safari, tap Share, then Add to Home Screen.'
+            : 'In your browser’s menu, choose Install or Add to Home Screen (Chrome, Edge and Safari can).'
+  return (
+    <Group title="Install as an app">
+      <Row label={s === 'app' || s === 'installed' ? 'Installed' : 'Install Veyra Study'} hint={hint} keywords="install app pwa home screen desktop shortcut offline window icon">
+        {s === 'ready' && (
+          <button className="btn" onClick={() => void installWebApp().then((ok) => ok && toast('Veyra Study is installed'))}>
+            <Download size={15} /> Install
+          </button>
+        )}
+        {(s === 'app' || s === 'installed') && <Check size={18} />}
+      </Row>
+    </Group>
   )
 }
 
@@ -1421,6 +1450,8 @@ function SoftwareUpdate() {
           <div className="upd-notes">{u.notes}</div>
         </Group>
       )}
+
+      {web && <WebAppInstall />}
 
       {!web && <Group title="Automatic updates" footer={android ? 'Android asks you to confirm each install. The first time, it also asks you to let Veyra Study install apps.' : undefined}>
         <Row

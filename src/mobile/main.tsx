@@ -2,6 +2,7 @@
 // (several modules read window.veyra as soon as they load).
 import { installBridge } from './bridge'
 import { ON_WEB } from '@shared/channel'
+import { startWebApp } from '../renderer/src/lib/webapp'
 import '../renderer/src/styles.css'
 import '../renderer/src/notes.css'
 import '../renderer/src/account.css'
@@ -45,5 +46,6 @@ async function app() {
   createRoot(document.getElementById('root')!).render(createElement(StrictMode, null, createElement(App)))
 }
 
+if (ON_WEB) startWebApp()
 const shared = ON_WEB ? /^\/s\/([A-Za-z0-9_-]{10,64})\/?$/.exec(location.pathname)?.[1] : undefined
 await (shared ? sharePage(shared) : app())

@@ -6,6 +6,7 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **Install the website as an app:** on the website, Settings → Software update → Install puts Veyra Study in its own window with its own icon, like any app (or use the browser's Install / Add to Home Screen; on iPhone, Share → Add to Home Screen). It opens even without a connection.
 - **Notes changed elsewhere while open:** when an AI app (through Veyra's AI connector) or another device changes the note you have open, the open note no longer saves its older copy over that change a moment later. The note reloads with the new version, and anything you were typing at that moment is kept in Version history.
 
 ## 1.0.2

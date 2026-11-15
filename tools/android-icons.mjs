@@ -5,6 +5,7 @@
  *   node tools/android-icons.mjs
  * Writes mipmap-* /ic_launcher.png, ic_launcher_round.png and
  * ic_launcher_foreground.png (adaptive icon), and the background colour.
+ * Also the website's app icons (mobile/public/icon-*.png, for installing it as an app).
  */
 import { deflateSync } from 'node:zlib'
 import { writeFileSync } from 'node:fs'
@@ -40,7 +41,7 @@ const encode = (size, px) => {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
 }
 
-/** The mark covers `markFrac` of the canvas; `shape` is the background: none, square (rounded) or circle. */
+/** The mark covers `markFrac` of the canvas; `shape` is the background: none, square (rounded), circle or full. */
 function icon(size, markFrac, shape) {
   const px = Buffer.alloc(size * size * 4)
   const segs = [[15, 16, 32, 50], [32, 50, 49, 16]] // the chevron, in a 64-unit box
@@ -64,6 +65,7 @@ function icon(size, markFrac, shape) {
   }
   const inShape = (x, y) => {
     if (shape === 'none') return 0
+    if (shape === 'full') return 1
     let a = 0
     const r = size / 2, k = size * 0.22 // corner radius for the square
     for (let sy = 0; sy < S; sy++)
@@ -104,4 +106,9 @@ writeFileSync(
   `${RES}/values/ic_launcher_background.xml`,
   `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#${PAPER.map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}</color>\n</resources>\n`
 )
-console.log('Android icons written')
+// The website installed as an app: plain icons, and a "maskable" one that the system may crop to
+// any shape (only the middle 80% is sure to show, so the mark sits well inside it).
+writeFileSync('mobile/public/icon-192.png', icon(192, 0.62, 'square'))
+writeFileSync('mobile/public/icon-512.png', icon(512, 0.62, 'square'))
+writeFileSync('mobile/public/icon-maskable.png', icon(512, 0.46, 'full'))
+console.log('Android and website icons written')
