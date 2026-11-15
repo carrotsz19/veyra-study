@@ -7,10 +7,11 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
+    "build:server": "esbuild server/group-server.mjs --bundle --platform=node --format=esm --target=node22 --outfile=server/dist/group-server.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start": "electron-vite preview",
     "dist": "npm run build && electron-builder --win --publish never",
-    "test": "node --test tests/group.test.mjs tests/history.test.mjs",
+    "test": "node --test tests/group.test.mjs tests/history.test.mjs tests/ai.test.mjs",
     "group-server": "node server/group-server.mjs",
     "relay:setup": "node relay/setup.mjs",
     "android:setup": "node tools/setup-android.mjs",

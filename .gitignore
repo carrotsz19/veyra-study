@@ -40,3 +40,4 @@ web/dist/
 
 # Written for one signed release, then removed
 electron-builder.signed.json
+server/dist/

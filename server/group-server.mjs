@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Veyra Study group server. Runs on the owner's phone (Termux, Node 22.13+)
- * or any computer. One file, no npm packages: node:http + node:sqlite.
+ * or any computer. node:http + node:sqlite; the phone gets one bundled file (see Veyra AI).
  *
  * - Sign-in: the app gets a 15-minute pass from the relay (which checked the
  *   person's Veyra account) and trades it here for a session. The pass is
@@ -15,6 +15,11 @@
  * - Starts cloudflared, reads its trycloudflare.com address and publishes it
  *   to the relay; restarts it if it stops. Daily backups.
  *
+ * - Veyra AI (ai.mjs): the owner's Claude API key, shared with approved people within
+ *   dollar limits. Uses @anthropic-ai/sdk: run from the repo it comes from node_modules;
+ *   for the phone, `npm run build:server` bundles everything into dist/group-server.mjs,
+ *   still one file to copy.
+ *
  * Settings come from the environment or a .env file next to this one:
  *   SIGNING_KEY   (required) same value as the relay's SIGNING_KEY
  *   RELAY_URL     e.g. https://veyra-study-relay.you.workers.dev
@@ -23,6 +28,7 @@
  *   DATA_DIR      default ./veyra-group-data
  *   TUNNEL        "off" to skip cloudflared (e.g. testing on a PC)
  *   CLOUDFLARED   path to cloudflared, default "cloudflared"
+ *   ANTHROPIC_API_KEY  the owner's Claude API key, for Veyra AI (leave out to turn it off)
  */
 import { createServer } from 'node:http'
 import { DatabaseSync } from 'node:sqlite'
@@ -33,8 +39,9 @@ import { pipeline } from 'node:stream/promises'
 import { createGzip } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { setupAi } from './ai.mjs'
 
-const VERSION = '1.8.0'
+const VERSION = '1.9.0'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -1163,6 +1170,9 @@ route('GET', '/poll', async ({ me, url, req }) => {
   })
   return { seq }
 })
+
+/* ---------- Veyra AI (ai.mjs) ---------- */
+setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUser, userCard, metaGet, metaSet, log })
 
 /* ---------- HTTP plumbing ---------- */
 const MAX_BODY = 600_000
