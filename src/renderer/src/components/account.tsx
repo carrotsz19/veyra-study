@@ -40,7 +40,31 @@ export function AccountGate({ children }: { children: ReactNode }) {
 
   if (!state) return null
   if (state.mode === 'none') return <Welcome notice={state.notice} onDone={apply} />
-  return <Ctx.Provider value={{ state, apply }}>{children}</Ctx.Provider>
+  return (
+    <Ctx.Provider value={{ state, apply }}>
+      {children}
+      {state.ended && <SignInAgain onDone={apply} />}
+    </Ctx.Provider>
+  )
+}
+
+/**
+ * Veyra ended this sign-in (it checked several times first). You stay in your account with all
+ * your data; this asks you to sign in again so syncing, Group work and Veyra AI carry on.
+ */
+function SignInAgain({ onDone }: { onDone: (s: AccountState) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <div className="signin-again" role="status">
+        <span className="grow">Your Veyra sign-in has ended. Your notes and tasks are all here; sign in again to keep syncing.</span>
+        <button className="btn sm" onClick={() => setOpen(true)}>
+          Sign in again
+        </button>
+      </div>
+      {open && <Welcome onDone={onDone} onCancel={() => setOpen(false)} />}
+    </>
+  )
 }
 
 type Mode = 'signin' | 'signup'

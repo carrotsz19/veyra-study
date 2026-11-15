@@ -45,3 +45,7 @@
 .cal .chip.gev { border-left: 0; background: color-mix(in srgb, var(--ev) 16%, transparent); color: var(--ink); cursor: pointer; }
 .cal .chip.gev.allday { background: var(--ev); color: #fff; }
 .cal .chip.gev b { font-weight: 700; color: color-mix(in srgb, var(--ev) 70%, var(--ink)); margin-right: 2px; }
+
+/* Veyra ended the sign-in: a strip asking to sign in again (data stays) */
+.signin-again { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top) + 10px); z-index: 400; display: flex; align-items: center; gap: 12px; max-width: min(640px, calc(100vw - 24px)); padding: 10px 12px 10px 16px; border-radius: 14px; background: var(--bg-elevated, var(--panel)); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18); font-size: 13.5px; }
+.signin-again .btn { flex: none; }

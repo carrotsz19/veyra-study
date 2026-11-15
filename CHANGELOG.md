@@ -4,6 +4,10 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## Unreleased (in Veyra Study Dev)
+
+- **You stay signed in:** Veyra no longer signs you out after an update or when its server has a hiccup. A "not signed in" answer is only believed after it's repeated over 10 minutes, and even then you stay in your account with all your notes and tasks; a banner asks you to sign in again so syncing, Group work and Veyra AI carry on. Only Sign out in Settings signs you out.
+
 ## 1.0.3
 
 - **Assistant in notes (Veyra AI):** in a note, AI → Assistant opens a chat beside the note that works through bigger requests like a research partner. It shows its plan as a checklist, sends up to four helpers to research parts at the same time, searches the web and lists its sources, and reads your notes and tasks. Before it adds to a note, makes a note or adds a task, it asks you (Allow, Allow all in this chat, or Deny); turn on Turbo (the ⚡ button) to let it go ahead without asking. Everything it changes can be undone. Chats are kept on this device, one per note. The Web search and Subagents buttons above the message box switch those off when you don't want them (they also cost more). Uses your Veyra AI limits.

@@ -39,7 +39,16 @@ interface Session {
   user: AccountUser
   /** Local data folder for this account (accounts/<folder>/). */
   folder: string
+  /** Veyra said "not signed in": how many times in a row, and when first (see refresh). */
+  misses?: number
+  firstMissAt?: number
+  /** Confirmed ended by Veyra: still this account here, but nothing goes to the server until you sign in again. */
+  ended?: boolean
 }
+
+/** How sure to be before believing Veyra ended a sign-in (it says "not signed in" for passing trouble too). */
+const MISSES_TO_END = 3
+const MISS_SPAN_MS = 10 * 60_000
 
 export interface AccountState {
   mode: 'account' | 'guest' | 'none'
@@ -170,7 +179,7 @@ export class Accounts {
 
   state(): AccountState {
     const mode = this.session ? 'account' : existsSync(guestFlag()) ? 'guest' : 'none'
-    return { mode, user: this.session?.user ?? null, server: VEYRA_SERVER, notice: this.notice }
+    return { mode, user: this.session?.user ?? null, server: VEYRA_SERVER, notice: this.notice, ...(this.session?.ended ? { ended: true } : {}) }
   }
 
   continueAsGuest(): AccountState {
@@ -256,16 +265,36 @@ export class Accounts {
     return { ...this.state(), ...(moved ? { notice: 'moved' } : {}) }
   }
 
-  /** Checks the saved session with the server. Offline keeps you signed in. */
+  private recheck: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * Checks the saved session with the server. You're never signed out by this: offline or server
+   * trouble keeps the session, and Veyra answers "not signed in" for passing trouble too (any
+   * error on its side), so that only counts once it's said 3 times, at least 10 minutes apart.
+   * Even then you stay in your account and keep your data; syncing just waits for a new sign-in.
+   */
   async refresh(): Promise<AccountState> {
     const s = this.session
     if (!s) return this.state()
     try {
       const { v, set } = await call<any>('launcherWhoAmI', [s.handle], s.cookies)
       if (!v || !v.signedIn) {
-        this.dropSession('You were signed out of your Veyra account. Sign in again to keep using your data.')
+        // Keep the cookies as they are: a cookie cleared by a passing error would end the session for good.
+        s.misses = (s.misses ?? 0) + 1
+        s.firstMissAt ??= Date.now()
+        if (s.misses >= MISSES_TO_END && Date.now() - s.firstMissAt >= MISS_SPAN_MS) s.ended = true
+        writeSession(s)
+        if (!s.ended && !this.recheck) {
+          this.recheck = setTimeout(() => {
+            this.recheck = null
+            void this.refresh()
+          }, s.misses === 1 ? 30_000 : 5 * 60_000)
+        }
         return this.state()
       }
+      s.misses = 0
+      s.firstMissAt = undefined
+      s.ended = false
       s.cookies = applyCookies(s.cookies, set)
       s.user = { ...s.user, username: v.username, displayName: v.displayName || v.username, email: v.email || '', emailVerified: !!v.emailVerified }
       // A renamed account keeps its folder.
@@ -308,7 +337,7 @@ export class Accounts {
    */
   credentials(): { handle: string; cookie: string } | null {
     const s = this.session
-    if (!s) return null
+    if (!s || s.ended) return null
     return { handle: s.handle, cookie: Object.entries(s.cookies).map(([k, v]) => `${k}=${v}`).join('; ') }
   }
 

@@ -163,6 +163,11 @@ export interface AccountState {
   server: string
   /** 'moved' after the first sign-in adopted this computer's data, or a sign-out reason. */
   notice?: string
+  /**
+   * Veyra has ended this sign-in (checked several times, minutes apart). You stay in your
+   * account with all your data; only syncing, Group work and Veyra AI wait until you sign in again.
+   */
+  ended?: boolean
 }
 
 export interface AccountApi {

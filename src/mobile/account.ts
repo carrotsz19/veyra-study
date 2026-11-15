@@ -26,8 +26,17 @@ interface Session {
   cookies: Record<string, string>
   user: AccountUser
   folder: string
+  /** Veyra said "not signed in": how many times in a row, and when first (see refresh). */
+  misses?: number
+  firstMissAt?: number
+  /** Confirmed ended by Veyra: still this account here, but nothing goes to the server until you sign in again. */
+  ended?: boolean
 }
 let session: Session | null = null
+/** How sure to be before believing Veyra ended a sign-in (it says "not signed in" for passing trouble too). */
+const MISSES_TO_END = 3
+const MISS_SPAN_MS = 10 * 60_000
+let recheck: ReturnType<typeof setTimeout> | null = null
 let notice: string | undefined
 
 const b64 = (buf: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(buf instanceof Uint8Array ? buf : new Uint8Array(buf))))
@@ -131,12 +140,8 @@ export async function start(): Promise<void> {
   } catch {
     session = null
   }
-  // Signed in with an earlier version, which didn't keep the cookie: sign in once more.
-  if (session && !Object.keys(session.cookies ?? {}).length) {
-    session = null
-    notice = 'Sign in once more to turn on sync and group work on this phone.'
-    await SecureStorage.removeItem(SESSION).catch(() => false)
-  }
+  // No cookie kept (an early version, or one lost): stay in the account, and sign in again to sync.
+  if (session && !Object.keys(session.cookies ?? {}).length) session.ended = true
   idb.useDatabase(dbName(session))
 }
 
@@ -149,7 +154,7 @@ export function state(): AccountState {
   }
   // The website, with a shared note waiting to be opened ("Open in Veyra Study"): sign in first.
   if (ON_WEB && !session && pendingShare()) return { mode: 'none', user: null, server: SERVER, notice: 'Sign in to open the shared note (or use Veyra Study without an account).' }
-  return { mode: session ? 'account' : guest ? 'guest' : 'none', user: session?.user ?? null, server: SERVER, notice }
+  return { mode: session ? 'account' : guest ? 'guest' : 'none', user: session?.user ?? null, server: SERVER, notice, ...(session?.ended ? { ended: true } : {}) }
 }
 const pendingShare = () => {
   try {
@@ -161,7 +166,7 @@ const pendingShare = () => {
 
 /** The handle and Cookie header, for the group relay to confirm who this is. Never shown to the UI. */
 export async function credentials(): Promise<{ handle: string; cookie: string } | null> {
-  if (!session) return null
+  if (!session || session.ended) return null
   const cookie = cookieHeader(session.cookies)
   return cookie ? { handle: session.handle, cookie } : null
 }
@@ -213,15 +218,32 @@ export async function signUp(input: { username: string; email: string; password:
   return adopt(r.v, r.set)
 }
 
-/** Checks the saved sign-in with Veyra. Offline keeps you signed in. */
+/**
+ * Checks the saved sign-in with Veyra. You're never signed out by this: offline or server trouble
+ * keeps the sign-in, and Veyra answers "not signed in" for passing trouble too, so that only counts
+ * once it's said 3 times, at least 10 minutes apart. Even then you stay in your account with your
+ * data; syncing, Group work and Veyra AI wait until you sign in again.
+ */
 export async function refresh(): Promise<AccountState> {
-  if (!session) return state()
+  if (!session || !Object.keys(session.cookies ?? {}).length) return state()
   try {
     const { v, set } = await call<any>('launcherWhoAmI', [session.handle], session.cookies)
     if (!v?.signedIn) {
-      await drop('You were signed out of your Veyra account. Sign in again to keep using your data.')
+      // Keep the cookies as they are: one cleared by a passing error would end the sign-in for good.
+      session.misses = (session.misses ?? 0) + 1
+      session.firstMissAt ??= Date.now()
+      if (session.misses >= MISSES_TO_END && Date.now() - session.firstMissAt >= MISS_SPAN_MS) session.ended = true
+      await SecureStorage.setItem(SESSION, JSON.stringify(session))
+      if (!session.ended && !recheck)
+        recheck = setTimeout(() => {
+          recheck = null
+          void refresh()
+        }, session.misses === 1 ? 30_000 : 5 * 60_000)
       return state()
     }
+    session.misses = 0
+    session.firstMissAt = undefined
+    session.ended = false
     session.cookies = applyCookies(session.cookies, set)
     session.user = { ...session.user, username: v.username, displayName: v.displayName || v.username, email: v.email || '', emailVerified: !!v.emailVerified }
     await SecureStorage.setItem(SESSION, JSON.stringify(session))
