@@ -41,8 +41,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setupAi } from './ai.mjs'
 import { setupAgent } from './agent.mjs'
+import { setupAnnouncements } from './announce.mjs'
 
-const VERSION = '1.10.2'
+const VERSION = '1.11.0'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -1176,6 +1177,8 @@ route('GET', '/poll', async ({ me, url, req }) => {
 const ai = setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUser, userCard, metaGet, metaSet, log })
 // The Assistant in notes (agent.mjs): plans, subagents, web research, note and task tools.
 setupAgent({ route, HttpError, ai, isOwner, log })
+// Announcements from the owner (announce.mjs).
+setupAnnouncements({ db, q, route, HttpError, requireAdmin, isOwner, getUser, userCard })
 
 /* ---------- HTTP plumbing ---------- */
 const MAX_BODY = 600_000

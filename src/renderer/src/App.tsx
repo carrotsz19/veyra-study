@@ -7,6 +7,8 @@ import { useRecords } from './data/store'
 import { clock, isOverdue } from './lib/dates'
 import { NavCtx, useNav, type Route } from './nav'
 import { ToastProvider, useToast } from './components/ui'
+import { Announcements } from './components/Announcements'
+import { useGroupStatus } from './data/groups'
 import { AccountGate, Avatar, useAccount } from './components/account'
 import { Settings } from './views/Settings'
 import { TimerProvider, useTimer } from './components/timer'
@@ -241,6 +243,12 @@ function MovedNotice() {
   return null
 }
 
+/** The owner's announcements, once the group server is reachable. */
+function AnnouncementsHost({ signedIn }: { signedIn: boolean }) {
+  const { status } = useGroupStatus()
+  return signedIn ? <Announcements online={status?.state === 'online'} /> : null
+}
+
 const ROUTES = ['today', 'tasks', 'notes', 'calendar', 'groups', 'timer', 'stats', 'settings']
 
 /** The page this tab was on before a reload, if it was reloaded. */
@@ -342,6 +350,7 @@ function Shell() {
           <VoiceSetupHost />
           <Palette />
           <BetaNotice />
+          <AnnouncementsHost signedIn={signedIn} />
           <ServerHoursNotice />
           <main className={`main ${route.name === 'settings' ? 'main-settings' : route.name === 'notes' ? 'main-notes' : route.name === 'groups' ? 'main-groups' : route.name === 'calendar' ? 'main-calendar' : ''}`}>
             <Screen key={route.name + ('id' in route ? route.id : '')} route={route} />

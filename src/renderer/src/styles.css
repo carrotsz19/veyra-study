@@ -1167,3 +1167,30 @@ button.dc-row:hover, .dc-row.task:hover { background: var(--fill-tertiary); }
 .oai-settings .ig-row > .grow { min-width: 0; }
 .oai-model .oai-effort { width: auto; flex: none; }
 .oai-model .oai-price input { width: 52px; flex: none; }
+
+/* Announcements from the owner: a card at the bottom right (above the tab bar on the phone) */
+.announce { position: fixed; right: 20px; bottom: 20px; z-index: 300; width: min(380px, calc(100vw - 24px)); display: flex; gap: 12px; padding: 14px 40px 14px 14px; border-radius: 16px; background: var(--bg-elevated, var(--panel)); border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2); animation: announceIn var(--spring-spatial-ms, 300ms) var(--spring-spatial, ease-out); }
+@keyframes announceIn { from { transform: translateY(12px); opacity: 0; } }
+.announce-icon { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.announce-text { min-width: 0; flex: 1; }
+.announce-text b { display: block; margin-bottom: 3px; }
+.announce-text p { margin: 0 0 10px; white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; max-height: 40vh; overflow: auto; }
+.announce-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.announce-foot .xs { flex: 1; min-width: 120px; }
+.announce-x { position: absolute; top: 8px; right: 8px; }
+.phone-shell .announce { left: 12px; right: 12px; width: auto; bottom: calc(var(--tabbar, 90px) + 8px); }
+
+/* Owner → Announcements */
+.oan-form { display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+.oan-form input, .oan-form textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; background: var(--panel); color: inherit; font: inherit; font-size: 14px; resize: vertical; }
+.oan-form .oan-title { font-weight: 600; }
+.oan-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.oan-lasts { height: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; font-size: 13px; padding: 0 8px; }
+.oan-pick { display: flex; flex-direction: column; gap: 8px; }
+.oan-people { max-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.oan-person { display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-radius: 8px; cursor: pointer; min-width: 0; }
+.oan-person:hover { background: var(--panel-2, rgba(127,127,127,.08)); }
+.oan-form .oan-person input[type='checkbox'] { width: 18px; height: 18px; flex: none; accent-color: var(--accent); padding: 0; }
+.oan-preview { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 14px; }
+.oan-preview p { margin: 6px 0 0; white-space: pre-wrap; }
+.oan-row .oan-lasts { width: auto; flex: none; }
