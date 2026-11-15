@@ -4,7 +4,7 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
-## Unreleased (in Veyra Study Dev)
+## 1.0.2
 
 - **A tidier Notes page:** one clear New button (New folder and Select are under ⋯); subject, tag and sort filters sit behind the button next to search, and what's filtering shows as pills you can remove; Notes · Shared · Archived · Trash tabs on their own row. Folders open in place, with their notes indented under them, so you never lose the rest of your list (a folder's menu can make one inside it). With nothing open, Notes shows your recent notes to pick up where you left off.
 - **Share links work like Google Docs:** the link page is the document. If you're signed in on the website it opens ready to edit (with your name on your cursor); "Sign in to edit" signs you in right there and brings you back to the same document. Signed-in visitors also find it in Notes → Shared afterwards.
@@ -23,7 +23,7 @@ without one.
 - **Repeating tasks and the focus timer:** "Mark done" at the end of a focus block now makes the task's next one, like ticking it anywhere else.
 - **Undo messages:** a message stays while you point at it, and Ctrl+Z takes back the last thing it offers to undo.
 - **Recording player:** recordings in notes have Veyra's own player (play, a time bar you can drag, and 1×–2× speed) and a ••• menu with Download and Delete recording (Ctrl+Z brings a deleted one back).
-- **Website (test):** Veyra Study in a browser at veyra-study-dev.igreenrobotz.workers.dev, with sign-in, group work and sync.
+- **Subject pages:** a subject's Notes tab fills the window instead of making the whole page scroll.
 
 ## 1.0.1
 
