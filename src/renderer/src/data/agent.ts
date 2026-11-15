@@ -28,8 +28,11 @@ export interface NoteContext {
   id: string
   title: string
   markdown: () => string
-  /** Adds Markdown at the end of the open note, in the editor (so Ctrl+Z undoes it). */
+  /** Adds Markdown at the end of the open note, through the editor. */
   append: (markdown: string) => void
+  /** The open note as it is now, and putting an earlier copy back (for Undo). */
+  snapshot: () => Note
+  restore: (was: Note) => void
 }
 
 /** A change the Assistant made, with how to take it back. */
@@ -110,8 +113,11 @@ export async function runAppTool(name: string, input: Record<string, unknown>, c
       const id = str(input.id, 100)
       const md = str(input.markdown)
       if ((id === 'current' || id === ctx?.id) && ctx) {
+        // The note as it was goes into its Version history first (Undo below, or Version history).
+        const before = ctx.snapshot()
+        await keepVersion(ctx.id, before, Date.now()).catch(() => false)
         ctx.append(md)
-        changed({ id: `${ctx.id}:${Date.now()}`, label: `Added to “${ctx.title || 'this note'}” (Ctrl+Z in the note undoes it)` })
+        changed({ id: `${ctx.id}:${Date.now()}`, label: `Added to “${ctx.title || 'this note'}”`, undo: async () => ctx.restore(before) })
         return `Added to the open note “${ctx.title}”.`
       }
       const n = await find(id)

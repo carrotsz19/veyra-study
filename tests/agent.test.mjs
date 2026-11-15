@@ -26,6 +26,11 @@ const mock = createServer(async (req, res) => {
   const body = JSON.parse(raw)
   seen.push(body)
   const sub = body.system.startsWith('You are a research assistant')
+  // A model that refuses the web tools (like an API 400 for an unsupported tool).
+  if (JSON.stringify(body.messages).includes('NOWEB') && body.tools?.some((t) => t.name === 'web_search')) {
+    res.writeHead(400, { 'content-type': 'application/json' })
+    return res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'tool web_search_20250305 is not supported' } }))
+  }
   // The student's latest message (the last plain-text one; tool results come after it).
   const text0 = [...body.messages].reverse().find((m) => m.role === 'user' && typeof m.content === 'string')?.content ?? ''
   const scenario = sub ? 'SUB' : (/\b(PLAN|WRITE|SUBS|PAUSE|LOOP|NOAPP|SLOW|HISTORY)\b/.exec(text0) ?? [, 'PLAIN'])[1]
@@ -314,4 +319,13 @@ test('only the person who started a task can see, answer or stop it; unapproved 
   await api(eve, 'DELETE', `/ai/agent/runs/${run.body.id}`)
   assert.equal((await api(ann, 'GET', `/ai/agent/runs/${run.body.id}?from=0`)).body.done, false)
   await api(ann, 'DELETE', `/ai/agent/runs/${run.body.id}`)
+})
+
+test('a model that refuses the web tools still runs, without them', async () => {
+  const r = await agent(await login('dan'), 'NOWEB please answer')
+  assert.equal(r.text(), 'Plain answer.')
+  assert.equal(r.end.error, undefined)
+  const last = seen.at(-1)
+  assert.ok(last.tools.every((t) => t.name !== 'web_search'))
+  assert.match(last.system, /can’t use the web/)
 })

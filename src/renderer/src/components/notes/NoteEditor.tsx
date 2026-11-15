@@ -718,6 +718,15 @@ export function NoteEditor({
     await db.put('note', next, note.id)
     toast('Version restored. The text before it is in Version history.')
   }
+  /** Puts an earlier copy of the whole note back (the Assistant's Undo); what's there now is kept as a version. */
+  const restoreNote = async (was: Note) => {
+    if (timer.current) flush()
+    await keepVersion(note.id, latest.current, Date.now())
+    latest.current = was
+    saved.current = { data: was, at: Date.now() }
+    onReplaced?.()
+    await db.put('note', was, note.id)
+  }
   const duplicate = async () => {
     flush()
     const copy = await duplicateNote(latest.current)
@@ -902,7 +911,7 @@ export function NoteEditor({
       {agentOpen && !aiJob && (
         <AgentPanel
           key={note.id}
-          note={{ id: note.id, title: data.title, markdown: () => noteToMarkdown(latest.current).split('\n').slice(1).join('\n').trim(), append: appendMarkdown }}
+          note={{ id: note.id, title: data.title, markdown: () => noteToMarkdown(latest.current).split('\n').slice(1).join('\n').trim(), append: appendMarkdown, snapshot: () => latest.current, restore: (was) => void restoreNote(was) }}
           onInsert={(md) => {
             appendMarkdown(md)
             toast('Added to your note')

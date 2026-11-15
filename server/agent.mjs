@@ -347,7 +347,7 @@ export function setupAgent({ route, HttpError, ai, isOwner, log }) {
 
   async function lead(run, firstMessage) {
     const messages = [...run.history, { role: 'user', content: firstMessage }]
-    const tools = [PLAN_TOOL, SUBAGENT_TOOL, ...APP_TOOLS, ...(run.web ? webTools(run.m.id, false) : [])]
+    let tools = [PLAN_TOOL, SUBAGENT_TOOL, ...APP_TOOLS, ...(run.web ? webTools(run.m.id, false) : [])]
     let retries = 0
     try {
       for (let turn = 1; ; turn++) {
@@ -357,6 +357,14 @@ export function setupAgent({ route, HttpError, ai, isOwner, log }) {
           msg = await call(run, 'lead', run.m, { max_tokens: LEAD_MAX_TOKENS, system: leadSystem(run.today, run.web), tools, messages })
         } catch (e) {
           if (e instanceof BadJson && retries++ < 2) continue
+          // This model doesn't take the web tools: carry on without them (subagents too).
+          if (e?.status === 400 && turn === 1 && run.web) {
+            log('agent: web tools refused for', run.m.id, String(e?.message ?? '').slice(0, 160))
+            run.web = false
+            tools = tools.filter((t) => t.name !== 'web_search' && t.name !== 'web_fetch')
+            turn = 0
+            continue
+          }
           throw e
         }
         retries = 0
