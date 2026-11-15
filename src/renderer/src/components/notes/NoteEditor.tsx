@@ -9,7 +9,7 @@ import {
   Sparkles, Strikethrough, Trash2, Underline
 } from 'lucide-react'
 import type { Note, NoteFont, NoteTemplate, Rec } from '@shared/types'
-import { db, useRecords } from '../../data/store'
+import { db, onExternalChange, useRecords } from '../../data/store'
 import { useToast } from '../ui'
 import { docText, noteExtensions, wordCount } from './extensions'
 import { onAttachError } from './attachment'
@@ -548,7 +548,26 @@ export function NoteEditor({
   }, [docId])
   const liveArea = (field: 'content' | 'cues' | 'summary') => (liveDoc ? { doc: liveDoc, field, seed: latest.current[field] } : undefined)
   const signedIn = useAccount()?.state.mode === 'account'
+  // Changed elsewhere while open (an AI app through MCP, or another device): the saved note is
+  // newer than what's here, so this editor never saves over it. Notes reopens it with the new
+  // version a moment later; anything typed here meanwhile is kept in Version history instead.
+  const stale = useRef(false)
+  const park = () => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = null
+    void keepVersion(note.id, latest.current, Date.now()).then((kept) => kept && toast('This note was changed elsewhere. What you were typing is in Version history.'), () => {})
+  }
+  useEffect(
+    () =>
+      onExternalChange((ids) => {
+        if (!ids.includes(note.id) || stale.current) return
+        stale.current = true
+        if (timer.current) park()
+      }),
+    [note.id] // eslint-disable-line react-hooks/exhaustive-deps
+  )
   const flush = () => {
+    if (stale.current) return park()
     if (timer.current) clearTimeout(timer.current)
     timer.current = null
     const before = saved.current
@@ -579,7 +598,7 @@ export function NoteEditor({
   // Closing the window doesn't unmount React, so save anything pending right now.
   useEffect(() => {
     const onUnload = () => {
-      if (!timer.current) return
+      if (!timer.current || stale.current) return
       clearTimeout(timer.current)
       timer.current = null
       window.veyra.saveNow('note', latest.current, note.id)

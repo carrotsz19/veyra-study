@@ -4,6 +4,10 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## Unreleased (in Veyra Study Dev)
+
+- **Notes changed elsewhere while open:** when an AI app (through Veyra's AI connector) or another device changes the note you have open, the open note no longer saves its older copy over that change a moment later. The note reloads with the new version, and anything you were typing at that moment is kept in Version history.
+
 ## 1.0.2
 
 - **A tidier Notes page:** one clear New button (New folder and Select are under ⋯); subject, tag and sort filters sit behind the button next to search, and what's filtering shows as pills you can remove; Notes · Shared · Archived · Trash tabs on their own row. Folders open in place, with their notes indented under them, so you never lose the rest of your list (a folder's menu can make one inside it). With nothing open, Notes shows your recent notes to pick up where you left off.

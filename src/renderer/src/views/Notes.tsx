@@ -179,7 +179,8 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
 
   const { state: drive } = useDrive()
   const phone = usePhone()
-  // Another computer changed the open note: show its version (anything you were typing is saved first, and newer wins).
+  // Another computer or an AI app changed the open note: show its version (NoteEditor never saves over it;
+  // anything you were typing goes to Version history).
   // The list reloads a moment after the change arrives, so reopen the editor once the new version is here.
   const [remoteBump, setRemoteBump] = useState(0)
   const openId = useRef<string | undefined>(undefined)
