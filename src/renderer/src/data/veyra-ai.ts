@@ -28,6 +28,8 @@ export interface VeyraAiStatus {
   /** Past this share of a limit, requests move to the fastest model (null: never). */
   downgradeAt: number | null
   maxChars: number
+  /** The owner allows web research in the Assistant. */
+  agentWeb?: boolean
   /** Why a request can't be sent now, or null. */
   blocked: string | null
   busy: boolean

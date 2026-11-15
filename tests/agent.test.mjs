@@ -154,8 +154,8 @@ const login = async (u) => {
 const spendOf = async (boss, u) => (await api(boss, 'GET', '/admin/ai/users')).body.users.find((x) => x.username === u)
 
 /** Runs a task like the app does: reads events, answers app tool calls with `answer(ev)`. */
-async function agent(token, message, { answer, note, history } = {}) {
-  const r = await api(token, 'POST', '/ai/agent/runs', { message, note, history })
+async function agent(token, message, { answer, note, history, web, subagents } = {}) {
+  const r = await api(token, 'POST', '/ai/agent/runs', { message, note, history, web, subagents })
   if (r.status !== 200) return { status: r.status, error: r.body.error }
   const events = []
   let from = 0
@@ -328,4 +328,15 @@ test('a model that refuses the web tools still runs, without them', async () => 
   const last = seen.at(-1)
   assert.ok(last.tools.every((t) => t.name !== 'web_search'))
   assert.match(last.system, /can’t use the web/)
+})
+
+test('the person can switch off web search and subagents for their tasks', async () => {
+  const dan = await login('dan')
+  await agent(dan, 'plain question', { web: false, subagents: false })
+  const req = seen.at(-1)
+  assert.ok(req.tools.every((t) => t.name !== 'web_search' && t.name !== 'web_fetch' && t.name !== 'run_subagents'))
+  assert.match(req.system, /helpers are switched off/)
+  await agent(dan, 'plain question')
+  assert.ok(seen.at(-1).tools.some((t) => t.name === 'run_subagents'))
+  assert.equal((await api(dan, 'GET', '/ai')).body.agentWeb, true)
 })

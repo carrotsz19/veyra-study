@@ -223,6 +223,7 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
       saving: st.g.breaker,
       downgradeAt: st.s.downgrade ? st.s.downgradeAt : null,
       maxChars: st.s.maxChars,
+      agentWeb: st.s.agentWeb,
       blocked: blocked(st),
       busy: running.has(u)
     }

@@ -755,7 +755,10 @@ main.main:has(> * > .notes-embed) { padding-bottom: 20px; }
 /* ---------- the Assistant (Veyra AI agent) ---------- */
 .note-page.with-agent .note-scroll { margin-right: 400px; }
 .agent-panel { width: 400px; }
-.agent-model { height: 28px; max-width: 150px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; font-size: 12px; padding: 0 6px; }
+.agent-panel .ai-head > b { flex: 1 0 auto; }
+.agent-model { flex: 0 1 auto; min-width: 0; max-width: 160px; font-size: 12.5px; }
+.agent-model > button { max-width: 100%; min-width: 0; overflow: hidden; }
+.agent-model > button > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .agent-turbo.on { color: var(--accent); background: var(--accent-soft); }
 .agent-body { display: flex; flex-direction: column; gap: 12px; }
 .agent-empty p { margin: 0 0 10px; }
@@ -791,7 +794,11 @@ main.main:has(> * > .notes-embed) { padding-bottom: 20px; }
 .agent-md code { font-size: 12.5px; background: var(--panel-2, rgba(127,127,127,.12)); border-radius: 4px; padding: 1px 4px; }
 .agent-md pre { white-space: pre-wrap; font-size: 12.5px; background: var(--panel-2, rgba(127,127,127,.12)); border-radius: 8px; padding: 8px; margin: 0 0 8px; }
 .agent-md a { color: var(--accent); }
-.agent-compose { display: flex; align-items: flex-end; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.agent-switches { display: flex; gap: 6px; padding: 8px 12px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.agent-switch { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--line); background: none; color: var(--dim); font: inherit; font-size: 12px; cursor: pointer; }
+.agent-switch.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.agent-switch:disabled { opacity: .45; cursor: default; }
+.agent-compose { display: flex; align-items: flex-end; gap: 6px; padding: 8px 12px 10px; }
 .agent-compose textarea { flex: 1; resize: none; min-height: 40px; max-height: 160px; border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; background: var(--panel); color: inherit; font: inherit; font-size: 14px; }
 .agent-compose textarea:focus { outline: none; border-color: var(--accent); }
 .agent-send { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: #fff; flex: none; }

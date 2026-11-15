@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleDashed, Copy, ExternalLink, FilePlus2, Globe, ListChecks, Loader2, MessageSquarePlus, Square, Undo2, X, XCircle, Zap } from 'lucide-react'
-import { loadChat, saveChat, startAgent, TURBO_KEY, type AgentChange, type AgentEvent, type AgentRun, type ChatTurn, type NoteContext, type ToolAsk } from '../../data/agent'
+import { ArrowUp, Bot, Users, Check, ChevronDown, ChevronRight, CircleDashed, Copy, ExternalLink, FilePlus2, Globe, ListChecks, Loader2, MessageSquarePlus, Square, Undo2, X, XCircle, Zap } from 'lucide-react'
+import { loadChat, saveChat, startAgent, SUBAGENTS_KEY, TURBO_KEY, WEB_KEY, type AgentChange, type AgentEvent, type AgentRun, type ChatTurn, type NoteContext, type ToolAsk } from '../../data/agent'
 import { setAiState, useAiState, useVeyraAi } from '../../data/veyra-ai'
 import { useNav } from '../../nav'
 import { useToast } from '../ui'
+import { Select } from '../Select'
 
 /**
  * The Assistant: a chat beside the note with Veyra AI as an agent. It plans, researches the web
@@ -28,13 +29,22 @@ const fresh = (): Live => ({ text: '', steps: [], plan: null, sources: [], chang
 
 const SUGGESTIONS = ['Research this topic and add a summary to the note', 'Make a 10-question quiz from this note', 'What’s missing from this note? Check it against good sources', 'Plan my revision for this subject as tasks']
 
-const readTurbo = () => {
+const readFlag = (key: string, fallback: boolean) => {
   try {
-    return localStorage.getItem(TURBO_KEY) === '1'
+    const v = localStorage.getItem(key)
+    return v === null ? fallback : v === '1'
   } catch {
-    return false
+    return fallback
   }
 }
+const writeFlag = (key: string, on: boolean) => {
+  try {
+    localStorage.setItem(key, on ? '1' : '0')
+  } catch {
+    /* storage unavailable */
+  }
+}
+const readTurbo = () => readFlag(TURBO_KEY, false)
 
 export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onClose: () => void; onInsert: (markdown: string) => void }) {
   const toast = useToast()
@@ -46,6 +56,8 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
   const [input, setInput] = useState('')
   const [turbo, setTurbo] = useState(readTurbo)
   const [allowChat, setAllowChat] = useState(false)
+  const [web, setWeb] = useState(() => readFlag(WEB_KEY, true))
+  const [subagents, setSubagents] = useState(() => readFlag(SUBAGENTS_KEY, true))
   const run = useRef<AgentRun | null>(null)
   const liveRef = useRef<Live | null>(null)
   const turboRef = useRef(turbo)
@@ -105,7 +117,7 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
     liveRef.current = fresh()
     setLive(liveRef.current)
     run.current = startAgent(
-      { message, history, model: ai?.models.veyra, note },
+      { message, history, model: ai?.models.veyra, note, web: web && status?.agentWeb !== false, subagents },
       {
         event: (e) => {
           if (e.t === 'model') update((l) => ({ ...l, model: e.label, note: e.downgraded ? `Using ${e.label} to make your Veyra AI limit last longer.` : '' }))
@@ -156,11 +168,7 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
   const flipTurbo = () => {
     const v = !turbo
     setTurbo(v)
-    try {
-      localStorage.setItem(TURBO_KEY, v ? '1' : '0')
-    } catch {
-      /* storage unavailable */
-    }
+    writeFlag(TURBO_KEY, v)
     if (v) liveRef.current?.pending.forEach((p) => p.resolve(true))
     toast(v ? 'Turbo on: the Assistant makes changes without asking. Each one can be undone.' : 'Turbo off: the Assistant asks before each change.')
   }
@@ -187,18 +195,13 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
         </span>
         <b className="grow">Assistant</b>
         {models.length > 1 && (
-          <select
+          <Select
             className="agent-model"
-            aria-label="Model"
+            label="Model"
             value={model?.id ?? ''}
-            onChange={async (e) => setAiState(await window.veyra.ai.set({ model: { provider: 'veyra', model: e.target.value } }))}
-          >
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+            onChange={async (id) => setAiState(await window.veyra.ai.set({ model: { provider: 'veyra', model: id } }))}
+            options={models.map((m) => ({ value: m.id, label: m.label }))}
+          />
         )}
         <button className={`iconbtn plain agent-turbo ${turbo ? 'on' : ''}`} aria-pressed={turbo} title={turbo ? 'Turbo is on: changes are made without asking' : 'Turbo: make changes without asking'} aria-label="Turbo" onClick={flipTurbo}>
           <Zap size={16} />
@@ -273,6 +276,27 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
         {!live && done.some((c) => c.undo && !c.undone) && <Changes list={done.filter((c) => c.undo)} onUndo={undo} title="Changes in this chat" />}
       </div>
 
+      <div className="agent-switches" role="group" aria-label="What the Assistant can use">
+        <button
+          type="button"
+          className={`agent-switch ${web && status?.agentWeb !== false ? 'on' : ''}`}
+          aria-pressed={web && status?.agentWeb !== false}
+          disabled={status?.agentWeb === false}
+          title={status?.agentWeb === false ? 'Web research is switched off for Veyra AI' : web ? 'Web search is on: it can search the web and read pages (costs more)' : 'Web search is off: notes and what it knows only'}
+          onClick={() => (setWeb(!web), writeFlag(WEB_KEY, !web))}
+        >
+          <Globe size={13} /> Web search
+        </button>
+        <button
+          type="button"
+          className={`agent-switch ${subagents ? 'on' : ''}`}
+          aria-pressed={subagents}
+          title={subagents ? 'Subagents are on: it can send helpers to research parts at the same time (costs more)' : 'Subagents are off: it does all the work itself'}
+          onClick={() => (setSubagents(!subagents), writeFlag(SUBAGENTS_KEY, !subagents))}
+        >
+          <Users size={13} /> Subagents
+        </button>
+      </div>
       <form
         className="agent-compose"
         onSubmit={(e) => {

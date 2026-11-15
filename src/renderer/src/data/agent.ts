@@ -152,7 +152,7 @@ export interface AgentRun {
  * decline); `onEvent` gets everything that happens, in order.
  */
 export function startAgent(
-  req: { message: string; history: { role: 'user' | 'assistant'; text: string }[]; model?: string; note: NoteContext | null },
+  req: { message: string; history: { role: 'user' | 'assistant'; text: string }[]; model?: string; note: NoteContext | null; web: boolean; subagents: boolean },
   on: { event: (e: AgentEvent) => void; approve: (ask: ToolAsk) => Promise<boolean>; changed: (c: AgentChange) => void; tool: (label: string) => void }
 ): AgentRun {
   let id: string | null = null
@@ -160,7 +160,7 @@ export function startAgent(
   void (async () => {
     try {
       const note = req.note ? { title: req.note.title, markdown: req.note.markdown() } : undefined
-      const run = await groupCall<{ id: string }>('POST', '/ai/agent/runs', { message: req.message, history: req.history, model: req.model, note })
+      const run = await groupCall<{ id: string }>('POST', '/ai/agent/runs', { message: req.message, history: req.history, model: req.model, note, web: req.web, subagents: req.subagents })
       id = run.id
       if (stopped) return void groupCall('DELETE', `/ai/agent/runs/${encodeURIComponent(run.id)}`).catch(() => {})
       let from = 0
@@ -252,3 +252,6 @@ export function saveChat(noteId: string, turns: ChatTurn[]): void {
 }
 
 export const TURBO_KEY = 'veyra.assistant.turbo'
+/** The person's Web search and Subagents switches ('1' on, '0' off; on unless set). */
+export const WEB_KEY = 'veyra.assistant.web'
+export const SUBAGENTS_KEY = 'veyra.assistant.subagents'
