@@ -158,6 +158,8 @@
   html .settings .set-main { height: 100%; padding: 12px 16px 40px; }
   html .set-row { flex-wrap: wrap; gap: 10px; }
   html .set-row .set-control { margin-left: auto; }
+  /* The words keep a readable width; a control too wide to sit beside them goes on the line below. */
+  html .set-row:not(.stack) .set-text { flex: 1 1 180px; }
 
   /* Software update: the button goes under the text */
   html .upd-card .grow { flex: 1 1 200px; }

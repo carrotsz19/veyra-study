@@ -1,6 +1,6 @@
 // The Android app's entry: install window.veyra first, then load the screens
 // (several modules read window.veyra as soon as they load).
-import { installBridge } from './bridge'
+import { colourBars, installBridge } from './bridge'
 import { ON_WEB } from '@shared/channel'
 import { startWebApp } from '../renderer/src/lib/webapp'
 import { goBack, startWebBack } from '../renderer/src/lib/back'
@@ -53,12 +53,30 @@ async function app() {
   createRoot(document.getElementById('root')!).render(createElement(StrictMode, null, createElement(App)))
 }
 
-if (ON_WEB) {
-  startWebApp()
-  // The bar above the page (the status bar, in the installed app) takes the page's colour, light or dark.
-  const bar = () => document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.body).backgroundColor)
-  new MutationObserver(bar).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-  requestAnimationFrame(bar)
+/**
+ * The bars around the page take its colour, light or dark: the status bar in the installed
+ * website; the status bar and the navigation bar in the Android app.
+ */
+function followTheme() {
+  if (ON_WEB) startWebApp()
+  let last = ''
+  const bar = () => {
+    const rgb = getComputedStyle(document.body).backgroundColor
+    const [r, g, b] = (rgb.match(/\d+(\.\d+)?/g) ?? ['243', '241', '236']).map(Number)
+    const hex = '#' + [r, g, b].map((n) => Math.round(n).toString(16).padStart(2, '0')).join('')
+    if (hex === last) return
+    last = hex
+    if (ON_WEB) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', hex)
+    else void colourBars(hex, 0.2126 * r + 0.7152 * g + 0.0722 * b < 128)
+  }
+  // Again once a colour change has faded in.
+  const soon = () => {
+    requestAnimationFrame(bar)
+    setTimeout(bar, 450)
+  }
+  new MutationObserver(soon).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] })
+  soon()
 }
+followTheme()
 const shared = ON_WEB ? /^\/s\/([A-Za-z0-9_-]{10,64})\/?$/.exec(location.pathname)?.[1] : undefined
 await (shared ? sharePage(shared) : app())

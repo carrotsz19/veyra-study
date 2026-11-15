@@ -15,7 +15,10 @@ import * as updates from './updates'
 import { Haptics, ImpactStyle } from '@capacitor/haptics'
 import { registerPlugin } from '@capacitor/core'
 /** The app's own bit of Android code (android/.../ScreenPlugin.java). */
-const Screen = registerPlugin<{ keepOn(o: { on: boolean }): Promise<void> }>('Screen')
+const Screen = registerPlugin<{ keepOn(o: { on: boolean }): Promise<void>; bars(o: { color: string; dark: boolean }): Promise<void> }>('Screen')
+
+/** The status and navigation bars take the page's colour (#rrggbb), with light icons when it's dark. */
+export const colourBars = (color: string, dark: boolean): Promise<void> => Screen.bars({ color, dark }).catch(() => {}) // older app without it
 import { withDefaults } from '@shared/settings'
 import { ON_WEB } from '@shared/channel'
 

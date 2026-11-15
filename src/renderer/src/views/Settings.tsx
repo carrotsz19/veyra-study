@@ -38,7 +38,7 @@ import { installWebApp, useWebApp } from '../lib/webapp'
 type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data' | 'updates' | 'phone' | 'owner'
 
 export const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; keys?: (keyof AppSettings)[] }[] = [
-  { id: 'general', label: 'General', icon: SlidersHorizontal, hint: 'Your name, start screen, week and time', keys: ['name', 'greeting', 'startScreen', 'weekStart', 'timeFormat'] },
+  { id: 'general', label: 'General', icon: SlidersHorizontal, hint: 'Your name, start screen, week and time', keys: ['name', 'greeting', 'startScreen', 'reloadTo', 'weekStart', 'timeFormat'] },
   { id: 'appearance', label: 'Appearance', icon: Palette, hint: 'Theme, colour, font, size and spacing', keys: ['theme', 'accent', 'font', 'zoom', 'density', 'corners', 'reduceMotion', 'material'] },
   { id: 'phone', label: 'Phone', icon: Smartphone, hint: 'The navigation bar, large titles, pure black, vibration and more', keys: ['phoneTabs', 'phoneTabLabels', 'phoneCompose', 'phoneDock', 'phoneHideNavTyping', 'phoneTimerPill', 'phoneLargeTitles', 'pureBlack', 'haptics', 'keepAwakeFocus', 'phoneNoteBar'] },
   { id: 'sidebar', label: 'Sidebar', icon: LayoutPanelLeft, hint: 'What the sidebar shows, and in what order', keys: ['nav', 'showCounts', 'showSubjectsInSidebar', 'showTimerCard'] },
@@ -198,6 +198,9 @@ function General() {
             onChange={(startScreen) => set({ startScreen })}
             options={[['last', 'Where I left off'], ...(Object.entries(NAV_LABELS) as [NavId, string][])]}
           />
+        </Row>
+        <Row label="When you reload" hint="Pulling a page down on the phone, or reloading the website." keywords="reload refresh pull same page start screen today">
+          <Select label="When you reload" value={s.reloadTo} onChange={(reloadTo) => set({ reloadTo })} options={[['page', 'Stay on the same page'], ['start', 'Go to the start screen']]} />
         </Row>
       </Group>
       <Group title="Dates and times">

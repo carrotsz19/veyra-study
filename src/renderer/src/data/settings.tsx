@@ -23,9 +23,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const pending = useRef<Partial<AppSettings>>({})
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // The saved record wins once it loads.
+  // The saved record wins once it loads. Ready only from then: until it's in, only the boot copy
+  // (theme, accent, font, zoom) is known, and the start screen read from it would be the default.
+  const [ready, setReady] = useState(false)
   useEffect(() => {
-    if (loaded) setLocal(withDefaults({ ...stored, ...pending.current }))
+    if (!loaded) return
+    setLocal(withDefaults({ ...stored, ...pending.current }))
+    setReady(true)
   }, [loaded, stored])
 
   const save = useCallback(() => {
@@ -76,7 +80,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (loaded) void window.veyra.app.setStartup(local.startWithWindows)
   }, [loaded, local.startWithWindows])
-  return <SettingsCtx.Provider value={{ ready: loaded, s: local, set, reset }}>{children}</SettingsCtx.Provider>
+  return <SettingsCtx.Provider value={{ ready, s: local, set, reset }}>{children}</SettingsCtx.Provider>
 }
 
 function readBoot(): Partial<AppSettings> {

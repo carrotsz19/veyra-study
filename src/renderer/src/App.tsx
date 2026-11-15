@@ -243,6 +243,17 @@ function MovedNotice() {
 
 const ROUTES = ['today', 'tasks', 'notes', 'calendar', 'groups', 'timer', 'stats', 'settings']
 
+/** The page this tab was on before a reload, if it was reloaded. */
+function reloadedOn(): Route | null {
+  try {
+    const r = JSON.parse(sessionStorage.getItem('veyra.route') ?? 'null') as Route | null
+    if (r && (ROUTES.includes(r.name) || (r.name === 'subject' && typeof r.id === 'string'))) return r
+  } catch {
+    /* storage unavailable, or not a route */
+  }
+  return null
+}
+
 /** The app once settings are known: picks the start screen, remembers the last one. */
 function Shell() {
   const { ready, s } = useSettings()
@@ -304,16 +315,18 @@ function Shell() {
       }
     }
     home.current = { name: ROUTES.includes(name) ? name : 'today' } as Route
-    go(home.current)
+    go((s.reloadTo === 'page' && !ROUTES.includes(hash) && reloadedOn()) || home.current)
   }, [ready]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (route && route.name !== 'subject')
-      try {
-        localStorage.setItem('veyra.lastRoute', route.name)
-      } catch {
-        /* storage unavailable */
-      }
+    if (!route) return
+    try {
+      // For a reload (this tab, or this run of the phone app; sessionStorage doesn't outlive either).
+      sessionStorage.setItem('veyra.route', JSON.stringify(route.name === 'today' ? { name: 'today' } : route))
+      if (route.name !== 'subject') localStorage.setItem('veyra.lastRoute', route.name)
+    } catch {
+      /* storage unavailable */
+    }
   }, [route])
 
   if (!route) return null

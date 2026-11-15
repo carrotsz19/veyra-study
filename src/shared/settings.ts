@@ -37,6 +37,8 @@ export interface AppSettings {
   sidebarMode: 'full' | 'icons' | 'hidden'
   /* general */
   startScreen: StartScreen
+  /** Reloading (pulling a page down on the phone, or the browser's reload): stay on that page, or open the start screen. */
+  reloadTo: 'page' | 'start'
   name: string
   greeting: boolean
   weekStart: 0 | 1 | 6
@@ -168,6 +170,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showTimerCard: true,
   sidebarMode: 'full',
   startScreen: 'today',
+  reloadTo: 'page',
   name: '',
   greeting: true,
   weekStart: 1,
