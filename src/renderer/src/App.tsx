@@ -33,6 +33,7 @@ import { IS_DEV } from '@shared/channel'
 import { BetaNotice } from './components/BetaNotice'
 import { ServerHoursNotice } from './components/ServerHours'
 import { SubjectNav } from './components/SubjectNav'
+import { setRouteBack } from './lib/back'
 
 startSegments()
 
@@ -263,11 +264,24 @@ function Shell() {
   // Moving to another screen crossfades it in (the same screen again just updates).
   const current = useRef(route)
   current.current = route
+  // Back on the phone (lib/back.ts): a subject's page goes back to where it was opened from,
+  // any other screen to the one Veyra started on.
+  const home = useRef<Route>({ name: 'today' })
+  const cameFrom = useRef<Route | null>(null)
   const navigate = useCallback((r: Route) => {
     const cur = current.current
+    if (r.name === 'subject' && cur && cur.name !== 'subject') cameFrom.current = cur
     if (cur && cur.name !== r.name) transition(() => go(r))
     else go(r)
   }, [])
+  useEffect(
+    () =>
+      setRouteBack({
+        can: () => !!current.current && (current.current.name === 'subject' || current.current.name !== home.current.name),
+        go: () => navigate(current.current?.name === 'subject' && cameFrom.current ? cameFrom.current : home.current)
+      }),
+    [navigate]
+  )
   // Group work loads in the background, so the tab opens ready.
   useEffect(() => (signedIn ? prefetchGroups() : undefined), [signedIn])
   // Notes back up to Google Drive (when it's connected and backup is on).
@@ -289,7 +303,8 @@ function Shell() {
         name = 'today'
       }
     }
-    go({ name: ROUTES.includes(name) ? name : 'today' } as Route)
+    home.current = { name: ROUTES.includes(name) ? name : 'today' } as Route
+    go(home.current)
   }, [ready]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

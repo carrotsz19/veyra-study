@@ -3,6 +3,9 @@
 import { installBridge } from './bridge'
 import { ON_WEB } from '@shared/channel'
 import { startWebApp } from '../renderer/src/lib/webapp'
+import { goBack, startWebBack } from '../renderer/src/lib/back'
+import { startPullToRefresh } from '../renderer/src/lib/pull'
+import { App as Native } from '@capacitor/app'
 import '../renderer/src/styles.css'
 import '../renderer/src/notes.css'
 import '../renderer/src/account.css'
@@ -42,10 +45,20 @@ async function app() {
   if (ON_WEB) document.documentElement.classList.add('web')
   applyTheme()
   navigator.storage?.persist?.()
+  // Back steps back through Veyra before it leaves; pulling a page down reloads it.
+  if (ON_WEB) startWebBack()
+  else void Native.addListener('backButton', () => void (goBack() || Native.exitApp()))
+  startPullToRefresh(() => location.reload())
   const [{ StrictMode, createElement }, { createRoot }, { App }] = await Promise.all([import('react'), import('react-dom/client'), import('../renderer/src/App')])
   createRoot(document.getElementById('root')!).render(createElement(StrictMode, null, createElement(App)))
 }
 
-if (ON_WEB) startWebApp()
+if (ON_WEB) {
+  startWebApp()
+  // The bar above the page (the status bar, in the installed app) takes the page's colour, light or dark.
+  const bar = () => document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.body).backgroundColor)
+  new MutationObserver(bar).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  requestAnimationFrame(bar)
+}
 const shared = ON_WEB ? /^\/s\/([A-Za-z0-9_-]{10,64})\/?$/.exec(location.pathname)?.[1] : undefined
 await (shared ? sharePage(shared) : app())

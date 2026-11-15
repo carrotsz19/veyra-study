@@ -248,3 +248,14 @@ html.dark.pure-black {
     order: 0; border-top: 0; border-bottom: 1px solid var(--line); padding-bottom: 6px; min-height: 48px;
   }
 }
+
+/* Pull to refresh (lib/pull.ts): a round button that comes down with your finger and spins while Veyra reloads. */
+.ptr {
+  position: fixed; top: calc(env(safe-area-inset-top) + 8px); left: 50%; z-index: 300;
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--bg-elevated); color: var(--label-secondary); box-shadow: 0 4px 16px rgba(0,0,0,.18);
+  transform: translate(-50%, -48px); opacity: 0; pointer-events: none;
+}
+.ptr.ready { color: var(--accent); }
+.ptr.spinning svg { animation: ptr-spin .8s linear infinite; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
