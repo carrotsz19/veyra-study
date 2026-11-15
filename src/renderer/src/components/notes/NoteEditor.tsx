@@ -19,7 +19,9 @@ import { cleanError, saveNoteToDocs } from '../../data/drive'
 import { SlashMenu } from './SlashMenu'
 import { NoteToolbar } from './Toolbar'
 import { LinkInput } from './LinkInput'
-import { NoteAiCtx } from './aiContext'
+import { NoteAgentCtx, NoteAiCtx } from './aiContext'
+import { AgentPanel } from './AgentPanel'
+import { markdownToDoc } from '@shared/notetext'
 import { AiPanel } from './AiPanel'
 import { useAiState } from '../../data/veyra-ai'
 import { parseBullets, parseCards, type AiTask } from '../../data/ai'
@@ -528,6 +530,7 @@ export function NoteEditor({
   const mainEditor = useRef<Editor | null>(null)
   // On the phone and the website, AI tools are there once Veyra AI is on (Settings → AI).
   const aiCfg = useAiState()
+  const [agentOpen, setAgentOpen] = useState(false)
   const [aiJob, setAiJob] = useState<{ task: AiTask; source: string; editor?: Editor; from?: number; to?: number } | null>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const { s: settings } = useSettings()
@@ -643,6 +646,13 @@ export function NoteEditor({
     }
   }
   const P = (t: string) => ({ type: 'paragraph', content: t ? [{ type: 'text', text: t }] : [] })
+  /** Markdown at the end of the note, through the editor (so Ctrl+Z undoes it). */
+  const appendMarkdown = (md: string) => {
+    const ed = mainEditor.current
+    if (!ed || ed.isDestroyed) return
+    ed.chain().insertContentAt(ed.state.doc.content.size, markdownToDoc(md).content).run()
+  }
+
   const insertAi = (task: AiTask, text: string) => {
     const job = aiJob
     const ed = job?.editor ?? mainEditor.current
@@ -738,8 +748,9 @@ export function NoteEditor({
 
   return (
     <NoteAiCtx.Provider value={onAndroid() && aiCfg?.provider !== 'veyra' ? null : askAi}>
+    <NoteAgentCtx.Provider value={() => (setAiJob(null), setAgentOpen(true))}>
     <div
-      className={`note-page font-${data.font ?? 'sans'} layout-${template} width-${settings.noteWidth} ${aiJob ? 'with-ai' : ''}`}
+      className={`note-page font-${data.font ?? 'sans'} layout-${template} width-${settings.noteWidth} ${aiJob || agentOpen ? 'with-ai' : ''} ${agentOpen ? 'with-agent' : ''}`}
       style={{ ['--note-base' as string]: `${settings.noteSize}px` }}
     >
       {showBar && <NoteToolbar editor={active} />}
@@ -888,7 +899,19 @@ export function NoteEditor({
       <SlashMenu />
       <RecorderBar />
       {aiJob && <AiPanel key={aiJob.task + aiJob.source.length} task={aiJob.task} source={aiJob.source} title={data.title} onInsert={insertAi} onClose={() => setAiJob(null)} />}
+      {agentOpen && !aiJob && (
+        <AgentPanel
+          key={note.id}
+          note={{ id: note.id, title: data.title, markdown: () => noteToMarkdown(latest.current).split('\n').slice(1).join('\n').trim(), append: appendMarkdown }}
+          onInsert={(md) => {
+            appendMarkdown(md)
+            toast('Added to your note')
+          }}
+          onClose={() => setAgentOpen(false)}
+        />
+      )}
     </div>
+    </NoteAgentCtx.Provider>
     </NoteAiCtx.Provider>
   )
 }

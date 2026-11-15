@@ -11,7 +11,7 @@ import { Bar, Dialog, useToast } from '../components/ui'
  * and each person's use, with approving and limits. Amounts are US dollars.
  */
 
-type Settings = { cap: number; breaker: number; scaling: boolean; downgrade: boolean; downgradeAt: number; maxChars: number; fiveHour: number | null; week: number | null }
+type Settings = { cap: number; breaker: number; scaling: boolean; downgrade: boolean; downgradeAt: number; maxChars: number; fiveHour: number | null; week: number | null; agentRun: number; agentWeb: boolean }
 type Model = { id: string; label: string; enabled: boolean; input: number; output: number; cacheWrite: number; cacheRead: number; effort: string | null; maxTokens: number }
 type Overview = {
   keySet: boolean
@@ -183,6 +183,20 @@ function SettingsCard({ s, onSave }: { s: Settings; onSave: (p: Partial<Settings
           <div className="ig-sub">Once someone has used {Math.round(s.downgradeAt * 100)}% of any limit, their answers come from the cheapest model you’ve switched on.</div>
         </div>
         <input type="checkbox" checked={s.downgrade} onChange={(e) => onSave({ downgrade: e.target.checked })} />
+      </label>
+      <div className="ig-row">
+        <div className="grow">
+          <div className="ig-title">One Assistant task</div>
+          <div className="ig-sub">The most one task in the Assistant can use, with its subagents and web searches (yours: 8 times this). It stops there with what it has so far.</div>
+        </div>
+        <Money label="Most one Assistant task can use" value={s.agentRun} empty="0.25" onChange={(agentRun) => onSave({ agentRun: agentRun ?? 0.25 })} />
+      </div>
+      <label className="ig-row tap">
+        <div className="grow">
+          <div className="ig-title">Web research in the Assistant</div>
+          <div className="ig-sub">Lets the Assistant and its subagents search the web and read pages ($10 per 1,000 searches, plus what they read). Off: notes only.</div>
+        </div>
+        <input type="checkbox" checked={s.agentWeb} onChange={(e) => onSave({ agentWeb: e.target.checked })} />
       </label>
       <div className="ig-row">
         <div className="grow">

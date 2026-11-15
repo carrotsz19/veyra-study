@@ -2,14 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useEditorState, type Editor } from '@tiptap/react'
 import {
   Bold, ChevronDown, Code, CodeSquare, Columns2, Highlighter, Italic, Link2, List, ListChecks, ListOrdered, ListCollapse, Mic, Minus, Paperclip, PenLine, Plus,
-  Quote, Redo2, Rows2, Sparkles, Strikethrough, Table, Trash2, Underline, Undo2
+  Bot, Quote, Redo2, Rows2, Sparkles, Strikethrough, Table, Trash2, Underline, Undo2
 } from 'lucide-react'
 import { CALLOUTS, type CalloutTone } from './extensions'
 import { attachFiles, canAttach } from './attachment'
 import { startRecording } from '../../data/voice'
 import { LinkInput } from './LinkInput'
 import { useContext } from 'react'
-import { NoteAiCtx } from './aiContext'
+import { NoteAgentCtx, NoteAiCtx } from './aiContext'
 import { AI_LABELS, type AiTask } from '../../data/ai'
 import { Select } from '../Select'
 
@@ -92,6 +92,7 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
         : null
   })
   const ask = useContext(NoteAiCtx)
+  const openAgent = useContext(NoteAgentCtx)
   if (!editor || !s) return <div className="note-toolbar" aria-hidden="true" />
   const c = () => editor.chain().focus()
 
@@ -272,6 +273,14 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
           <Menu label="AI study tools" button={<><Sparkles size={15} /> <span className="tb-label">AI</span></>}>
             {(close) => (
               <>
+                {openAgent && (
+                  <>
+                    <button className="tb-item" onMouseDown={(e) => e.preventDefault()} onClick={() => { openAgent(); close() }}>
+                      <span><Bot size={13} /></span> Assistant
+                    </button>
+                    <div className="tb-divider" />
+                  </>
+                )}
                 {(['summary', 'flashcards', 'quiz'] as AiTask[]).map((t) => (
                   <button key={t} className="tb-item" onMouseDown={(e) => e.preventDefault()} onClick={() => { ask(t); close() }}>
                     <span><Sparkles size={13} /></span> {AI_LABELS[t]}
