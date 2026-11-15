@@ -47,7 +47,8 @@ const DEFAULT_MODELS = [
   { id: 'claude-haiku-5-5', label: 'Haiku 5.5 · fast' },
   { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5 · smarter' }
 ]
-const DEFAULTS = { cap: 100, breaker: 0.85, scaling: true, downgrade: true, downgradeAt: 0.75, maxChars: 32_000, fiveHour: 0.4, week: 2.25 }
+// agentRun: the most one agent task (with its subagents and web research) may cost; agentWeb: research allowed.
+const DEFAULTS = { cap: 100, breaker: 0.85, scaling: true, downgrade: true, downgradeAt: 0.75, maxChars: 32_000, fiveHour: 0.4, week: 2.25, agentRun: 0.25, agentWeb: true }
 const MAX_SYSTEM = 4000
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
 
@@ -75,6 +76,9 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
     CREATE INDEX IF NOT EXISTS ai_usage_user ON ai_usage(username, at);
     CREATE INDEX IF NOT EXISTS ai_usage_at ON ai_usage(at);
   `)
+  try {
+    db.exec('ALTER TABLE ai_usage ADD COLUMN web_searches INTEGER NOT NULL DEFAULT 0')
+  } catch {} // already there
   if (!q('SELECT 1 FROM ai_models LIMIT 1').get()) DEFAULT_MODELS.forEach((m, i) => saveModel({ ...m, enabled: true, sort: i }))
   // Requests cut off by a restart keep what was held for them.
   q("UPDATE ai_usage SET status = 'lost', cost = held, finished_at = ? WHERE status = 'pending'").run(clock())
@@ -126,7 +130,8 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
   const CHARGE = "CASE status WHEN 'pending' THEN held ELSE cost END"
   const spentBy = (u, since) => q(`SELECT coalesce(sum(${CHARGE}), 0) AS s FROM ai_usage WHERE username = ? AND at >= ?`).get(u, since).s
   const spentAll = (since) => q(`SELECT coalesce(sum(${CHARGE}), 0) AS s FROM ai_usage WHERE at >= ?`).get(since).s
-  const price = (m, u) => (u.input * m.input + u.output * m.output + u.cacheWrite * m.cache_write + u.cacheRead * m.cache_read) / 1e6
+  // Web searches are $10 per 1,000 on top of tokens (web fetch is only its tokens).
+  const price = (m, u) => (u.input * m.input + u.output * m.output + u.cacheWrite * m.cache_write + u.cacheRead * m.cache_read) / 1e6 + (u.webSearches ?? 0) * 0.01
 
   function month() {
     const d = new Date(clock())
@@ -219,7 +224,7 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
       downgradeAt: st.s.downgrade ? st.s.downgradeAt : null,
       maxChars: st.s.maxChars,
       blocked: blocked(st),
-      busy: [...jobs.values()].some((j) => j.username === u && !j.done)
+      busy: running.has(u)
     }
   }
 
@@ -235,6 +240,17 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
   }
 
   const jobs = new Map() // id -> { id, username, model, text, done, error, waiters, abort, ... }
+  /** People with a request or an agent run going: one at a time each (agent.mjs claims too). */
+  const running = new Set()
+  function claim(u) {
+    if (running.has(u)) throw new HttpError(409, 'Veyra AI is still working on your last request.')
+    running.add(u)
+    let done = false
+    return () => {
+      if (!done) running.delete(u)
+      done = true
+    }
+  }
   const wake = (j) => {
     for (const w of [...j.waiters]) w()
   }
@@ -314,7 +330,54 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
     j.done = true
     j.doneAt = clock()
     j.stop = stop
+    j.release?.()
     wake(j)
+  }
+
+  /** The model: the one asked for, unless near a limit (or the month is near its total), then the cheapest. */
+  function pickModel(st, wanted) {
+    let m = enabledModels().find((x) => x.id === wanted) ?? enabledModels()[0]
+    if (!m) throw new HttpError(503, 'No Veyra AI models are switched on.')
+    const low = cheapest()
+    if (!st.owner && low && low.id !== m.id && (st.g.breaker || (st.s.downgrade && st.fullest >= st.s.downgradeAt))) return { m: low, downgraded: true }
+    return { m, downgraded: false }
+  }
+  const modelById = (id) => q('SELECT * FROM ai_models WHERE id = ?').get(id)
+
+  /**
+   * One model call (for agent.mjs): checks the person's limits and the month's total, holds the
+   * most it could cost (input from its estimate, output at max_tokens), and starts any windows.
+   * Returns the usage id to settle. Throws HttpError with a message to show when it can't.
+   */
+  function admit(u, m, inputTokens, maxTokens, extraHold = 0) {
+    const st = standing(u)
+    const why = blocked(st)
+    if (why) throw new HttpError(403, why)
+    const held = price(m, { input: inputTokens, output: maxTokens, cacheWrite: 0, cacheRead: 0 }) + extraHold
+    if (!st.owner && st.g.spent + held > st.g.cap) throw new HttpError(403, 'Veyra AI is close to this month’s total and is paused until the 1st.')
+    const t = clock()
+    for (const kind of Object.keys(WINDOWS)) {
+      if (!st.windows[kind].start) q('INSERT INTO ai_windows (username, kind, start_at) VALUES (?, ?, ?) ON CONFLICT(username, kind) DO UPDATE SET start_at = excluded.start_at').run(u, kind, t)
+    }
+    const id = randomUUID()
+    q("INSERT INTO ai_usage (id, username, model, status, held, at) VALUES (?, ?, ?, 'pending', ?, ?)").run(id, u, m.id, held, t)
+    return { id, held }
+  }
+  /** Settles a call to what it really cost; returns that cost. */
+  function settle(id, m, usage, status) {
+    const cost = price(m, usage)
+    q('UPDATE ai_usage SET status = ?, cost = ?, input_tokens = ?, output_tokens = ?, cache_read = ?, cache_write = ?, web_searches = ?, finished_at = ? WHERE id = ?').run(
+      status,
+      cost,
+      usage.input,
+      usage.output,
+      usage.cacheRead,
+      usage.cacheWrite,
+      usage.webSearches ?? 0,
+      clock(),
+      id
+    )
+    return cost
   }
 
   /* ---------- routes: everyone ---------- */
@@ -324,7 +387,6 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
     const st = standing(me)
     const why = blocked(st)
     if (why) throw new HttpError(403, why)
-    if ([...jobs.values()].some((j) => j.username === me && !j.done)) throw new HttpError(409, 'Veyra AI is still answering your last request.')
     const system = String(body?.system ?? '')
     const prompt = String(body?.prompt ?? '')
     if (!prompt.trim()) throw new HttpError(400, 'There’s nothing to send.')
@@ -332,15 +394,7 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
     if (prompt.length > st.s.maxChars)
       throw new HttpError(413, `That’s too long for Veyra AI (${prompt.length.toLocaleString('en')} characters; the most is ${st.s.maxChars.toLocaleString('en')}). Select a part of the note and use the AI on that.`)
 
-    // The model: the one asked for, unless near a limit (or the month is near its total), then the cheapest.
-    let m = enabledModels().find((x) => x.id === body?.model) ?? enabledModels()[0]
-    if (!m) throw new HttpError(503, 'No Veyra AI models are switched on.')
-    const low = cheapest()
-    let downgraded = false
-    if (!st.owner && low && low.id !== m.id && (st.g.breaker || (st.s.downgrade && st.fullest >= st.s.downgradeAt))) {
-      m = low
-      downgraded = true
-    }
+    const { m, downgraded } = pickModel(st, body?.model)
 
     // Hold the most it could cost; the month's total must allow it (limits per person can be
     // passed by one request, the total can't).
@@ -350,9 +404,10 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
     for (const kind of Object.keys(WINDOWS)) {
       if (!st.windows[kind].start) q('INSERT INTO ai_windows (username, kind, start_at) VALUES (?, ?, ?) ON CONFLICT(username, kind) DO UPDATE SET start_at = excluded.start_at').run(me, kind, t)
     }
+    const release = claim(me)
     const id = randomUUID()
     q("INSERT INTO ai_usage (id, username, model, status, held, at) VALUES (?, ?, ?, 'pending', ?, ?)").run(id, me, m.id, held, t)
-    const j = { id, username: me, model: m.id, system, prompt, text: '', done: false, error: null, waiters: new Set(), abort: new AbortController(), startedAt: t, started: false }
+    const j = { release, id, username: me, model: m.id, system, prompt, text: '', done: false, error: null, waiters: new Set(), abort: new AbortController(), startedAt: t, started: false }
     jobs.set(id, j)
     void runJob(j, m)
     return { id, model: { id: m.id, label: m.label }, downgraded }
@@ -424,7 +479,9 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
       downgradeAt: body?.downgradeAt !== undefined ? num(body.downgradeAt, 0.3, 1) : s.downgradeAt,
       maxChars: body?.maxChars !== undefined ? Math.round(num(body.maxChars, 1000, 400_000)) : s.maxChars,
       fiveHour: body?.fiveHour !== undefined ? limitOf(body.fiveHour) : s.fiveHour,
-      week: body?.week !== undefined ? limitOf(body.week) : s.week
+      week: body?.week !== undefined ? limitOf(body.week) : s.week,
+      agentRun: body?.agentRun !== undefined ? num(body.agentRun, 0.01, 50) : s.agentRun,
+      agentWeb: body?.agentWeb !== undefined ? !!body.agentWeb : s.agentWeb
     }
     metaSet('ai_settings', JSON.stringify(next))
     return { settings: next }
@@ -519,4 +576,5 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
   }
 
   log(KEY ? 'Veyra AI: on' : 'Veyra AI: off (no ANTHROPIC_API_KEY)')
+  return { KEY, clock, anthropic, standing, blocked, pickModel, modelById, cheapest, enabledModels, settings, admit, settle, claim }
 }

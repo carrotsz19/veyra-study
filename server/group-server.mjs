@@ -15,7 +15,7 @@
  * - Starts cloudflared, reads its trycloudflare.com address and publishes it
  *   to the relay; restarts it if it stops. Daily backups.
  *
- * - Veyra AI (ai.mjs): the owner's Claude API key, shared with approved people within
+ * - Veyra AI (ai.mjs, agent.mjs): the owner's Claude API key, shared with approved people within
  *   dollar limits. Uses @anthropic-ai/sdk: run from the repo it comes from node_modules;
  *   for the phone, `npm run build:server` bundles everything into dist/group-server.mjs,
  *   still one file to copy.
@@ -40,8 +40,9 @@ import { createGzip } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setupAi } from './ai.mjs'
+import { setupAgent } from './agent.mjs'
 
-const VERSION = '1.9.0'
+const VERSION = '1.10.0'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -1172,7 +1173,9 @@ route('GET', '/poll', async ({ me, url, req }) => {
 })
 
 /* ---------- Veyra AI (ai.mjs) ---------- */
-setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUser, userCard, metaGet, metaSet, log })
+const ai = setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUser, userCard, metaGet, metaSet, log })
+// The Assistant in notes (agent.mjs): plans, subagents, web research, note and task tools.
+setupAgent({ route, HttpError, ai, isOwner, log })
 
 /* ---------- HTTP plumbing ---------- */
 const MAX_BODY = 600_000

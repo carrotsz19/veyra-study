@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path'
 import type { GoogleEvent, Kind, Rec, Repeat, Task, TaskStep } from '../shared/types'
 import { nextInSeries, repeatLabel } from '../shared/repeat'
 import type { Store } from './db'
-import { docPlain, markdownToDoc, noteMarkdown } from './notetext'
+import { docPlain, markdownToDoc, noteMarkdown } from '../shared/notetext'
 
 export const MCP_PORT = Number(process.env['VEYRA_MCP_PORT'] || 47821)
 /** How AI apps list Veyra: the Dev app has its own entry, so it never replaces the real one. */
