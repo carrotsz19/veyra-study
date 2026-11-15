@@ -261,3 +261,15 @@ html.dark.pure-black {
 .ptr.ready { color: var(--accent); }
 .ptr.spinning svg { animation: ptr-spin .8s linear infinite; }
 @keyframes ptr-spin { to { transform: rotate(360deg); } }
+
+/* AI on a note (Veyra AI): over the whole screen, not squeezed beside the note */
+@media (max-width: 720px), (max-height: 540px) and (pointer: coarse) {
+  html .note-page.with-ai .note-scroll { margin-right: 0; }
+  html .ai-panel {
+    position: fixed; inset: 0; width: auto; z-index: 130; border-left: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    animation: aiUp var(--spring-spatial-ms) var(--spring-spatial);
+  }
+  html .ai-body { font-size: 15px; }
+  @keyframes aiUp { from { transform: translateY(24px); opacity: 0; } }
+}

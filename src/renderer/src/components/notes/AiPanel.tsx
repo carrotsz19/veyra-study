@@ -3,9 +3,10 @@ import { Copy, RotateCcw, Sparkles, Square, X } from 'lucide-react'
 import type { AiState } from '@shared/types'
 import { AI_LABELS, buildPrompt, formatStats, parseCards, useAiRun, type AiTask } from '../../data/ai'
 import { useNav } from '../../nav'
+import { onAndroid } from '../../lib/phone'
 import { useToast } from '../ui'
 
-const PROVIDER_NAMES = { ollama: 'Local AI (Ollama)', anthropic: 'Claude', gemini: 'Gemini', openai: 'OpenAI' } as const
+const PROVIDER_NAMES = { ollama: 'Local AI (Ollama)', anthropic: 'Claude', gemini: 'Gemini', openai: 'OpenAI', veyra: 'Veyra AI' } as const
 
 /** Side panel on a note: runs one AI study task and offers to put the result into the note. */
 export function AiPanel({
@@ -21,7 +22,7 @@ export function AiPanel({
   onInsert: (task: AiTask, text: string) => void
   onClose: () => void
 }) {
-  const { text, status, error, stats, run, stop } = useAiRun()
+  const { text, status, error, stats, note, run, stop } = useAiRun()
   const [cfg, setCfg] = useState<AiState | null>(null)
   const { go } = useNav()
   const [slow, setSlow] = useState(false)
@@ -58,7 +59,11 @@ export function AiPanel({
 
       {cfg && !cfg.provider ? (
         <div className="ai-body">
-          <p>Turn on AI to summarize notes, make flashcards and explain things. The easiest option is free AI that runs on this computer; setting it up takes one click.</p>
+          <p>
+            {onAndroid()
+              ? 'Turn on Veyra AI to summarize notes, make flashcards and explain things.'
+              : 'Turn on AI to summarize notes, make flashcards and explain things. The easiest option is free AI that runs on this computer; setting it up takes one click. Or use Veyra AI if you’ve been given access.'}
+          </p>
           <button
             className="btn"
             onClick={() => {
@@ -66,7 +71,7 @@ export function AiPanel({
               go({ name: 'settings' })
             }}
           >
-            <Sparkles size={15} /> Set up free local AI
+            <Sparkles size={15} /> {onAndroid() ? 'Set up Veyra AI' : 'Set up free local AI'}
           </button>
         </div>
       ) : !source.trim() ? (
@@ -76,7 +81,8 @@ export function AiPanel({
       ) : (
         <>
           <div className="ai-body" aria-live="polite">
-            {cfg?.provider && <div className="xs tert" style={{ marginBottom: 8 }}>{PROVIDER_NAMES[cfg.provider]}{cfg.models[cfg.provider] ? ` · ${cfg.models[cfg.provider]}` : ''}</div>}
+            {cfg?.provider && <div className="xs tert" style={{ marginBottom: 8 }}>{PROVIDER_NAMES[cfg.provider]}{cfg.provider !== 'veyra' && cfg.models[cfg.provider] ? ` · ${cfg.models[cfg.provider]}` : ''}</div>}
+            {note && <div className="xs dim" style={{ marginBottom: 8 }}>{note}</div>}
             {error ? (
               <p className="ai-error">{error}</p>
             ) : cards.length ? (

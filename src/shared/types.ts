@@ -227,13 +227,16 @@ export interface GoogleApi {
   syncNow(): Promise<{ pushed: number }>
 }
 
-export type AiProvider = 'ollama' | 'anthropic' | 'gemini' | 'openai'
+/** 'veyra': Veyra AI, Claude through the Veyra server on the owner's key (by invitation, with limits). */
+export type AiProvider = 'ollama' | 'anthropic' | 'gemini' | 'openai' | 'veyra'
+/** Providers that use the person's own API key. */
+export type KeyedAiProvider = 'anthropic' | 'gemini' | 'openai'
 
 export interface AiState {
   provider: AiProvider | null
   ollamaUrl: string
   models: Partial<Record<AiProvider, string>>
-  hasKey: Record<Exclude<AiProvider, 'ollama'>, boolean>
+  hasKey: Record<KeyedAiProvider, boolean>
 }
 
 export interface AiStats {
@@ -256,7 +259,7 @@ export interface AiEvent {
 
 export interface AiApi {
   state(): Promise<AiState>
-  set(o: { provider?: AiProvider | null; model?: { provider: AiProvider; model: string }; key?: { provider: Exclude<AiProvider, 'ollama'>; key: string }; ollamaUrl?: string }): Promise<AiState>
+  set(o: { provider?: AiProvider | null; model?: { provider: AiProvider; model: string }; key?: { provider: KeyedAiProvider; key: string }; ollamaUrl?: string }): Promise<AiState>
   forget(): Promise<AiState>
   models(provider: AiProvider): Promise<string[]>
   pull(model: string): Promise<void>

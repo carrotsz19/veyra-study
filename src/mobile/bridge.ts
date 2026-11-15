@@ -77,10 +77,44 @@ const google: Veyra['google'] = {
   events: async (from, to) => ({ events: await online.group.deadlines(from, to) }),
   syncNow: async () => ({ pushed: 0 })
 }
+/** AI on the phone and the website: only Veyra AI (through the Veyra server), or off. */
+const AI_KEY = 'veyra.ai'
+const aiChoice = (): { provider: 'veyra' | null; model?: string } => {
+  try {
+    const v = JSON.parse(localStorage.getItem(AI_KEY) ?? '{}')
+    return { provider: v.provider === 'veyra' ? 'veyra' : null, model: typeof v.model === 'string' ? v.model : undefined }
+  } catch {
+    return { provider: null }
+  }
+}
+const aiState = () => {
+  const c = aiChoice()
+  return { provider: c.provider, ollamaUrl: '', models: c.model ? { veyra: c.model } : {}, hasKey: { anthropic: false, gemini: false, openai: false } }
+}
 const ai: Veyra['ai'] = {
-  state: async () => ({ provider: null, ollamaUrl: '', models: {}, hasKey: { anthropic: false, gemini: false, openai: false } }),
-  set: onComputer('AI'),
-  forget: onComputer('AI'),
+  state: async () => aiState(),
+  set: async (o) => {
+    const c = aiChoice()
+    if (o.provider !== undefined) {
+      if (o.provider !== null && o.provider !== 'veyra') throw new Error('Only Veyra AI works here. The other kinds of AI are in the computer app.')
+      c.provider = o.provider
+    }
+    if (o.model?.provider === 'veyra') c.model = o.model.model
+    try {
+      localStorage.setItem(AI_KEY, JSON.stringify(c))
+    } catch {
+      /* storage unavailable */
+    }
+    return aiState()
+  },
+  forget: async () => {
+    try {
+      localStorage.removeItem(AI_KEY)
+    } catch {
+      /* storage unavailable */
+    }
+    return aiState()
+  },
   models: async () => [],
   pull: onComputer('AI'),
   run: onComputer('AI'),

@@ -6,6 +6,9 @@ without one.
 
 ## Unreleased (in Veyra Study Dev)
 
+- **Veyra AI:** Claude, included with your Veyra account, by invitation. Settings → AI → Veyra AI (on the computer, the phone and the website). The AI tools in notes (Summarize, Flashcards, Quiz, Explain, Simplify) and Tasks → Plan from syllabus now work on the phone and the website too, with Veyra AI. Your limits are shown as bars (5 hours, a week, a month) with when each resets. When Veyra AI is quiet, limits are raised for a while (Boost). Close to a limit, answers come from the fastest model so the rest lasts longer.
+- **For the owner:** Settings → Owner → AI shows the month's spending against its total, each person's use, and the models and their prices. Approve people, set each person's 5-hour, weekly and monthly limits, and choose which Claude models are on.
+- **Phone:** an AI answer on a note now fills the screen instead of squeezing the note, and back closes it.
 - **Phone gestures (Android app and website):** pull a page down from the top to reload. Back (the swipe from the edge, or the back button) now steps back through Veyra: it closes an open sheet or menu, then the open note or settings section, then goes back to your start screen, and only then leaves the app.
 - **When you reload:** Settings → General → When you reload: stay on the page you were on (the new default), or go to the start screen.
 - **"Open on" works again:** Veyra now opens on the screen chosen in Settings → General → Open on (it was always opening Today).

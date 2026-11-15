@@ -2,6 +2,7 @@ import { onAndroid } from '../lib/phone'
 import { useEffect, useRef, useState } from 'react'
 import { ListTodo, Plus, Search, Sparkles, X } from 'lucide-react'
 import { PlanDialog } from '../components/PlanDialog'
+import { useAiState } from '../data/veyra-ai'
 import type { Rec } from '@shared/types'
 import { db, useRecords } from '../data/store'
 import { dueLabel, isOverdue, todayKey } from '../lib/dates'
@@ -41,6 +42,7 @@ export function Tasks() {
   const [quick, setQuick] = useState('')
   const [adding, setAdding] = useState(false)
   const [planning, setPlanning] = useState(false)
+  const aiCfg = useAiState()
   const { s } = useSettings()
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -98,7 +100,7 @@ export function Tasks() {
           <p className="dim">{tasks.filter((t) => !t.data.done).length} open</p>
         </div>
         <div className="row">
-          {!onAndroid() && (
+          {(!onAndroid() || aiCfg?.provider === 'veyra') && (
             <button className="btn ghost" onClick={() => setPlanning(true)} title="Turn a syllabus into tasks with AI">
               <Sparkles size={15} /> Plan from syllabus
             </button>

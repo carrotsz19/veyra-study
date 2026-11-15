@@ -4,6 +4,7 @@ import { Ban, ChevronLeft, MessageSquare, NotebookPen, RefreshCw, Search, Shield
 import { groupCall, gid } from '../data/groups'
 import { Avatar } from '../components/account'
 import { Dialog, Seg, useToast } from '../components/ui'
+import { OwnerAiTab } from './OwnerAi'
 
 /**
  * Settings → Owner: only for the owner of Veyra Study (the group server
@@ -71,7 +72,7 @@ const size = (b: number) => (b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 102
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
 
 export function OwnerSection() {
-  const [tab, setTab] = useState<'overview' | 'users' | 'groups'>('overview')
+  const [tab, setTab] = useState<'overview' | 'users' | 'groups' | 'ai'>('overview')
   return (
     <div className="owner">
       <div className="owner-head">
@@ -81,13 +82,15 @@ export function OwnerSection() {
           options={[
             ['overview', 'Overview'],
             ['users', 'Users'],
-            ['groups', 'Groups']
+            ['groups', 'Groups'],
+            ['ai', 'AI']
           ]}
         />
       </div>
       {tab === 'overview' && <OverviewTab />}
       {tab === 'users' && <UsersTab />}
       {tab === 'groups' && <GroupsTab />}
+      {tab === 'ai' && <OwnerAiTab />}
     </div>
   )
 }

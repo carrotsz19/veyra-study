@@ -1147,3 +1147,23 @@ button.dc-row:hover, .dc-row.task:hover { background: var(--fill-tertiary); }
 /* Tasks: an action beside a group's title ("Move all to today"). */
 .task-group-head { display: flex; align-items: center; gap: 6px; }
 .task-group-act { margin-left: auto; font-size: 12.5px; text-transform: none; letter-spacing: 0; }
+
+/* Owner → AI (Veyra AI) */
+.oai-money { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; background: var(--panel); height: 32px; }
+.oai-money span { color: var(--label-secondary, var(--dim)); font-size: 13px; }
+.oai-money input { width: 70px; border: 0; background: transparent; font: inherit; color: inherit; outline: none; }
+.oai-num { width: 90px; height: 32px; border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; background: var(--panel); color: inherit; font: inherit; }
+.oai-model { flex-wrap: wrap; gap: 8px; }
+.oai-label { border: 0; background: transparent; font: inherit; font-weight: 600; color: inherit; padding: 0; width: 100%; outline: none; }
+.oai-label:focus { text-decoration: underline; }
+.oai-price { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--label-secondary, var(--dim)); }
+.oai-price input { width: 52px; height: 28px; border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; background: var(--panel); color: var(--label, inherit); font: inherit; font-size: 13px; }
+.oai-effort, .oai-add { height: 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; font-size: 13px; padding: 0 6px; }
+.oai-add { min-width: 0; }
+.oai-limits { display: grid; gap: 10px; margin-bottom: 16px; }
+.oai-limits label { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.owner-tile .bar { margin: 6px 0 2px; }
+.oai-settings input[type='checkbox'], .oai-model input[type='checkbox'] { width: 18px; height: 18px; flex: none; margin: 0; accent-color: var(--accent); }
+.oai-settings .ig-row > .grow { min-width: 0; }
+.oai-model .oai-effort { width: auto; flex: none; }
+.oai-model .oai-price input { width: 52px; flex: none; }

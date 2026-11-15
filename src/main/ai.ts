@@ -8,18 +8,18 @@
 import { safeStorage, type WebContents } from 'electron'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import Anthropic from '@anthropic-ai/sdk'
-import type { AiProvider, AiState } from '../shared/types'
+import type { AiProvider, AiState, KeyedAiProvider } from '../shared/types'
 
 interface Config {
   provider: AiProvider | null
   ollamaUrl: string
   models: Partial<Record<AiProvider, string>>
-  keys: Partial<Record<Exclude<AiProvider, 'ollama'>, string>>
+  keys: Partial<Record<KeyedAiProvider, string>>
 }
 
 export class AiError extends Error {}
 
-const DEFAULT_MODELS: Record<Exclude<AiProvider, 'ollama'>, string> = {
+const DEFAULT_MODELS: Record<KeyedAiProvider, string> = {
   anthropic: 'claude-opus-5-5',
   gemini: '',
   openai: ''
@@ -85,7 +85,7 @@ export class AiService {
     }
   }
 
-  set(o: { provider?: AiProvider | null; model?: { provider: AiProvider; model: string }; key?: { provider: Exclude<AiProvider, 'ollama'>; key: string }; ollamaUrl?: string }): AiState {
+  set(o: { provider?: AiProvider | null; model?: { provider: AiProvider; model: string }; key?: { provider: KeyedAiProvider; key: string }; ollamaUrl?: string }): AiState {
     if (o.provider !== undefined) this.cfg.provider = o.provider
     if (o.model) this.cfg.models = { ...this.cfg.models, [o.model.provider]: o.model.model }
     if (o.key) {
@@ -104,7 +104,7 @@ export class AiService {
     return this.state()
   }
 
-  private key(p: Exclude<AiProvider, 'ollama'>): string {
+  private key(p: KeyedAiProvider): string {
     const k = this.cfg.keys[p]
     if (!k) throw new AiError('Add your API key in Settings → AI first.')
     return k
@@ -116,6 +116,7 @@ export class AiService {
 
   /** Models the provider offers to this person (live from the provider). */
   async models(p: AiProvider): Promise<string[]> {
+    if (p === 'veyra') return [] // Veyra AI's models come from the Veyra server (the app asks it)
     try {
       if (p === 'ollama') {
         await this.local()
@@ -195,6 +196,7 @@ export class AiService {
     this.running.set(id, ctrl)
     try {
       if (!p) throw new AiError('Choose an AI provider in Settings → AI first.')
+      if (p === 'veyra') throw new AiError('Veyra AI runs from the app, not here.')
       const model = this.cfg.models[p] || (p !== 'ollama' ? DEFAULT_MODELS[p] : '')
       if (!model) throw new AiError('Choose a model in Settings → AI first.')
 

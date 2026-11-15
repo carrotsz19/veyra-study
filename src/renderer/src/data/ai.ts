@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AiStats } from '@shared/types'
+import { loadAiState, runVeyraAi, type VeyraRun } from './veyra-ai'
 
 /* =====================================================================
    AI study tools: prompts, a streaming hook, and parsers that turn the
@@ -87,13 +88,16 @@ export function parsePlan(text: string): { due: string | null; title: string }[]
   return out
 }
 
-/** Runs one AI request and exposes the streaming answer. */
+/** Runs one AI request and exposes the streaming answer (from this computer's AI, or Veyra AI). */
 export function useAiRun() {
   const [text, setText] = useState('')
   const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [error, setError] = useState('')
   const [stats, setStats] = useState<AiStats | null>(null)
+  /** Veyra AI only: which model answered, when it isn't the one chosen (near a limit). */
+  const [note, setNote] = useState('')
   const idRef = useRef<string | null>(null)
+  const veyraRef = useRef<VeyraRun | null>(null)
 
   useEffect(
     () =>
@@ -108,22 +112,54 @@ export function useAiRun() {
       }),
     []
   )
-  useEffect(() => () => void (idRef.current && window.veyra.ai.cancel(idRef.current)), [])
+  const cancelAll = () => {
+    if (idRef.current) void window.veyra.ai.cancel(idRef.current)
+    veyraRef.current?.cancel()
+    veyraRef.current = null
+  }
+  useEffect(() => cancelAll, [])
 
   const run = useCallback((req: { system: string; prompt: string }) => {
-    if (idRef.current) window.veyra.ai.cancel(idRef.current)
+    cancelAll()
     const id = crypto.randomUUID()
     idRef.current = id
     setText('')
     setError('')
     setStats(null)
+    setNote('')
     setStatus('running')
-    window.veyra.ai.run(id, req)
+    void loadAiState()
+      .then((st) => {
+        if (idRef.current !== id) return
+        if (st.provider !== 'veyra') return void window.veyra.ai.run(id, req)
+        veyraRef.current = runVeyraAi(req, st.models.veyra, {
+          start: (m) => idRef.current === id && setNote(m.downgraded ? `Answered by ${m.label} to make your Veyra AI limit last longer.` : ''),
+          text: (all) => idRef.current === id && setText(all),
+          done: (r) => {
+            if (idRef.current !== id) return
+            if (r.error) {
+              setError(r.error)
+              setStatus('error')
+            } else {
+              if (r.cut) setNote('The answer was cut short at its length limit.')
+              setStatus('done')
+            }
+          }
+        })
+      })
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : 'AI isn’t available.')
+        setStatus('error')
+      })
   }, [])
   const stop = useCallback(() => {
-    if (idRef.current) window.veyra.ai.cancel(idRef.current)
+    if (veyraRef.current) {
+      veyraRef.current.cancel()
+      veyraRef.current = null
+      setStatus('done')
+    } else if (idRef.current) void window.veyra.ai.cancel(idRef.current)
   }, [])
-  return { text, status, error, stats, run, stop }
+  return { text, status, error, stats, note, run, stop }
 }
 
 /** "11.2 tokens/s · 143 tokens" (with ~ when the count is estimated). */

@@ -21,6 +21,7 @@ import { NoteToolbar } from './Toolbar'
 import { LinkInput } from './LinkInput'
 import { NoteAiCtx } from './aiContext'
 import { AiPanel } from './AiPanel'
+import { useAiState } from '../../data/veyra-ai'
 import { parseBullets, parseCards, type AiTask } from '../../data/ai'
 import { noteToMarkdown } from './markdown'
 import { useSettings } from '../../data/settings'
@@ -525,6 +526,8 @@ export function NoteEditor({
   const [savedAt, setSavedAt] = useState(note.updatedAt)
   const [active, setActive] = useState<Editor | null>(null)
   const mainEditor = useRef<Editor | null>(null)
+  // On the phone and the website, AI tools are there once Veyra AI is on (Settings → AI).
+  const aiCfg = useAiState()
   const [aiJob, setAiJob] = useState<{ task: AiTask; source: string; editor?: Editor; from?: number; to?: number } | null>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const { s: settings } = useSettings()
@@ -734,7 +737,7 @@ export function NoteEditor({
   const showBar = settings.noteToolbar !== 'slash'
 
   return (
-    <NoteAiCtx.Provider value={onAndroid() ? null : askAi}>
+    <NoteAiCtx.Provider value={onAndroid() && aiCfg?.provider !== 'veyra' ? null : askAi}>
     <div
       className={`note-page font-${data.font ?? 'sans'} layout-${template} width-${settings.noteWidth} ${aiJob ? 'with-ai' : ''}`}
       style={{ ['--note-base' as string]: `${settings.noteSize}px` }}

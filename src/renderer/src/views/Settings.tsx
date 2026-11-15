@@ -11,6 +11,7 @@ import { useNav } from '../nav'
 import { useSettings } from '../data/settings'
 import { playSound } from '../components/timer'
 import { Bar, useToast } from '../components/ui'
+import { LIMIT_LABELS, resetText, setAiState, useAiState, useVeyraAi } from '../data/veyra-ai'
 import { VeyraMark } from '../components/account'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { onAndroid, onWeb, usePhone } from '../lib/phone'
@@ -23,7 +24,7 @@ import { sortSubjects } from '../lib/subjects'
 import { SubjectDialog } from '../components/editors'
 import { FolderNameDialog, FolderPickDialog } from '../components/FolderDialogs'
 import { childrenOf, deleteFolder, folderPath, folderTree, moveFolder as putFolderIn, newFolder, parentOf, renameFolder, useFolders, withDescendants } from '../lib/folders'
-import type { AiProvider, AiState, Rec, UpdateState } from '@shared/types'
+import type { AiProvider, AiState, KeyedAiProvider, Rec, UpdateState } from '@shared/types'
 import { Select as Dropdown } from '../components/Select'
 import { TimeField } from '../components/DateTime'
 import { IS_DEV } from '@shared/channel'
@@ -48,7 +49,7 @@ export const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: s
   { id: 'notes', label: 'Notes', icon: NotebookPen, hint: 'How new notes start, how pages look, and voice recordings', keys: ['voiceAutoTranscribe', 'voiceMic', 'voiceUseSubtitleMaker', 'voiceModel', 'voiceLanguage', 'noteTemplate', 'noteFont', 'noteCover', 'noteWidth', 'noteSize', 'spellcheck', 'showWordCount', 'noteToolbar', 'noteBubble', 'noteSort'] },
   { id: 'timer', label: 'Focus timer', icon: Timer, hint: 'Lengths, long breaks, sounds and your daily goal', keys: ['focusMin', 'breakMin', 'longBreakMin', 'longBreakEvery', 'autoStartBreaks', 'autoStartFocus', 'sound', 'volume', 'notify', 'dailyGoalMin'] },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays, hint: 'What appears on the calendar', keys: ['calendarShowTasks', 'calendarShowDone', 'calendarShowEvents'] },
-  { id: 'ai', label: 'AI', icon: Sparkles, hint: 'Local AI or your own Claude, Gemini or OpenAI key' },
+  { id: 'ai', label: 'AI', icon: Sparkles, hint: 'Veyra AI, local AI, or your own Claude, Gemini or OpenAI key' },
   { id: 'account', label: 'Account', icon: UserRound, hint: 'Your Veyra account' },
   { id: 'connections', label: 'Connections', icon: Link2, hint: 'Google Calendar, Google Drive, calendar links and AI apps' },
   { id: 'data', label: 'Data & privacy', icon: Database, hint: 'Export, where data lives, and resets' },
@@ -864,6 +865,7 @@ function Subjects() {
 }
 
 const AI_PROVIDERS: { id: AiProvider; name: string; hint: string; keyUrl?: string; keyHint?: string }[] = [
+  { id: 'veyra', name: 'Veyra AI', hint: 'Claude, included with your Veyra account. By invitation, with usage limits.' },
   { id: 'ollama', name: 'Local AI', hint: 'Free and private. Runs on this computer with Ollama, even offline.' },
   { id: 'anthropic', name: 'Claude', hint: 'Your own Anthropic API key. Billed per use by Anthropic.', keyUrl: 'https://console.anthropic.com/settings/keys', keyHint: 'sk-ant-…' },
   { id: 'gemini', name: 'Gemini', hint: 'Your own Google AI Studio key. Has a free tier.', keyUrl: 'https://aistudio.google.com/apikey', keyHint: 'AIza…' },
@@ -888,6 +890,9 @@ function AiSettings() {
   const clean = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
   useEffect(() => {
+    if (st) setAiState(st) // so notes and tasks see the change straight away
+  }, [st])
+  useEffect(() => {
     window.veyra.ai.state().then(setSt)
     window.veyra.ai.localStatus().then((s) => setSpeeds(s.measured ?? {}))
     return window.veyra.ai.onPull((e) => setPulling(e))
@@ -906,7 +911,7 @@ function AiSettings() {
     }
   }
   useEffect(() => {
-    if (st && provider && (provider === 'ollama' || st.hasKey[provider])) loadModels(provider)
+    if (st && provider && provider !== 'veyra' && (provider === 'ollama' || st.hasKey[provider])) loadModels(provider)
   }, [provider, st?.hasKey.anthropic, st?.hasKey.gemini, st?.hasKey.openai]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!st) return null
@@ -959,6 +964,8 @@ function AiSettings() {
           </div>
         </Row>
       </Group>
+
+      {provider === 'veyra' && <VeyraAiGroup model={st.models.veyra} onModel={async (model) => setSt(await window.veyra.ai.set({ model: { provider: 'veyra', model } }))} />}
 
       {provider === 'ollama' && localReady && (
         <Group title="Local AI" footer="Ollama runs models on your computer. Bigger models give better answers but need more memory and are slower.">
@@ -1023,20 +1030,20 @@ function AiSettings() {
         </Group>
       )}
 
-      {def && def.id !== 'ollama' && (
+      {def && def.id !== 'ollama' && def.id !== 'veyra' && (
         <Group title={def.name} footer={`Your key is stored encrypted on this computer and is only sent to ${def.name === 'Claude' ? 'Anthropic' : def.name === 'Gemini' ? 'Google' : 'OpenAI'}.`}>
-          <Row label="API key" hint={st.hasKey[def.id as Exclude<AiProvider, 'ollama'>] ? 'Saved. Paste a new one to replace it.' : 'Create one in your account, then paste it here.'} stack keywords="api key">
+          <Row label="API key" hint={st.hasKey[def.id as KeyedAiProvider] ? 'Saved. Paste a new one to replace it.' : 'Create one in your account, then paste it here.'} stack keywords="api key">
             <form
               className="row"
               style={{ gap: 6 }}
               onSubmit={async (e) => {
                 e.preventDefault()
-                setSt(await window.veyra.ai.set({ key: { provider: def.id as Exclude<AiProvider, 'ollama'>, key } }))
+                setSt(await window.veyra.ai.set({ key: { provider: def.id as KeyedAiProvider, key } }))
                 setKey('')
                 toast('Key saved')
               }}
             >
-              <input className="set-input" style={{ width: '100%' }} type="password" placeholder={st.hasKey[def.id as Exclude<AiProvider, 'ollama'>] ? 'Saved' : def.keyHint} value={key} onChange={(e) => setKey(e.target.value)} aria-label={`${def.name} API key`} />
+              <input className="set-input" style={{ width: '100%' }} type="password" placeholder={st.hasKey[def.id as KeyedAiProvider] ? 'Saved' : def.keyHint} value={key} onChange={(e) => setKey(e.target.value)} aria-label={`${def.name} API key`} />
               <button className="btn sm" type="submit" disabled={!key.trim()}>
                 Save
               </button>
@@ -1045,7 +1052,7 @@ function AiSettings() {
               </button>
             </form>
           </Row>
-          {st.hasKey[def.id as Exclude<AiProvider, 'ollama'>] && (
+          {st.hasKey[def.id as KeyedAiProvider] && (
             <Row label="Model" hint={modelErr || (def.id === 'anthropic' ? 'Claude Opus 5.5 is the default.' : undefined)} keywords="model">
               <Dropdown
                 className="set-sel"
@@ -1061,7 +1068,7 @@ function AiSettings() {
       )}
 
       <Group title="Privacy">
-        <Row label="What gets sent" hint="Only the note or text you run an AI tool on, and only when you run it. Local AI never leaves this computer." keywords="privacy data">
+        <Row label="What gets sent" hint="Only the note or text you run an AI tool on, and only when you run it. Local AI never leaves this computer; Veyra AI goes through the Veyra server to Anthropic." keywords="privacy data">
           <span />
         </Row>
         <Row label="Forget AI settings" hint="Removes saved keys and your provider choice." keywords="remove keys reset">
@@ -1070,6 +1077,91 @@ function AiSettings() {
           </button>
         </Row>
       </Group>
+    </>
+  )
+}
+
+/** Veyra AI: whether you can use it, which model, and how much of each limit is used. */
+function VeyraAiGroup({ model, onModel }: { model?: string; onModel: (id: string) => void }) {
+  const { s } = useSettings()
+  const { status, error, reload } = useVeyraAi()
+  const footer = 'Claude, through the Veyra server. The text you run an AI tool on is sent to the Veyra server and to Anthropic to answer it. Only how much you use is kept.'
+  if (error)
+    return (
+      <Group title="Veyra AI" footer={footer}>
+        <Row label="Couldn’t reach Veyra AI" hint={`${error} Veyra AI needs your Veyra account and the Veyra server (the same as Group work).`}>
+          <button className="btn ghost sm" onClick={reload}>
+            Try again
+          </button>
+        </Row>
+      </Group>
+    )
+  if (!status) return <Group title="Veyra AI"><Row label="Checking…"><span /></Row></Group>
+  if (!status.configured || !status.approved)
+    return (
+      <Group title="Veyra AI" footer={footer}>
+        <Row label={status.configured ? 'Waiting for access' : 'Not available yet'} hint={status.blocked ?? undefined}>
+          <button className="btn ghost sm" onClick={reload}>
+            Check again
+          </button>
+        </Row>
+      </Group>
+    )
+  const current = status.models.find((m) => m.id === model) ?? status.models[0]
+  return (
+    <Group
+      title="Veyra AI"
+      footer={`${footer}${status.downgradeAt !== null && !status.owner ? ` Once you’ve used ${Math.round(status.downgradeAt * 100)}% of a limit, answers come from the fastest model so the rest lasts longer.` : ''}`}
+    >
+      {status.blocked && (
+        <Row label="Can’t use Veyra AI right now" hint={status.blocked}>
+          <span />
+        </Row>
+      )}
+      {status.boost && (
+        <Row label="Boost" hint="Veyra AI is quiet this month, so everyone’s limits are raised for now (up to double)." keywords="boost limit">
+          <span className="pill accent">Boost on</span>
+        </Row>
+      )}
+      {status.saving && (
+        <Row label="Saving mode" hint="Veyra AI is near its total for this month: everyone’s on the fastest model with a smaller share until the 1st.">
+          <span className="pill">Saving</span>
+        </Row>
+      )}
+      <Row label="Model" hint={status.models.length > 1 ? 'Faster models use less of your limits.' : undefined} keywords="model claude haiku sonnet opus">
+        <Dropdown className="set-sel" label="Veyra AI model" value={current?.id ?? ''} onChange={onModel} options={status.models.map((m) => ({ value: m.id, label: m.label }))} />
+      </Row>
+      {status.owner ? (
+        <Row label="Usage" hint="You’re the owner: Veyra AI has no limits for you. See everyone’s use in Settings → Owner → AI.">
+          <span />
+        </Row>
+      ) : (
+        status.limits.map((l) => (
+          <Row key={l.kind} label={LIMIT_LABELS[l.kind]} hint={resetText(l.resetsAt, s.timeFormat)} keywords="usage limit">
+            <div className="vai-meter">
+              <Bar pct={Math.round(l.used * 100)} color={l.used >= 0.9 ? 'var(--bad)' : undefined} />
+              <span className="xs dim num">{Math.round(l.used * 100)}% used</span>
+            </div>
+          </Row>
+        ))
+      )}
+    </Group>
+  )
+}
+
+/** The phone and the website: Veyra AI, or no AI (the other kinds are in the computer app). */
+function PhoneAiSettings() {
+  const st = useAiState()
+  const on = st?.provider === 'veyra'
+  const set = async (o: Parameters<typeof window.veyra.ai.set>[0]) => setAiState(await window.veyra.ai.set(o))
+  return (
+    <>
+      <Group title="AI" footer="AI tools appear in notes (the AI button) and in Tasks → Plan from syllabus. Local AI and your own keys are in the computer app.">
+        <Row label="Veyra AI" hint="Claude, included with your Veyra account. By invitation, with usage limits." keywords="ai claude veyra">
+          <Toggle label="Veyra AI" on={on} onChange={(v) => void set({ provider: v ? 'veyra' : null })} />
+        </Row>
+      </Group>
+      {on && <VeyraAiGroup model={st?.models.veyra} onModel={(model) => void set({ model: { provider: 'veyra', model } })} />}
     </>
   )
 }
@@ -1177,7 +1269,7 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
     case 'subjects':
       return <Subjects />
     case 'ai':
-      return <AiSettings />
+      return onAndroid() ? <PhoneAiSettings /> : <AiSettings />
     case 'calendar':
       return <Calendar go={go} />
     case 'account':
@@ -1208,7 +1300,7 @@ const JUMPS: { id: SectionId; words: string }[] = [
 ]
 
 /** Computer-only sections, hidden in the Android app. */
-const ANDROID_HIDDEN: SectionId[] = ['ai', 'connections', 'sidebar']
+const ANDROID_HIDDEN: SectionId[] = ['connections', 'sidebar']
 const DESKTOP_HIDDEN: SectionId[] = ['phone']
 /** Whether a section belongs on this device. */
 export const here = (id: SectionId) => !(onAndroid() ? ANDROID_HIDDEN : DESKTOP_HIDDEN).includes(id)

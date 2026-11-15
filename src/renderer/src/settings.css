@@ -272,3 +272,7 @@ main.main.main-settings { padding: 0; overflow: hidden; }
 .upd-progress { display: flex; align-items: center; gap: 12px; padding: 0 18px 16px; }
 .upd-progress .bar { flex: 1; }
 .upd-notes { padding: 14px 16px; white-space: pre-wrap; line-height: 1.55; font-size: 13.5px; }
+
+/* Veyra AI: a usage bar with its percentage */
+.vai-meter { display: flex; align-items: center; gap: 10px; width: 220px; max-width: 100%; }
+.vai-meter .bar { flex: 1; }
