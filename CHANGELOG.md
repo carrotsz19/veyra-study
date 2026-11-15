@@ -4,7 +4,7 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
-## Unreleased (in Veyra Study Dev)
+## 1.0.4
 
 - **Announcements:** messages from the owner of Veyra Study show as a card in the app until you dismiss them. For the owner: Settings → Owner → Announcements sends one to everyone, to people you pick, or to everyone with Veyra AI, for as long as you choose, and shows how many have seen it.
 - **You stay signed in:** Veyra no longer signs you out after an update or when its server has a hiccup. A "not signed in" answer is only believed after it's repeated over 10 minutes, and even then you stay in your account with all your notes and tasks; a banner asks you to sign in again so syncing, Group work and Veyra AI carry on. Only Sign out in Settings signs you out.
