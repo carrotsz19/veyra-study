@@ -42,7 +42,7 @@ import { fileURLToPath } from 'node:url'
 import { setupAi } from './ai.mjs'
 import { setupAgent } from './agent.mjs'
 
-const VERSION = '1.10.0'
+const VERSION = '1.10.1'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
