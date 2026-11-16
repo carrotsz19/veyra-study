@@ -150,8 +150,8 @@ export function TaskDialog({
   )
 }
 
-export function SubjectDialog({ subject, onClose, onSaved }: { subject?: Rec<'subject'>; onClose: () => void; onSaved?: (id: string) => void }) {
-  const [s, setS] = useState<Subject>(subject ? subject.data : { name: '', color: SUBJECT_COLORS[0] })
+export function SubjectDialog({ subject, folderId, onClose, onSaved }: { subject?: Rec<'subject'>; folderId?: string | null; onClose: () => void; onSaved?: (id: string) => void }) {
+  const [s, setS] = useState<Subject>(subject ? subject.data : { name: '', color: SUBJECT_COLORS[0], ...(folderId ? { folderId } : {}) })
   const folders = useFolders('subject')
   const [namingFolder, setNamingFolder] = useState(false)
   if (namingFolder)
