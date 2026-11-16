@@ -6,6 +6,7 @@ without one.
 
 ## 1.0.8
 
+- **A monthly cap on voice calls:** calls that go through the call relay are counted, and when this month reaches 999 GB, calls in progress end and new ones are refused until the 1st. The owner sees the month's use under Owner → Overview.
 - **Voice calls connect more reliably:** network addresses your device finds late (common on computers with extra network adapters, like a webcam app's or a VPN's) are now sent as they turn up instead of being left out. If two people still can't reach each other after 25 s, their picture says "Can't connect" instead of "Connecting…" for ever.
 - **Choosing a microphone in a call:** the one you pick is the one used. If it can't start (switched off, unplugged, or in use by another app), Voice settings says so and keeps your old one, instead of quietly using a different microphone. The level bar also ignores faint hiss, so a silent microphone shows as silent.
 

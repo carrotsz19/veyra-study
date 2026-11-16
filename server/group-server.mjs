@@ -44,7 +44,7 @@ import { setupAgent } from './agent.mjs'
 import { setupAnnouncements } from './announce.mjs'
 import { setupCalls } from './calls.mjs'
 
-const VERSION = '1.13.1'
+const VERSION = '1.14.0'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -951,7 +951,8 @@ route('GET', '/admin/overview', ({ me }) => {
     groups: q('SELECT count(*) AS n FROM groups_').get().n,
     items: { tasks: kinds.task ?? 0, messages: kinds.message ?? 0, notes: kinds.note ?? 0, deadlines: kinds.event ?? 0 },
     synced: { records: personal.n, bytes: personal.bytes },
-    dbBytes
+    dbBytes,
+    voice: calls.usageView()
   }
 })
 
@@ -1183,7 +1184,7 @@ setupAgent({ route, HttpError, ai, isOwner, log })
 // Announcements from the owner (announce.mjs).
 setupAnnouncements({ db, q, route, HttpError, requireAdmin, isOwner, getUser, userCard })
 // Voice rooms (calls.mjs): who's in each group's voice room, and passing call setup between apps.
-const calls = setupCalls({ route, HttpError, requireMember, membersOf, getUser, userCard, notify, limit, log })
+const calls = setupCalls({ route, HttpError, requireMember, membersOf, getUser, userCard, notify, limit, log, metaGet, metaSet })
 
 /* ---------- HTTP plumbing ---------- */
 const MAX_BODY = 600_000

@@ -24,12 +24,14 @@ const WAIT = 25_000
 const MAX_SIGNAL = 64_000
 const MAX_QUEUE = 200
 
-export function setupCalls({ route, HttpError, requireMember, membersOf, getUser, userCard, notify, limit, log }) {
+export function setupCalls({ route, HttpError, requireMember, membersOf, getUser, userCard, notify, limit, log, metaGet, metaSet }) {
   /** groupId → { people: Map<username, { sid, joinedAt, beat, muted, deafened }> } */
   const rooms = new Map()
   /** username → { sid, queue: [], wake: fn | null } (only people in a room have one) */
   const boxes = new Map()
   let version = 0
+  /** username → why their call was ended by the server (cap, removed), kept a minute. */
+  const endedWhy = new Map()
 
   const staticIce = (() => {
     try {
@@ -61,7 +63,7 @@ export function setupCalls({ route, HttpError, requireMember, membersOf, getUser
       const servers = j.iceServers
         .map((s) => ({ ...s, urls: (Array.isArray(s.urls) ? s.urls : [s.urls]).filter((u) => !/:53(\?|$)/.test(u)) }))
         .filter((s) => s.urls.length)
-      turn = { at: Date.now(), servers: [...servers, ...staticIce] }
+      turn = { at: Date.now(), servers: [...servers, ...staticIce], username: servers.find((s) => s.username)?.username }
       return turn.servers
     } catch (e) {
       log('voice: couldn’t get relay logins from Cloudflare:', e.message)
@@ -96,7 +98,7 @@ export function setupCalls({ route, HttpError, requireMember, membersOf, getUser
       /* group gone */
     }
   }
-  const leave = (username, groupId = roomOf(username)) => {
+  const leave = (username, groupId = roomOf(username), reason) => {
     if (!groupId) return
     const r = rooms.get(groupId)
     r?.people.delete(username)
@@ -104,11 +106,120 @@ export function setupCalls({ route, HttpError, requireMember, membersOf, getUser
     const b = boxes.get(username)
     if (b) {
       boxes.delete(username)
-      b.queue.push({ type: 'ended' })
+      b.queue.push(reason ? { type: 'ended', reason } : { type: 'ended' })
       b.wake?.()
+      // An app that wasn't listening right then still learns why (for a minute).
+      if (reason) endedWhy.set(username, { sid: b.sid, reason, at: Date.now() })
     }
     changed(groupId)
   }
+
+  /* ---------- the month's relay allowance ----------
+   * Cloudflare's relay is free up to 1,000 GB a month. Past VOICE_CAP_GB (default 999) voice closes until
+   * the 1st (UTC): calls in progress end, new ones are refused, and the relay login is revoked.
+   * Usage = the larger of what the apps report (bytes they get through the relay; only apps that report
+   * are given relay logins) and Cloudflare's own count (when CF_ACCOUNT_ID + CF_ANALYTICS_TOKEN are set). */
+  const CAP = Number(process.env.VOICE_CAP_GB || 999) * 1e9
+  const monthKey = () => new Date().toISOString().slice(0, 7)
+  let usage = (() => {
+    try {
+      const u = JSON.parse(metaGet('voice.usage') || '')
+      if (u && typeof u.reported === 'number') return u
+    } catch {
+      /* first time */
+    }
+    return { month: monthKey(), reported: 0, cloudflare: 0, checkedAt: 0, closed: false }
+  })()
+  const saveUsage = () => metaSet('voice.usage', JSON.stringify(usage))
+  const roll = () => {
+    if (usage.month === monthKey()) return
+    usage = { month: monthKey(), reported: 0, cloudflare: 0, checkedAt: 0, closed: false }
+    saveUsage()
+  }
+  const used = () => (roll(), Math.max(usage.reported, usage.cloudflare))
+  const reopens = () => {
+    const d = new Date()
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)
+  }
+  const closedMessage = () =>
+    `Voice calls are paused until ${new Date(reopens()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' })}: this month’s call allowance is used up.`
+
+  async function revokeRelay() {
+    const id = process.env.CF_TURN_KEY_ID
+    const token = process.env.CF_TURN_KEY_TOKEN
+    const name = turn.username
+    turn = { at: 0, servers: null }
+    if (!id || !token || !name) return
+    try {
+      const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(id)}/credentials/${encodeURIComponent(name)}/revoke`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(8000)
+      })
+      log('voice: relay login revoked', r.status)
+    } catch (e) {
+      log('voice: couldn’t revoke the relay login:', e.message)
+    }
+  }
+  /** Over the allowance: end every call and close voice for the month. */
+  function checkCap() {
+    if (usage.closed || used() < CAP) return
+    usage.closed = true
+    saveUsage()
+    log(`voice: ${(used() / 1e9).toFixed(1)} GB of relay used this month; voice closed until the 1st`)
+    for (const [groupId, r] of [...rooms]) for (const u of [...r.people.keys()]) leave(u, groupId, 'cap')
+    void revokeRelay()
+  }
+
+  // Cloudflare's own count, every 10 minutes (optional; needs an API token with Account Analytics).
+  async function cloudflareUsage() {
+    const account = process.env.CF_ACCOUNT_ID
+    const token = process.env.CF_ANALYTICS_TOKEN
+    const key = process.env.CF_TURN_KEY_ID
+    if (!account || !token || !key) return
+    roll()
+    const from = `${usage.month}-01`
+    const to = new Date().toISOString().slice(0, 10)
+    const query = `query { viewer { accounts(filter: { accountTag: ${JSON.stringify(account)} }) { callsTurnUsageAdaptiveGroups(limit: 10000, filter: { keyId: ${JSON.stringify(key)}, date_geq: ${JSON.stringify(from)}, date_leq: ${JSON.stringify(to)} }) { sum { egressBytes } } } } }`
+    try {
+      const r = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(15000)
+      })
+      const j = await r.json()
+      const rows = j?.data?.viewer?.accounts?.[0]?.callsTurnUsageAdaptiveGroups
+      if (!r.ok || !Array.isArray(rows)) throw new Error(j?.errors?.[0]?.message || `status ${r.status}`)
+      usage.cloudflare = rows.reduce((n, row) => n + (Number(row?.sum?.egressBytes) || 0), 0)
+      usage.checkedAt = Date.now()
+      saveUsage()
+      checkCap()
+    } catch (e) {
+      log('voice: couldn’t read relay usage from Cloudflare:', e.message)
+    }
+  }
+  setTimeout(() => void cloudflareUsage(), 20_000).unref()
+  setInterval(() => void cloudflareUsage(), 10 * 60_000).unref()
+  setInterval(() => (roll(), checkCap()), 60_000).unref()
+
+  // What an app got through the relay since its last report (it reports every ~30 s during a call).
+  route('POST', '/voice/usage', ({ me, body }) => {
+    limit(`voice-usage:${me}`, 12, 60_000)
+    const box = boxes.get(me)
+    if (!box || box.sid !== body?.sid) return { ok: true }
+    const bytes = Math.min(Math.max(0, Math.floor(Number(body?.bytes) || 0)), 60_000_000)
+    if (bytes) {
+      roll()
+      usage.reported += bytes
+      saveUsage()
+      checkCap()
+    }
+    return { ok: true }
+  })
+
+  /** For the owner's overview. */
+  const usageView = () => ({ used: used(), cap: CAP, month: usage.month, closed: usage.closed, cloudflare: !!process.env.CF_ANALYTICS_TOKEN, checkedAt: usage.checkedAt || null })
 
   // Take out anyone whose app went quiet (closed, asleep, lost its connection).
   setInterval(() => {
@@ -137,9 +248,11 @@ export function setupCalls({ route, HttpError, requireMember, membersOf, getUser
     return { rooms: out, version, mine: roomOf(me) }
   })
 
-  route('POST', '/groups/:id/voice/join', async ({ me, params }) => {
+  route('POST', '/groups/:id/voice/join', async ({ me, params, body }) => {
     requireMember(params.id, me)
     limit(`voice:${me}`, 30, 60_000)
+    roll()
+    if (usage.closed) throw new HttpError(403, closedMessage())
     const r = rooms.get(params.id) ?? { people: new Map() }
     if (!r.people.has(me) && r.people.size >= MAX_PEOPLE) throw new HttpError(409, `This voice room is full (${MAX_PEOPLE} people).`)
     const before = roomOf(me)
@@ -157,7 +270,7 @@ export function setupCalls({ route, HttpError, requireMember, membersOf, getUser
     rooms.set(params.id, r)
     boxes.set(me, { sid, queue: [], wake: null })
     changed(params.id)
-    return { sid, people: peopleView(params.id), version, iceServers: await iceServers(), max: MAX_PEOPLE }
+    return { sid, people: peopleView(params.id), version, iceServers: body?.relay === true ? await iceServers() : staticIce, max: MAX_PEOPLE }
   })
 
   route('POST', '/groups/:id/voice/leave', ({ me, params, body }) => {
@@ -199,7 +312,11 @@ export function setupCalls({ route, HttpError, requireMember, membersOf, getUser
   route('GET', '/poll/voice', async ({ me, url, req }) => {
     const sid = url.searchParams.get('sid') || ''
     const box = boxes.get(me)
-    if (!box || box.sid !== sid) return { messages: [{ type: 'ended' }] }
+    if (!box || box.sid !== sid) {
+      const why = endedWhy.get(me)
+      if (why && why.sid === sid && Date.now() - why.at < 60_000) return { messages: [{ type: 'ended', reason: why.reason }] }
+      return { messages: [{ type: 'ended' }] }
+    }
     const groupId = roomOf(me)
     // Removed from the group (or it was deleted) while in its voice room.
     if (groupId)
@@ -231,5 +348,5 @@ export function setupCalls({ route, HttpError, requireMember, membersOf, getUser
     return { messages: box.queue.splice(0) }
   })
 
-  return { voiceVersion, leaveAll: (username) => leave(username) }
+  return { voiceVersion, usageView, leaveAll: (username) => leave(username) }
 }

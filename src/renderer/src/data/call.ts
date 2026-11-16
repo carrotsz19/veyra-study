@@ -94,6 +94,7 @@ interface Live {
   micAnalyser: AnalyserNode | null
   peers: Map<string, Peer>
   ticker: ReturnType<typeof setInterval>
+  reporter: ReturnType<typeof setInterval>
   wantMuted: boolean
   ended: boolean
 }
@@ -245,6 +246,11 @@ function makePeer(username: string, sid: string): Peer {
 function dropPeer(username: string) {
   const p = live?.peers.get(username)
   if (!p) return
+  const l = live!
+  void relayBytes(p.pc).then((total) => {
+    const bytes = Math.max(0, total - (relayCounted.get(p.pc) ?? 0))
+    if (bytes) void groupCall('POST', '/voice/usage', { sid: l.sid, bytes: Math.ceil(bytes * 1.15) }).catch(() => {})
+  })
   live!.peers.delete(username)
   p.pc.close()
   p.audio.srcObject = null
@@ -368,6 +374,35 @@ function tick() {
 }
 const lastTalk = new Map<string, number>()
 
+/**
+ * Bytes that came to us through Cloudflare's relay since the last report (the server keeps the month's
+ * total and closes voice at the allowance). Counted per connection from its stats; +15% for packet overhead.
+ */
+const relayCounted = new WeakMap<RTCPeerConnection, number>()
+async function relayBytes(pc: RTCPeerConnection): Promise<number> {
+  try {
+    const stats = await pc.getStats()
+    let total = 0
+    stats.forEach((st: any) => {
+      if (st.type !== 'candidate-pair' || !st.nominated || !st.bytesReceived) return
+      if (stats.get(st.localCandidateId)?.candidateType === 'relay') total += st.bytesReceived
+    })
+    return total
+  } catch {
+    return relayCounted.get(pc) ?? 0
+  }
+}
+async function reportRelay(l: Live | null = live) {
+  if (!l) return
+  let bytes = 0
+  for (const p of l.peers.values()) {
+    const total = await relayBytes(p.pc)
+    bytes += Math.max(0, total - (relayCounted.get(p.pc) ?? 0))
+    relayCounted.set(p.pc, total)
+  }
+  if (bytes) await groupCall('POST', '/voice/usage', { sid: l.sid, bytes: Math.ceil(bytes * 1.15) }).catch(() => {})
+}
+
 let signals: Promise<void> = Promise.resolve()
 
 async function listen(l: Live) {
@@ -389,6 +424,10 @@ async function listen(l: Live) {
           }
           if (m.reason === 'removed') {
             notice('You’re no longer in this group.')
+            return end(false)
+          }
+          if (m.reason === 'cap') {
+            notice('Voice calls are paused until the 1st of next month: this month’s call allowance is used up.')
             return end(false)
           }
           // The server dropped us (it restarted, or we were away too long): join again.
@@ -417,7 +456,7 @@ async function rejoin(l: Live) {
   set({ phase: 'reconnecting' })
   for (let i = 0; live === l; i++) {
     try {
-      const r = await groupCall('POST', `/groups/${gid(l.groupId)}/voice/join`)
+      const r = await groupCall('POST', `/groups/${gid(l.groupId)}/voice/join`, { relay: true })
       if (live !== l) return
       for (const u of [...l.peers.keys()]) dropPeer(u)
       l.sid = r.sid
@@ -427,7 +466,7 @@ async function rejoin(l: Live) {
       if (state.muted || state.deafened) void sendState()
       return void listen(l)
     } catch (e) {
-      if (e instanceof GroupCallError && (e.status === 404 || e.status === 409)) {
+      if (e instanceof GroupCallError && (e.status === 403 || e.status === 404 || e.status === 409)) {
         notice(e.message)
         return end(false)
       }
@@ -453,7 +492,7 @@ export async function joinVoice(group: { id: string; name: string }, me: string)
   if (state.groupId !== group.id) return void ctx.close()
   let r: { sid: string; people: VoicePerson[]; iceServers: RTCIceServer[] }
   try {
-    r = await groupCall('POST', `/groups/${gid(group.id)}/voice/join`)
+    r = await groupCall('POST', `/groups/${gid(group.id)}/voice/join`, { relay: true })
   } catch (e) {
     mic?.getTracks().forEach((t) => t.stop())
     void ctx.close()
@@ -466,7 +505,7 @@ export async function joinVoice(group: { id: string; name: string }, me: string)
     void groupCall('POST', `/groups/${gid(group.id)}/voice/leave`, { sid: r.sid }).catch(() => {})
     return
   }
-  live = { groupId: group.id, sid: r.sid, iceServers: r.iceServers, mic, ctx, micAnalyser: mic ? analyse(ctx, mic) : null, peers: new Map(), ticker: setInterval(tick, 120), wantMuted: false, ended: false }
+  live = { groupId: group.id, sid: r.sid, iceServers: r.iceServers, mic, ctx, micAnalyser: mic ? analyse(ctx, mic) : null, peers: new Map(), ticker: setInterval(tick, 120), reporter: setInterval(() => void reportRelay(), 30_000), wantMuted: false, ended: false }
   set({ listenOnly: !mic, muted: !mic })
   if (!mic) {
     notice('Veyra can’t use a microphone, so you’re listening only. Check your microphone and its permission, then join again.')
@@ -490,6 +529,8 @@ async function end(tellServer: boolean) {
   l.ended = true
   live = null
   clearInterval(l.ticker)
+  clearInterval(l.reporter)
+  void reportRelay(l)
   for (const p of l.peers.values()) {
     p.pc.close()
     p.audio.srcObject = null

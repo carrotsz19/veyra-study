@@ -26,6 +26,8 @@ type Overview = {
   items: { tasks: number; messages: number; notes: number; deadlines: number }
   synced: { records: number; bytes: number }
   dbBytes: number
+  /** Servers from 1.14.0: the month's Cloudflare call relay use. */
+  voice?: { used: number; cap: number; month: string; closed: boolean; cloudflare: boolean }
 }
 type AdminUser = {
   username: string
@@ -69,6 +71,8 @@ export function useIsOwner(signedIn: boolean): boolean {
 }
 
 const ago = (t: number) => formatDistanceToNowStrict(t, { addSuffix: true })
+// Decimal GB, the way Cloudflare counts the relay allowance.
+const gb = (b: number) => (b < 1e9 ? `${(b / 1e6).toFixed(1)} MB` : `${(b / 1e9).toFixed(1)} GB`)
 const size = (b: number) => (b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`)
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
 
@@ -156,6 +160,9 @@ function OverviewTab() {
     ['Deadlines', o.items.deadlines],
     ['Synced items', o.synced.records, size(o.synced.bytes)],
     ['Server data', size(o.dbBytes), `server ${o.version}, up ${formatDistanceToNowStrict(o.startedAt)}`],
+    ...(o.voice
+      ? ([['Call relay this month', gb(o.voice.used), o.voice.closed ? `Voice paused: over ${gb(o.voice.cap)}` : `of ${gb(o.voice.cap)} cap${o.voice.cloudflare ? ' · Cloudflare count' : ' · counted by the apps'}`]] as [string, string, string][])
+      : []),
     ...(downloads ? ([['Downloads', downloads.total, downloads.latest ? `${downloads.latestCount} of ${downloads.latest}` : undefined]] as [string, number, string?][]) : [])
   ]
   return (
