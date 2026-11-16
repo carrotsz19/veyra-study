@@ -135,12 +135,14 @@ export class GroupCore {
   private async raw(method: string, path: string, body?: unknown, auth = true): Promise<any> {
     const base = this.saved.serverUrl || (await this.lookup())
     let res: Response
+    const json = body === undefined ? undefined : JSON.stringify(body)
     try {
       res = await fetch(base + path, {
         method,
         headers: { 'Content-Type': 'application/json', ...(auth && this.saved.session ? { Authorization: `Bearer ${this.saved.session}` } : {}) },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(path.startsWith('/poll') ? 40000 : 20000)
+        body: json,
+        // Big uploads (the Assistant's attached files) get time for slow connections: about 50 KB a second.
+        signal: AbortSignal.timeout((path.startsWith('/poll') ? 40000 : 20000) + Math.round((json?.length ?? 0) / 50))
       })
     } catch {
       throw new GroupError('The group server didn’t answer.', -1)

@@ -41,11 +41,19 @@ const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp
 /** Rough token counts of file blocks (the API rejects extra fields, so they're kept to one side). */
 const blockTokens = new WeakMap()
 
-/** Pages in a PDF, roughly: page objects, or by size when they're packed out of sight. */
+/**
+ * Pages in a PDF, roughly: page objects, the page tree's /Count, or the linearized /N. When
+ * they're packed out of sight, a guess by size that never goes past 12 pages (so a PDF is never
+ * refused on a guess; what it really used is charged afterwards anyway).
+ */
 function pdfPages(b64) {
   const bytes = Buffer.from(b64, 'base64')
-  const n = bytes.toString('latin1').match(/\/Type\s*\/Page(?![s\w])/g)?.length ?? 0
-  return Math.max(1, n || Math.ceil(bytes.length / 60_000))
+  const s = bytes.toString('latin1')
+  const objs = s.match(/\/Type\s*\/Page(?![s\w])/g)?.length ?? 0
+  const counts = [...s.matchAll(/\/Type\s*\/Pages[^>]*?\/Count\s+(\d+)|\/Count\s+(\d+)[^>]*?\/Type\s*\/Pages/g)].map((m) => Number(m[1] ?? m[2]))
+  const lin = Number(/\/Linearized[^>]*?\/N\s+(\d+)/.exec(s)?.[1] ?? 0)
+  const known = Math.max(objs, lin, ...counts, 0)
+  return known || Math.min(12, Math.max(1, Math.ceil(bytes.length / 150_000)))
 }
 
 /**
@@ -67,11 +75,12 @@ export function fileBlock(f) {
   } else if (f.type === 'pdf') {
     if (data.length > MAX_PDF_B64 || !/^[A-Za-z0-9+/=]+$/.test(data)) throw new Error(`“${name}” is too big (up to about 10 MB).`)
     if (!Buffer.from(data.slice(0, 16), 'base64').toString('latin1').startsWith('%PDF')) throw new Error(`“${name}” isn’t a PDF.`)
-    block = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data }, title: name }
+    // Citations on: the API wants them on for every document in a request or none, and web_fetch has them on.
+    block = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data }, title: name, citations: { enabled: true } }
     tokens = pdfPages(data) * PDF_PAGE_TOKENS
   } else if (f.type === 'text') {
     if (data.length > MAX_TEXT_FILE) throw new Error(`“${name}” is too long (up to ${MAX_TEXT_FILE.toLocaleString('en')} characters).`)
-    block = { type: 'document', source: { type: 'text', media_type: 'text/plain', data }, title: name }
+    block = { type: 'document', source: { type: 'text', media_type: 'text/plain', data }, title: name, citations: { enabled: true } }
     tokens = Math.ceil(data.length / 3.2)
   } else throw new Error(`“${name}” isn’t a kind of file the Assistant can read.`)
   blockTokens.set(block, tokens)
@@ -278,6 +287,7 @@ export function setupAgent({ route, HttpError, ai, isOwner, log }) {
     if (run.spent >= run.cap) throw new Stop('This task reached the most one task can use, so it stopped here. Ask again to carry on.')
     const est = Math.ceil(tokensOf(params.messages) + params.system.length / 3.2 + JSON.stringify(params.tools ?? []).length / 3.2)
     if (est > MAX_INPUT_TOKENS) throw new Stop('This conversation got too long. Start a new chat to keep going.')
+    run.lastEst = est
     let held
     try {
       held = ai.admit(run.username, m, est, params.max_tokens, searchesAllowed(params.tools ?? []) * 0.01)
@@ -631,6 +641,10 @@ export function setupAgent({ route, HttpError, ai, isOwner, log }) {
         file = fileBlock(body.file)
         if (file.tokens > MAX_FILE_TOKENS) {
           text += `\n[“${file.name}” is too long to read at once (about ${Math.round(file.tokens / PDF_PAGE_TOKENS)} pages).]`
+          file = null
+        } else if ((run.lastEst ?? 0) + file.tokens > MAX_INPUT_TOKENS - 8_000) {
+          // It wouldn't fit beside what this task already has open: say so, rather than fail the next turn.
+          text += `\n[“${file.name}” is too long to read alongside what this task already has open. Ask about it in a new chat.]`
           file = null
         }
       } catch (e) {
