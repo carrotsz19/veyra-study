@@ -42,8 +42,9 @@ import { fileURLToPath } from 'node:url'
 import { setupAi } from './ai.mjs'
 import { setupAgent } from './agent.mjs'
 import { setupAnnouncements } from './announce.mjs'
+import { setupCalls } from './calls.mjs'
 
-const VERSION = '1.12.0'
+const VERSION = '1.13.0'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -1157,7 +1158,9 @@ route('GET', '/sync/pull', ({ me, url }) => {
 // Long-poll: answers as soon as anything in your groups or invites changes, or after ~25 s.
 route('GET', '/poll', async ({ me, url, req }) => {
   const since = Number(url.searchParams.get('since') || 0)
-  if (seq > since) return { seq }
+  // ?voice= is the voice version the app last saw (who's in voice changes without touching seq).
+  const voice = url.searchParams.get('voice')
+  if (seq > since || (voice !== null && Number(voice) !== calls.voiceVersion())) return { seq, voice: calls.voiceVersion() }
   await new Promise((resolve) => {
     const w = { username: me, resolve }
     const done = () => {
@@ -1170,7 +1173,7 @@ route('GET', '/poll', async ({ me, url, req }) => {
     waiters.add(w)
     req.on('close', done)
   })
-  return { seq }
+  return { seq, voice: calls.voiceVersion() }
 })
 
 /* ---------- Veyra AI (ai.mjs) ---------- */
@@ -1179,6 +1182,8 @@ const ai = setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUser, us
 setupAgent({ route, HttpError, ai, isOwner, log })
 // Announcements from the owner (announce.mjs).
 setupAnnouncements({ db, q, route, HttpError, requireAdmin, isOwner, getUser, userCard })
+// Voice rooms (calls.mjs): who's in each group's voice room, and passing call setup between apps.
+const calls = setupCalls({ route, HttpError, requireMember, membersOf, getUser, userCard, notify, limit, log })
 
 /* ---------- HTTP plumbing ---------- */
 const MAX_BODY = 600_000

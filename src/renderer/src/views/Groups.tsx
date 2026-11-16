@@ -50,8 +50,9 @@ import '../notes.css'
 import '../groups.css'
 import { Select } from '../components/Select'
 import { DateField, TimeField } from '../components/DateTime'
+import { VoiceBadge, VoiceRoom } from '../components/Voice'
 
-type Tab = 'tasks' | 'chat' | 'notes' | 'deadlines' | 'members'
+type Tab = 'tasks' | 'chat' | 'voice' | 'notes' | 'deadlines' | 'members'
 const msg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Try again.')
 
 export function Groups() {
@@ -73,6 +74,15 @@ export function Groups() {
   const phone = usePhone()
   const [phoneOpen, setPhoneOpen] = useState(false)
 
+  // The call dock's "open the voice room" while Group work is already showing another group.
+  useEffect(() => {
+    const open = (e: Event) => {
+      setOpenId((e as CustomEvent<string>).detail)
+      if (phone) setPhoneOpen(true)
+    }
+    window.addEventListener('veyra:open-voice', open)
+    return () => window.removeEventListener('veyra:open-voice', open)
+  }, [phone])
   useEffect(() => {
     try {
       if (openId) localStorage.setItem('veyra.group', openId)
@@ -234,6 +244,7 @@ export function Groups() {
                     {g.members.length} {g.members.length === 1 ? 'member' : 'members'}
                   </div>
                 </div>
+                <VoiceBadge groupId={g.id} />
               </button>
             ))}
           </nav>
@@ -304,6 +315,12 @@ function GroupPanel({ group, me, onChanged, onGone, onBack }: { group: Group; me
       /* storage unavailable */
     }
   }, [tab])
+  // The call dock's "open the voice room".
+  useEffect(() => {
+    const open = (e: Event) => (e as CustomEvent<string>).detail === group.id && setTab('voice')
+    window.addEventListener('veyra:open-voice', open)
+    return () => window.removeEventListener('veyra:open-voice', open)
+  }, [group.id])
   const items = useGroupItems(group.id)
   const openTasks = items.list('task').filter((t) => !t.data.done).length
 
@@ -333,6 +350,7 @@ function GroupPanel({ group, me, onChanged, onGone, onBack }: { group: Group; me
           options={[
             ['tasks', 'Tasks'],
             ['chat', 'Chat'],
+            ['voice', 'Voice'],
             ['notes', 'Notes'],
             ['deadlines', 'Deadlines'],
             ['members', 'Members']
@@ -341,7 +359,9 @@ function GroupPanel({ group, me, onChanged, onGone, onBack }: { group: Group; me
       </div>
       {/* On a phone only this part scrolls (the chat scrolls its messages instead). */}
       <div className="grp-body">
-      {items.error && !items.loaded ? (
+      {tab === 'voice' ? (
+        <VoiceRoom group={group} me={me?.username ?? ''} />
+      ) : items.error && !items.loaded ? (
         <div className="card grp-status grp-offline">
           <WifiOff size={18} /> <span className="grow">{items.error}</span>
           <button className="btn sec sm" onClick={() => items.reload()}>

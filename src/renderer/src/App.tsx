@@ -35,6 +35,7 @@ import { IS_DEV } from '@shared/channel'
 import { BetaNotice } from './components/BetaNotice'
 import { ServerHoursNotice } from './components/ServerHours'
 import { SubjectNav } from './components/SubjectNav'
+import { CallDock, CallNotices } from './components/Voice'
 import { setRouteBack } from './lib/back'
 
 startSegments()
@@ -132,6 +133,7 @@ function Sidebar({ route, go, onEnter, onLeave }: { route: Route; go: (r: Route)
           </div>
         </button>
       )}
+      <CallDock />
       <div className="side-foot">
         <button className="account-chip" aria-current={route.name === 'settings'} onClick={() => go({ name: 'settings' })} title="Account and settings">
           {user ? (
@@ -347,6 +349,8 @@ function Shell() {
           {/* Hidden sidebar: pointing at the left edge slides it out. */}
           {!phone && s.sidebarMode === 'hidden' && <div className="side-hotzone" onMouseEnter={peekIn} onMouseLeave={peekOut} aria-hidden />}
           <UpdatedNotice />
+          <CallNotices />
+          {(phone || s.sidebarMode === 'hidden') && <CallDock floating />}
           <VoiceSetupHost />
           <Palette />
           <BetaNotice />

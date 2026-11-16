@@ -4,6 +4,10 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 1.0.6
+
+- **Voice calls in groups:** every group now has a voice room, like a voice channel. Open a group → Voice → Join voice to talk with whoever's there (up to 8 people). You can mute, deafen, change someone's volume (click their picture), and pick your microphone and speaker. Rings light up around whoever is talking. The call stays on while you use the rest of the app, with a call bar at the bottom of the sidebar (or above the tabs on a phone). Ctrl+Shift+M mutes and Ctrl+Shift+D deafens. Your voice goes straight to the others, not through Veyra. Voice is off overnight while the group server sleeps.
+
 ## 1.0.5
 
 - **Attach files to the Assistant:** in a note's Assistant, attach pictures, PDFs and text files with Attach, or paste or drop them in (up to 5 in a chat). Pictures are made smaller first, so they cost about as much as a page of text. Files stay with the chat until you remove them.

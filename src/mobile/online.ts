@@ -16,7 +16,7 @@ import { ON_WEB } from '@shared/channel'
 
 type Cb<T> = (v: T) => void
 const statusSubs = new Set<Cb<GroupStatus>>()
-const changedSubs = new Set<Cb<{ seq: number }>>()
+const changedSubs = new Set<Cb<{ seq: number; voice?: boolean }>>()
 const syncSubs = new Set<Cb<SyncStatus>>()
 const key = () => `veyra.group.${acct.username() ?? 'guest'}`
 
@@ -40,7 +40,7 @@ export function create(): void {
     credentials: () => acct.credentials(),
     emit: (channel, payload) => {
       if (channel === 'group:status') statusSubs.forEach((f) => f(payload as GroupStatus))
-      if (channel === 'group:changed') changedSubs.forEach((f) => f(payload as { seq: number }))
+      if (channel === 'group:changed') changedSubs.forEach((f) => f(payload as { seq: number; voice?: boolean }))
     }
   })
 

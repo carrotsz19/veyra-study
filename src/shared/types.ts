@@ -410,7 +410,8 @@ export interface GroupApi {
   /** One request to the group server, e.g. callRaw('GET', '/groups'). Never throws; see groupCall in the UI. */
   callRaw(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<{ ok: true; v: any } | { ok: false; error: string; status: number; extra?: any }>
   onStatus(cb: (s: GroupStatus) => void): () => void
-  onChanged(cb: (e: { seq: number }) => void): () => void
+  /** voice: only who's in a voice room changed (servers from 1.13.0). */
+  onChanged(cb: (e: { seq: number; voice?: boolean }) => void): () => void
 }
 
 /* ---------- files attached to notes ---------- */

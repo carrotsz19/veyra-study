@@ -48,6 +48,8 @@ export class GroupCore {
   private polling = false
   private disposed = false
   private lastSeq = 0
+  /** The server's voice version (who's in each voice room), once it has said one. */
+  private lastVoice: number | null = null
   /** Called when the server says something changed (personal sync listens). */
   onRemoteChange: (() => void) | null = null
   /** Shared tasks and deadlines per group, kept up to date with ?since= (for Calendar and Today). */
@@ -324,7 +326,11 @@ export class GroupCore {
           await this.call('GET', '/me')
           this.setStatus({ state: 'online', me: this.saved.me ?? this.status.me, error: '' })
         }
-        const r = await this.call('GET', `/poll?since=${this.lastSeq}`)
+        const r = await this.call('GET', `/poll?since=${this.lastSeq}${this.lastVoice === null ? '' : `&voice=${this.lastVoice}`}`)
+        // Who's in voice changed (servers from 1.13.0 say so; it doesn't move seq).
+        const voiceMoved = typeof r.voice === 'number' && this.lastVoice !== null && r.voice !== this.lastVoice
+        if (typeof r.voice === 'number') this.lastVoice = r.voice
+        if (voiceMoved && !(r.seq > this.lastSeq)) this.emit('group:changed', { seq: this.lastSeq, voice: true })
         if (r.seq > this.lastSeq) {
           this.onRemoteChange?.()
           const first = this.lastSeq === 0

@@ -1,0 +1,85 @@
+/* Voice rooms and the call dock */
+.voice-room { display: flex; flex-direction: column; gap: 8px; }
+.voice-stage { display: flex; flex-direction: column; gap: 16px; }
+.voice-stage-head { gap: 10px; }
+.voice-stage-head > .row > svg { color: var(--dim); flex-shrink: 0; }
+.voice-phase { font-size: 12px; font-weight: 650; color: var(--ok); }
+.voice-phase.joining, .voice-phase.reconnecting { color: var(--dim); }
+.voice-empty { margin: 4px 0; }
+.voice-note { padding: 0 4px; }
+
+.voice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.voice-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 8px 12px; min-width: 0;
+  border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel-2); color: var(--ink);
+  font: inherit; cursor: default;
+}
+.voice-tile[title*='click'] { cursor: pointer; }
+.voice-tile[title*='click']:hover { border-color: var(--accent); }
+.voice-tile.linking { opacity: 0.7; }
+.voice-ring { border-radius: 16px; padding: 3px; box-shadow: 0 0 0 2px transparent; transition: box-shadow 0.12s var(--ease-standard); }
+.voice-ring .avatar.lg { width: 56px; height: 56px; font-size: 22px; border-radius: 14px; }
+.voice-tile.talking .voice-ring { box-shadow: 0 0 0 3px var(--ok); }
+.voice-name { max-width: 100%; font-size: 13px; font-weight: 650; }
+.voice-icons { display: flex; gap: 4px; min-height: 13px; color: var(--bad); }
+.voice-bad { color: var(--bad); }
+
+.voice-actions { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.voice-controls { display: flex; gap: 6px; }
+.voice-controls .iconbtn.voice-off { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); background: var(--negative-soft); }
+.voice-controls.compact .iconbtn { width: 30px; height: 30px; border-color: transparent; background: transparent; }
+.voice-controls.compact .iconbtn:hover { background: var(--fill-tertiary); }
+.voice-controls.compact .iconbtn.voice-off { background: var(--negative-soft); }
+
+.voice-pop { width: 240px; padding: 14px; }
+.voice-settings { width: 280px; }
+.voice-settings-body { display: flex; flex-direction: column; gap: 8px; }
+.voice-settings-body label { margin-top: 4px; }
+.voice-meter { height: 6px; border-radius: 99px; background: var(--fill-secondary); overflow: hidden; }
+.voice-meter span { display: block; height: 100%; width: 0; background: var(--ok); border-radius: inherit; transition: width 60ms linear; }
+
+.voice-badge {
+  display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; padding: 2px 7px; border-radius: 99px;
+  background: var(--positive-soft); color: var(--ok); font-size: 11.5px; font-weight: 700;
+}
+
+/* The call dock: bottom of the sidebar */
+.call-dock {
+  margin-top: 10px; padding: 8px; border-radius: var(--r-control); border: 1px solid var(--line); background: var(--panel-2);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.call-where { display: flex; align-items: center; gap: 8px; border: 0; background: none; color: var(--ink); padding: 2px 4px; text-align: left; font: inherit; cursor: pointer; min-width: 0; }
+.call-where:hover .call-state { text-decoration: underline; }
+.call-state { display: block; font-size: 12.5px; font-weight: 750; color: var(--ok); }
+.call-dock.reconnecting .call-state, .call-dock.joining .call-state { color: var(--dim); }
+.call-dot { width: 8px; height: 8px; border-radius: 99px; background: var(--ok); flex-shrink: 0; }
+.call-dot.joining, .call-dot.reconnecting { background: var(--dim); animation: callPulse 1s var(--ease-standard) infinite alternate; }
+@keyframes callPulse { to { opacity: 0.3; } }
+.call-buttons { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.call-hang { width: 30px; height: 30px; border-color: transparent; background: var(--bad); color: var(--on-tint); }
+.call-hang:hover { color: var(--on-tint); border-color: transparent; filter: brightness(1.08); }
+
+/* Icons-only sidebar: just the buttons, stacked */
+.side-icons .call-dock { padding: 6px 2px; align-items: center; }
+.side-icons .call-where { justify-content: center; padding: 4px; }
+.side-icons .call-where .grow { display: none; }
+.side-icons .call-buttons, .side-icons .voice-controls { flex-direction: column; }
+
+/* Floating (phone, or the sidebar hidden) */
+.call-dock.floating {
+  position: fixed; z-index: 41; margin: 0; flex-direction: row; align-items: center; gap: 4px; padding: 6px 6px 6px 8px;
+  border-radius: 999px; background: var(--bg-elevated); box-shadow: var(--elev-2); max-width: min(440px, calc(100vw - 32px));
+  left: 16px; bottom: 16px;
+}
+.call-dock.floating .call-where { flex: 1; }
+.phone-shell .call-dock.floating {
+  left: 50%; transform: translateX(-50%); width: max-content;
+  bottom: calc(var(--dock-gap) + var(--dock-h) + 10px);
+}
+.phone-shell:has(.call-dock.floating) .phone-timer { bottom: calc(var(--dock-gap) + var(--dock-h) + 66px); }
+.call-dock.floating .call-where .grow { max-width: 190px; }
+
+@media (max-width: 720px) {
+  .voice-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+  .voice-ring .avatar.lg { width: 48px; height: 48px; font-size: 19px; }
+}

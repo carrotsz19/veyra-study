@@ -149,7 +149,9 @@ function itemStore(groupId: string): ItemStore {
 }
 
 // One listener for the whole app: refresh what's loaded when anything changes.
-api.onChanged(() => {
+api.onChanged((e) => {
+  // Only who's in voice changed: the call store reloads the rooms; nothing else needs to.
+  if (e?.voice) return
   if (groupsCache.groups) void loadGroups()
   for (const s of stores.values()) if (s.subs.size || s.loaded) void s.load()
 })
