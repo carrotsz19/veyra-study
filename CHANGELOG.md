@@ -4,6 +4,13 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 1.0.5
+
+- **Attach files to the Assistant:** in a note's Assistant, attach pictures, PDFs and text files with Attach, or paste or drop them in (up to 5 in a chat). Pictures are made smaller first, so they cost about as much as a page of text. Files stay with the chat until you remove them.
+- **The Assistant and your Google Drive (computer app):** Settings → Connections → Google Drive → "Let the Assistant use my Drive". The Assistant can then search and read your Drive (Docs, Slides, Sheets, PDFs and pictures) and make Google Docs for you, asking first. Switch it off for a chat with the Google Drive button next to Web search.
+- **Right-click in the sidebar:** right-click a subject to open it, start studying it, add a task or note, edit, move to a folder, archive or delete it. Right-click a folder to fold it, add a subject or folder inside, rename, move or delete it, or the Subjects heading for a new subject or folder.
+- **Shared notes:** when you can edit a shared note, the formatting toolbar is there too, staying at the top as you scroll.
+
 ## 1.0.4
 
 - **Announcements:** messages from the owner of Veyra Study show as a card in the app until you dismiss them. For the owner: Settings → Owner → Announcements sends one to everyone, to people you pick, or to everyone with Veyra AI, for as long as you choose, and shows how many have seen it.
