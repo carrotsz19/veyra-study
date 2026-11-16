@@ -212,6 +212,7 @@ function Controls({ compact }: { compact?: boolean }) {
 function VoiceSettings() {
   const [devices, setDevices] = useState<{ mics: MediaDeviceInfo[]; speakers: MediaDeviceInfo[] } | null>(null)
   const [mic, setMicId] = useState(voicePrefs.mic())
+  const [micError, setMicError] = useState('')
   const [speaker, setSpeakerId] = useState(voicePrefs.speaker())
   const meter = useRef<HTMLSpanElement>(null)
   useEffect(() => {
@@ -235,14 +236,21 @@ function VoiceSettings() {
         label="Microphone"
         value={mic}
         onChange={(v) => {
+          const before = mic
           setMicId(v)
-          void setMic(v)
+          setMicError('')
+          void setMic(v).then((err) => {
+            if (!err) return
+            setMicId(before)
+            setMicError(err)
+          })
         }}
         options={[{ value: '', label: 'Default' }, ...(devices?.mics ?? []).filter((d) => d.deviceId && d.deviceId !== 'default').map((d, i) => ({ value: d.deviceId, label: name(d, i, 'Microphone') }))]}
       />
       <div className="voice-meter" aria-hidden>
         <span ref={meter} />
       </div>
+      {micError && <div className="xs voice-bad">{micError}</div>}
       {canPickSpeaker && (
         <>
           <label className="xs dim">Speaker</label>

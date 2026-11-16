@@ -4,6 +4,10 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 1.0.8
+
+- **Choosing a microphone in a call:** the one you pick is the one used. If it can't start (switched off, unplugged, or in use by another app), Voice settings says so and keeps your old one, instead of quietly using a different microphone. The level bar also ignores faint hiss, so a silent microphone shows as silent.
+
 ## 1.0.7
 
 - **Voice calls now connect:** in 1.0.6 the app wasn't allowed to fetch call messages, so a voice room got stuck on "Reconnecting…" and nobody could hear each other. Fixed.

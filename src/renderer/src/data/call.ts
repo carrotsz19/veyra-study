@@ -97,8 +97,9 @@ let live: Live | null = null
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-async function openMic(deviceId = voicePrefs.mic()): Promise<MediaStream | null> {
-  const audio: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, ...(deviceId ? { deviceId: { ideal: deviceId } } : {}) }
+/** strict: that microphone or nothing (when you pick one); otherwise it falls back to another if it's gone. */
+async function openMic(deviceId = voicePrefs.mic(), strict = false): Promise<MediaStream | null> {
+  const audio: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, ...(deviceId ? { deviceId: strict ? { exact: deviceId } : { ideal: deviceId } } : {}) }
   try {
     return await navigator.mediaDevices.getUserMedia({ audio })
   } catch {
@@ -502,14 +503,21 @@ export function setVolume(username: string, v: number) {
   if (p) p.audio.volume = Math.min(1, v)
 }
 
-/** Switches microphone (during a call too). */
-export async function setMic(deviceId: string) {
-  write('veyra.voice.mic', deviceId)
+/** Switches microphone (during a call too). Says why not if that one can't be used (your old one stays on). */
+export async function setMic(deviceId: string): Promise<string | null> {
   const l = live
-  if (!l) return
-  const mic = await openMic(deviceId)
-  if (!mic || live !== l) return void mic?.getTracks().forEach((t) => t.stop())
-  const track = mic.getAudioTracks()[0]
+  if (!l) {
+    write('veyra.voice.mic', deviceId)
+    return null
+  }
+  const mic = await openMic(deviceId, true)
+  const track = mic?.getAudioTracks()[0]
+  const got = track?.getSettings().deviceId
+  if (!mic || !track || live !== l || (deviceId && got && got !== deviceId)) {
+    mic?.getTracks().forEach((t) => t.stop())
+    return live === l ? 'Couldn’t use that microphone: it may be switched off, unplugged or in use by another app. Your old one is still on.' : null
+  }
+  write('veyra.voice.mic', deviceId)
   track.enabled = !state.muted
   for (const p of l.peers.values()) for (const s of p.pc.getSenders()) if (!s.track || s.track.kind === 'audio') void s.replaceTrack(track)
   l.mic?.getTracks().forEach((t) => t.stop())
@@ -520,6 +528,7 @@ export async function setMic(deviceId: string) {
     track.enabled = true
     void sendState()
   }
+  return null
 }
 
 export function setSpeaker(deviceId: string) {
@@ -534,7 +543,8 @@ export async function audioDevices(): Promise<{ mics: MediaDeviceInfo[]; speaker
 export const canPickSpeaker = typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype
 
 /** How loud your microphone is right now (0–1), for the level meter in voice settings. */
-export const micLevel = () => (live && !state.muted ? Math.min(1, level(live.micAnalyser) * 6) : 0)
+// Below a small floor is hiss (automatic gain lifts it on a quiet microphone), so it reads as silence.
+export const micLevel = () => (live && !state.muted ? Math.min(1, Math.max(0, level(live.micAnalyser) - 0.012) * 7) : 0)
 
 // Closing the app or the page: leave straight away (otherwise the server notices after ~35 s).
 if (typeof window !== 'undefined') window.addEventListener('pagehide', () => void (live && end(true)))
