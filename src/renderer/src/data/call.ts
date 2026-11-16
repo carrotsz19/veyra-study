@@ -80,6 +80,10 @@ interface Peer {
   downSince: number
   /** When our last offer went out (an answer that never comes gets a new offer). */
   offeredAt: number
+  /** Our offer or answer has gone out: network addresses found after that are sent one by one. */
+  sent: boolean
+  /** Their addresses that came before their offer or answer. */
+  pending: RTCIceCandidateInit[]
 }
 interface Live {
   groupId: string
@@ -183,7 +187,10 @@ async function signal(to: Peer, data: unknown) {
   }
 }
 
+const linkSince = new Map<string, number>()
 function setLink(username: string, link: Link | null) {
+  if (link !== state.links[username]) linkSince.set(username, Date.now())
+  if (!link) linkSince.delete(username)
   const links = { ...state.links }
   if (link) links[username] = link
   else delete links[username]
@@ -199,7 +206,11 @@ function makePeer(username: string, sid: string): Peer {
   audio.muted = state.deafened
   const speaker = voicePrefs.speaker()
   if (speaker && 'setSinkId' in audio) void (audio as any).setSinkId(speaker).catch(() => {})
-  const peer: Peer = { username, sid, pc, audio, analyser: null, offerer: state.me < username, restarts: 0, downSince: 0, offeredAt: 0 }
+  const peer: Peer = { username, sid, pc, audio, analyser: null, offerer: state.me < username, restarts: 0, downSince: 0, offeredAt: 0, sent: false, pending: [] }
+  // Addresses found after the offer or answer went out (slow network adapters, the relay): send them too.
+  pc.onicecandidate = (e) => {
+    if (e.candidate && peer.sent && live?.peers.get(username) === peer) void signal(peer, { kind: 'candidate', candidate: e.candidate.toJSON() })
+  }
   pc.ontrack = (e) => {
     const stream = e.streams[0] ?? new MediaStream([e.track])
     audio.srcObject = stream
@@ -253,9 +264,11 @@ async function offer(peer: Peer, restart = false) {
   try {
     if (!pc.getTransceivers().length) addOurAudio(pc)
     peer.offeredAt = Date.now()
+    peer.sent = false
     await pc.setLocalDescription(await pc.createOffer(restart ? { iceRestart: true } : undefined))
     await gathered(pc)
     if (live?.peers.get(peer.username) !== peer) return
+    peer.sent = true
     await signal(peer, { kind: 'offer', sdp: pc.localDescription!.sdp })
   } catch {
     setLink(peer.username, 'failed')
@@ -274,12 +287,15 @@ async function onSignal(from: string, fromSid: string, data: any) {
     if (!peer) peer = makePeer(from, fromSid)
     const { pc } = peer
     try {
+      peer.sent = false
       await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp })
+      await addPending(peer)
       const tr = pc.getTransceivers()[0]
       if (tr) addOurAudio(pc, tr)
       await pc.setLocalDescription(await pc.createAnswer())
       await gathered(pc)
       if (live?.peers.get(from) !== peer) return
+      peer.sent = true
       await signal(peer, { kind: 'answer', sdp: pc.localDescription!.sdp })
     } catch {
       setLink(from, 'failed')
@@ -287,10 +303,19 @@ async function onSignal(from: string, fromSid: string, data: any) {
   } else if (data.kind === 'answer' && peer && peer.pc.signalingState === 'have-local-offer') {
     try {
       await peer.pc.setRemoteDescription({ type: 'answer', sdp: data.sdp })
+      await addPending(peer)
     } catch {
       setLink(from, 'failed')
     }
+  } else if (data.kind === 'candidate' && peer && data.candidate) {
+    if (peer.pc.remoteDescription) await peer.pc.addIceCandidate(data.candidate).catch(() => {})
+    else peer.pending.push(data.candidate)
   }
+}
+
+async function addPending(peer: Peer) {
+  const list = peer.pending.splice(0)
+  for (const c of list) await peer.pc.addIceCandidate(c).catch(() => {})
 }
 
 /** Matches the connections to who's in the room. */
@@ -332,6 +357,9 @@ function tick() {
       void offer(p, true)
     }
   }
+  // Still not through after 25 s: say so instead of "Connecting…" for ever (a later retry can still connect).
+  for (const [u, link] of Object.entries(state.links))
+    if (link === 'connecting' && Date.now() - (linkSince.get(u) ?? Date.now()) > 25000 && l.peers.get(u)?.pc.connectionState !== 'connected') setLink(u, 'failed')
   // Talking stays lit a moment after the sound stops, so it doesn't flicker.
   const now = Date.now()
   for (const u of talking) lastTalk.set(u, now)
@@ -339,6 +367,8 @@ function tick() {
   if (lit.join() !== state.speaking.join()) set({ speaking: lit })
 }
 const lastTalk = new Map<string, number>()
+
+let signals: Promise<void> = Promise.resolve()
 
 async function listen(l: Live) {
   let fails = 0
@@ -350,7 +380,8 @@ async function listen(l: Live) {
       if (state.phase !== 'connected') set({ phase: 'connected' })
       for (const m of r.messages) {
         if (m.type === 'room' && m.groupId === l.groupId) reconcile(m.people)
-        else if (m.type === 'signal') void onSignal(m.from, m.fromSid, m.data)
+        // One at a time, in order (an address must not overtake the offer it belongs to).
+        else if (m.type === 'signal') signals = signals.then(() => onSignal(m.from, m.fromSid, m.data)).catch(() => {})
         else if (m.type === 'ended') {
           if (m.reason === 'elsewhere') {
             notice('You joined this voice room on another device.')

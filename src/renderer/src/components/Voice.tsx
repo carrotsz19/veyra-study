@@ -148,7 +148,11 @@ function Tile({ p, mine, live }: { p: VoicePerson; mine: boolean; live: boolean 
           {p.deafened ? <HeadphoneOff size={13} aria-label="Deafened" /> : p.muted ? <MicOff size={13} aria-label="Muted" /> : null}
         </span>
         {link === 'connecting' && <span className="xs dim">Connecting…</span>}
-        {link === 'failed' && <span className="xs voice-bad">Can’t connect</span>}
+        {link === 'failed' && (
+          <span className="xs voice-bad" title="Your two networks won’t let your devices reach each other directly. Veyra keeps trying; another network (e.g. a phone hotspot) usually works.">
+            Can’t connect
+          </span>
+        )}
       </button>
       <Popover anchor={ref} open={open} onClose={() => setOpen(false)} label={`${p.displayName}’s volume`} className="voice-pop">
         <div className="sm" style={{ fontWeight: 650, marginBottom: 8 }}>

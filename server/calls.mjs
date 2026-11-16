@@ -13,8 +13,8 @@
  * - GET  /poll/voice?sid=            long-poll for your messages (also the heartbeat)
  *
  * Someone whose app stops asking for messages for 35 s is taken out of the room.
- * ICE servers come from VOICE_ICE (JSON array of RTCIceServer) or a public STUN server,
- * so TURN can be added later in .env without an app update.
+ * ICE servers come from Cloudflare's relay (CF_TURN_KEY_ID + CF_TURN_KEY_TOKEN), VOICE_ICE (JSON array
+ * of RTCIceServer) or a public STUN server, all set in .env without an app update.
  */
 import { randomBytes } from 'node:crypto'
 
@@ -31,7 +31,7 @@ export function setupCalls({ route, HttpError, requireMember, membersOf, getUser
   const boxes = new Map()
   let version = 0
 
-  const iceServers = (() => {
+  const staticIce = (() => {
     try {
       const v = JSON.parse(process.env.VOICE_ICE || '')
       if (Array.isArray(v) && v.length) return v
@@ -40,6 +40,34 @@ export function setupCalls({ route, HttpError, requireMember, membersOf, getUser
     }
     return [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }]
   })()
+  // Cloudflare's call relay (TURN), for networks that block direct connections: set CF_TURN_KEY_ID and
+  // CF_TURN_KEY_TOKEN in .env. Short-lived logins are made here (the key never leaves the server), kept 12 h.
+  let turn = { at: 0, servers: null }
+  async function iceServers() {
+    const id = process.env.CF_TURN_KEY_ID
+    const token = process.env.CF_TURN_KEY_TOKEN
+    if (!id || !token) return staticIce
+    if (turn.servers && Date.now() - turn.at < 12 * 3600_000) return turn.servers
+    try {
+      const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(id)}/credentials/generate-ice-servers`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ttl: 86400 }),
+        signal: AbortSignal.timeout(8000)
+      })
+      const j = await r.json()
+      if (!r.ok || !Array.isArray(j.iceServers)) throw new Error(`status ${r.status}`)
+      // Port 53 is blocked by browsers (Cloudflare's advice: leave it out).
+      const servers = j.iceServers
+        .map((s) => ({ ...s, urls: (Array.isArray(s.urls) ? s.urls : [s.urls]).filter((u) => !/:53(\?|$)/.test(u)) }))
+        .filter((s) => s.urls.length)
+      turn = { at: Date.now(), servers: [...servers, ...staticIce] }
+      return turn.servers
+    } catch (e) {
+      log('voice: couldn’t get relay logins from Cloudflare:', e.message)
+      return turn.servers ?? staticIce
+    }
+  }
 
   const roomOf = (username) => {
     for (const [groupId, r] of rooms) if (r.people.has(username)) return groupId
@@ -109,7 +137,7 @@ export function setupCalls({ route, HttpError, requireMember, membersOf, getUser
     return { rooms: out, version, mine: roomOf(me) }
   })
 
-  route('POST', '/groups/:id/voice/join', ({ me, params }) => {
+  route('POST', '/groups/:id/voice/join', async ({ me, params }) => {
     requireMember(params.id, me)
     limit(`voice:${me}`, 30, 60_000)
     const r = rooms.get(params.id) ?? { people: new Map() }
@@ -129,7 +157,7 @@ export function setupCalls({ route, HttpError, requireMember, membersOf, getUser
     rooms.set(params.id, r)
     boxes.set(me, { sid, queue: [], wake: null })
     changed(params.id)
-    return { sid, people: peopleView(params.id), version, iceServers, max: MAX_PEOPLE }
+    return { sid, people: peopleView(params.id), version, iceServers: await iceServers(), max: MAX_PEOPLE }
   })
 
   route('POST', '/groups/:id/voice/leave', ({ me, params, body }) => {
