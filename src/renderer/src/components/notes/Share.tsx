@@ -28,6 +28,7 @@ import { fileSrc, setRemoteFiles, type RemoteFiles } from './attachment'
 import { NOTE_COVERS } from './covers'
 import { personColor } from '../../lib/people'
 import { Welcome } from '../account'
+import { NoteToolbar } from './Toolbar'
 
 const clean = (e: unknown, fallback: string) => {
   const m = e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : fallback
@@ -44,7 +45,7 @@ function StaticArea({ doc }: { doc: unknown }) {
 }
 
 /** One area of a shared note on its live document: everyone's changes show as they happen. */
-function LiveArea({ live, field, editable, onEditor, who }: { live: LiveDoc; field: string; editable: boolean; onEditor: (e: Editor) => void; who: string }) {
+function LiveArea({ live, field, editable, onEditor, onActive, who }: { live: LiveDoc; field: string; editable: boolean; onEditor: (e: Editor) => void; onActive: (e: Editor) => void; who: string }) {
   const [ready, setReady] = useState(false)
   useEffect(() => {
     let on = true
@@ -58,7 +59,9 @@ function LiveArea({ live, field, editable, onEditor, who }: { live: LiveDoc; fie
       extensions: noteExtensions(editable ? 'Write here…' : '', false, false, ready ? { doc: live.doc, field, ...(field === 'content' ? { caret: { awareness: live.awareness, user: { name: who, color: personColor(who) } } } : {}) } : undefined),
       editable: false,
       immediatelyRender: true,
-      onCreate: ({ editor: e }) => onEditor(e)
+      onCreate: ({ editor: e }) => onEditor(e),
+      // The toolbar follows the box you're writing in.
+      onFocus: ({ editor: e }) => onActive(e)
     },
     [ready, live]
   )
@@ -126,12 +129,15 @@ export function SharedDoc({
   useEffect(() => onCan?.(can), [can]) // eslint-disable-line react-hooks/exhaustive-deps
   const canRef = useRef(can)
   canRef.current = can
+  // The editor the toolbar works on: the main text first, then whichever box you were last in.
+  const [active, setActive] = useState<Editor | null>(null)
 
   // Editors keep the plain-text copy (what readers on older apps and link previews see) up to date.
   const editors = useRef<Record<string, Editor>>({})
   const textTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const onEditor = (field: string) => (e: Editor) => {
     editors.current[field] = e
+    if (field === 'content') setActive((cur) => (cur && !cur.isDestroyed ? cur : e))
     e.on('update', ({ transaction }) => {
       if (!transaction.docChanged || canRef.current !== 'edit' || !docId || !call) return
       if (textTimer.current) clearTimeout(textTimer.current)
@@ -145,9 +151,14 @@ export function SharedDoc({
   }
   const cornell = body.template === 'cornell' || !!docText(body.cues) || !!docText(body.summary)
   const area = (field: 'content' | 'cues' | 'summary') =>
-    live ? <LiveArea live={live} field={field} editable={can === 'edit'} onEditor={onEditor(field)} who={who} /> : <StaticArea doc={body[field]} />
+    live ? <LiveArea live={live} field={field} editable={can === 'edit'} onEditor={onEditor(field)} onActive={setActive} who={who} /> : <StaticArea doc={body[field]} />
   return (
     <div className="share-doc">
+      {live && can === 'edit' && active && !active.isDestroyed && (
+        <div className="share-toolbar">
+          <NoteToolbar editor={active} />
+        </div>
+      )}
       <SharedCover cover={body.cover} />
       {body.icon && <div className="share-icon">{body.icon}</div>}
       <h1 className="hist-title">{title}</h1>
