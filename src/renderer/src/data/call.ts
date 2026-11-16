@@ -370,6 +370,11 @@ async function listen(l: Live) {
         notice('Voice needs a newer group server.')
         return end(false)
       }
+      // Refused outright (not a dropout): stop instead of spinning on "Reconnecting…".
+      if (e instanceof GroupCallError && e.status === 400) {
+        notice(`Voice couldn’t connect: ${e.message}`)
+        return end(true)
+      }
       set({ phase: 'reconnecting' })
       await sleep(Math.min(8000, 1000 * fails))
     }

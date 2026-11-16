@@ -504,7 +504,7 @@ app.whenReady().then(async () => {
     return group?.getStatus() ?? idle
   })
   ipcMain.handle('group:call', async (_e, method: string, path: string, body?: unknown) => {
-    if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || typeof path !== 'string' || !/^\/[A-Za-z0-9\-_/?=&%.@]*$/.test(path) || path.includes('..') || path.startsWith('/session') || path.startsWith('/poll'))
+    if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || typeof path !== 'string' || !/^\/[A-Za-z0-9\-_/?=&%.@]*$/.test(path) || path.includes('..') || path.startsWith('/session') || (path.startsWith('/poll') && !path.startsWith('/poll/voice?')))
       return { ok: false, error: 'That isn’t a group request.', status: 400 }
     try {
       if (!group) throw new GroupError('Group work isn’t ready yet.')

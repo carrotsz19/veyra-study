@@ -55,10 +55,14 @@ export function Popover({
     if (!open) return
     const away = (e: MouseEvent | TouchEvent) => {
       const t = e.target as Node
+      // A dropdown opened from inside this panel lives elsewhere on the page: picking from it isn't "outside".
+      if (t instanceof Element && t.closest('.sel-menu, .sel-scrim')) return
       if (!panel.current?.contains(t) && !anchor.current?.contains(t)) onClose()
     }
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      // Esc closes an open dropdown inside the panel first, not the whole panel.
+      if (document.querySelector('.sel-menu:not(.closing)') || [...document.querySelectorAll('.sel-scrim:not(.closing)')].some((s) => !s.contains(panel.current))) return
       e.stopPropagation()
       onClose()
       anchor.current?.focus({ preventScroll: true })

@@ -64,7 +64,7 @@ export const onSyncStatus = sub(syncSubs)
 
 /** One group request, answered like the desktop's IPC: { ok, v } or { ok: false, error, status, extra }. */
 export async function groupCallRaw(method: string, path: string, body?: unknown) {
-  if (!/^\/[A-Za-z0-9\-_/?=&%.@]*$/.test(path) || path.includes('..') || path.startsWith('/session') || path.startsWith('/poll')) return { ok: false as const, error: 'That isn’t a group request.', status: 400 }
+  if (!/^\/[A-Za-z0-9\-_/?=&%.@]*$/.test(path) || path.includes('..') || path.startsWith('/session') || (path.startsWith('/poll') && !path.startsWith('/poll/voice?'))) return { ok: false as const, error: 'That isn’t a group request.', status: 400 }
   try {
     return { ok: true as const, v: await group.call(method, path, body) }
   } catch (e) {

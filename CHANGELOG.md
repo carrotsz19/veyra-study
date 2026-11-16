@@ -4,6 +4,12 @@ Each version's section becomes its notes on GitHub, and the "What's new" text
 in Settings → Software update. `npm run release` won't publish a version
 without one.
 
+## 1.0.7
+
+- **Voice calls now connect:** in 1.0.6 the app wasn't allowed to fetch call messages, so a voice room got stuck on "Reconnecting…" and nobody could hear each other. Fixed.
+- **Voice settings stay open** when you pick a microphone or speaker.
+- **Menus are easier to read:** right-click menus, dropdowns and pop-ups are more solid, with a stronger blur behind them.
+
 ## 1.0.6
 
 - **Voice calls in groups:** every group now has a voice room, like a voice channel. Open a group → Voice → Join voice to talk with whoever's there (up to 8 people). You can mute, deafen, change someone's volume (click their picture), and pick your microphone and speaker. Rings light up around whoever is talking. The call stays on while you use the rest of the app, with a call bar at the bottom of the sidebar (or above the tabs on a phone). Ctrl+Shift+M mutes and Ctrl+Shift+D deafens. Your voice goes straight to the others, not through Veyra. Voice is off overnight while the group server sleeps.
