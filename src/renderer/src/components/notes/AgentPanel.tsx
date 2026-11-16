@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowUp, Bot, Users, Check, ChevronDown, ChevronRight, CircleDashed, Copy, ExternalLink, FilePlus2, Globe, ListChecks, Loader2, MessageSquarePlus, Square, Undo2, X, XCircle, Zap } from 'lucide-react'
-import { loadChat, saveChat, startAgent, SUBAGENTS_KEY, TURBO_KEY, WEB_KEY, type AgentChange, type AgentEvent, type AgentRun, type ChatTurn, type NoteContext, type ToolAsk } from '../../data/agent'
+import { ArrowUp, Bot, Users, Check, ChevronDown, ChevronRight, CircleDashed, Copy, ExternalLink, FilePlus2, FileText, Globe, HardDrive, Image as ImageIcon, ListChecks, Loader2, MessageSquarePlus, Paperclip, Square, Undo2, X, XCircle, Zap } from 'lucide-react'
+import { DRIVE_KEY, loadChat, MAX_FILES, prepareFile, saveChat, startAgent, SUBAGENTS_KEY, TURBO_KEY, WEB_KEY, type AgentChange, type AgentEvent, type AgentFile, type AgentRun, type ChatTurn, type NoteContext, type ToolAsk } from '../../data/agent'
+import { useDrive } from '../../data/drive'
 import { setAiState, useAiState, useVeyraAi } from '../../data/veyra-ai'
 import { useNav } from '../../nav'
 import { useToast } from '../ui'
@@ -10,6 +11,10 @@ import { Select } from '../Select'
  * The Assistant: a chat beside the note with Veyra AI as an agent. It plans, researches the web
  * (with sources), sends subagents to research in parallel, and reads and changes notes and
  * tasks, asking first (or not, with Turbo). Chats are kept on this device, one per note.
+ *
+ * Files (pictures, PDFs, text) can be attached, pasted or dropped in: they stay with the chat
+ * and go with each message until removed (only their names are saved). On the computer, with
+ * Google Drive allowed in Settings → Connections, it can also search and read Drive and make Docs.
  */
 
 type Step = { key: string; label: string; state: 'running' | 'done' | 'error'; icon: 'web' | 'note' | 'sub' | 'task' }
@@ -58,6 +63,14 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
   const [allowChat, setAllowChat] = useState(false)
   const [web, setWeb] = useState(() => readFlag(WEB_KEY, true))
   const [subagents, setSubagents] = useState(() => readFlag(SUBAGENTS_KEY, true))
+  const [driveOn, setDriveOn] = useState(() => readFlag(DRIVE_KEY, true))
+  const { state: drive } = useDrive()
+  const [files, setFiles] = useState<AgentFile[]>([])
+  const [reading, setReading] = useState(0)
+  const [dropping, setDropping] = useState(false)
+  const picker = useRef<HTMLInputElement>(null)
+  // Files already shown on an earlier message of this chat (each shows once, where it was added).
+  const shown = useRef(new Set<string>())
   const run = useRef<AgentRun | null>(null)
   const liveRef = useRef<Live | null>(null)
   const turboRef = useRef(turbo)
@@ -108,16 +121,42 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
   }
   const [done, setDone] = useState<AgentChange[]>([])
 
+  /** Gets files ready to send (pictures made smaller), up to MAX_FILES in the chat. */
+  const addFiles = async (list: File[]) => {
+    if (!list.length) return
+    const room = MAX_FILES - files.length
+    if (room <= 0) return toast(`Up to ${MAX_FILES} files in a chat. Remove one first.`)
+    if (list.length > room) toast(`Only the first ${room} ${room === 1 ? 'file was' : 'files were'} added (up to ${MAX_FILES} in a chat).`)
+    setReading((n) => n + 1)
+    try {
+      for (const f of list.slice(0, room)) {
+        try {
+          const ready = await prepareFile(f)
+          setFiles((cur) => (cur.length >= MAX_FILES || cur.some((x) => x.name === ready.name && x.size === ready.size) ? cur : [...cur, ready]))
+        } catch (e) {
+          toast(e instanceof Error ? e.message : `Couldn’t read “${f.name}”.`)
+        }
+      }
+    } finally {
+      setReading((n) => n - 1)
+    }
+  }
+  const driveReady = !!drive?.assistant
+  const useDriveNow = driveReady && driveOn
+
   const send = (text = input) => {
     const message = text.trim()
-    if (!message || live) return
-    const history = turns.filter((t) => t.text).map((t) => ({ role: t.role, text: t.text }))
-    setTurns((t) => [...t, { role: 'user', text: message }])
+    if (!message || live || reading) return
+    // Earlier turns go as text; files are named so the Assistant knows what came when.
+    const history = turns.filter((t) => t.text).map((t) => ({ role: t.role, text: t.files?.length ? `${t.text}\n[Attached: ${t.files.join(', ')}]` : t.text }))
+    const added = files.map((f) => f.name).filter((n) => !shown.current.has(n))
+    added.forEach((n) => shown.current.add(n))
+    setTurns((t) => [...t, { role: 'user', text: message, ...(added.length ? { files: added } : {}) }])
     setInput('')
     liveRef.current = fresh()
     setLive(liveRef.current)
     run.current = startAgent(
-      { message, history, model: ai?.models.veyra, note, web: web && status?.agentWeb !== false, subagents },
+      { message, history, model: ai?.models.veyra, note, web: web && status?.agentWeb !== false, subagents, files, drive: useDriveNow },
       {
         event: (e) => {
           if (e.t === 'model') update((l) => ({ ...l, model: e.label, note: e.downgraded ? `Using ${e.label} to make your Veyra AI limit last longer.` : '' }))
@@ -164,6 +203,8 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
     setTurns([])
     setDone([])
     setAllowChat(false)
+    setFiles([])
+    shown.current.clear()
   }
   const flipTurbo = () => {
     const v = !turbo
@@ -188,7 +229,25 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
   const model = models.find((m) => m.id === ai?.models.veyra) ?? models[0]
 
   return (
-    <aside className="ai-panel agent-panel" aria-label="Assistant">
+    <aside
+      className={`ai-panel agent-panel ${dropping ? 'agent-drop' : ''}`}
+      aria-label="Assistant"
+      onDragOver={(e) => {
+        if (blocked || !e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+        setDropping(true)
+      }}
+      onDragLeave={(e) => {
+        if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) setDropping(false)
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return
+        e.preventDefault()
+        setDropping(false)
+        void addFiles([...e.dataTransfer.files])
+      }}
+    >
       <header className="ai-head">
         <span className="ai-badge">
           <Bot size={15} />
@@ -237,7 +296,24 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
           </div>
         ) : null}
 
-        {turns.map((t, i) => (t.role === 'user' ? <div key={i} className="agent-user">{t.text}</div> : <Answer key={i} turn={t} onInsert={onInsert} />))}
+        {turns.map((t, i) =>
+          t.role === 'user' ? (
+            <div key={i} className="agent-user">
+              {t.files && (
+                <div className="agent-user-files">
+                  {t.files.map((n) => (
+                    <span key={n} className="agent-file-name">
+                      <Paperclip size={11} /> {n}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {t.text}
+            </div>
+          ) : (
+            <Answer key={i} turn={t} onInsert={onInsert} />
+          )
+        )}
 
         {live && (
           <div className="agent-turn">
@@ -276,7 +352,40 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
         {!live && done.some((c) => c.undo && !c.undone) && <Changes list={done.filter((c) => c.undo)} onUndo={undo} title="Changes in this chat" />}
       </div>
 
+      {(files.length > 0 || reading > 0) && (
+        <div className="agent-files" aria-label="Attached files">
+          {files.map((f) => (
+            <span key={`${f.name}:${f.size}`} className="agent-file" title={`${f.name} · ${sizeOf(f.size)} · goes with each message in this chat`}>
+              {f.type === 'image' ? <ImageIcon size={13} /> : <FileText size={13} />}
+              <span className="trunc">{f.name}</span>
+              <span className="xs tert">{sizeOf(f.size)}</span>
+              <button type="button" className="iconbtn plain agent-file-x" aria-label={`Remove ${f.name}`} disabled={!!live} onClick={() => setFiles((cur) => cur.filter((x) => x !== f))}>
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+          {reading > 0 && (
+            <span className="agent-file dim">
+              <Loader2 size={13} className="spin" /> Reading…
+            </span>
+          )}
+        </div>
+      )}
+      <input
+        ref={picker}
+        type="file"
+        multiple
+        hidden
+        accept="image/*,application/pdf,.pdf,text/*,.md,.csv,.json,.txt"
+        onChange={(e) => {
+          void addFiles([...(e.target.files ?? [])])
+          e.target.value = ''
+        }}
+      />
       <div className="agent-switches" role="group" aria-label="What the Assistant can use">
+        <button type="button" className="agent-switch" disabled={!!blocked || files.length >= MAX_FILES} title="Attach pictures, PDFs or text files (or paste or drop them here)" onClick={() => picker.current?.click()}>
+          <Paperclip size={13} /> Attach
+        </button>
         <button
           type="button"
           className={`agent-switch ${web && status?.agentWeb !== false ? 'on' : ''}`}
@@ -296,6 +405,30 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
         >
           <Users size={13} /> Subagents
         </button>
+        {drive?.connected &&
+          (driveReady ? (
+            <button
+              type="button"
+              className={`agent-switch ${driveOn ? 'on' : ''}`}
+              aria-pressed={driveOn}
+              title={driveOn ? 'Google Drive is on: it can search and read your Drive, and make Google Docs (it asks first)' : 'Google Drive is off for the Assistant'}
+              onClick={() => (setDriveOn(!driveOn), writeFlag(DRIVE_KEY, !driveOn))}
+            >
+              <HardDrive size={13} /> Google Drive
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="agent-switch"
+              title="Let the Assistant search and read your Google Drive: Settings → Connections → Google Drive"
+              onClick={() => {
+                sessionStorage.setItem('veyra.settingsSection', 'connections')
+                go({ name: 'settings' })
+              }}
+            >
+              <HardDrive size={13} /> Google Drive…
+            </button>
+          ))}
       </div>
       <form
         className="agent-compose"
@@ -310,6 +443,12 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
           value={input}
           disabled={!!blocked}
           onChange={(e) => setInput(e.target.value)}
+          onPaste={(e) => {
+            const pasted = [...e.clipboardData.files]
+            if (!pasted.length) return
+            e.preventDefault()
+            void addFiles(pasted)
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
@@ -323,7 +462,7 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
             <Square size={14} />
           </button>
         ) : (
-          <button type="submit" className="iconbtn agent-send" aria-label="Send" disabled={!input.trim() || !!blocked}>
+          <button type="submit" className="iconbtn agent-send" aria-label="Send" disabled={!input.trim() || !!blocked || reading > 0}>
             <ArrowUp size={16} />
           </button>
         )}
@@ -429,6 +568,11 @@ function Changes({ list, onUndo, title = 'Changes' }: { list: AgentChange[]; onU
         <div key={c.id} className="agent-plan-item agent-change">
           <Check size={13} />
           <span className={`grow ${c.undone ? 'undone' : ''}`}>{c.label}</span>
+          {c.url && !c.undone && (
+            <button className="btn ghost xs" onClick={() => openLink(c.url!)}>
+              <ExternalLink size={12} /> Open
+            </button>
+          )}
           {c.undo && !c.undone && (
             <button className="btn ghost xs" onClick={() => onUndo(c)}>
               <Undo2 size={12} /> Undo
@@ -439,6 +583,8 @@ function Changes({ list, onUndo, title = 'Changes' }: { list: AgentChange[]; onU
     </div>
   )
 }
+
+const sizeOf = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1)} MB`)
 
 const openLink = (url: string) => (window.veyra.open ? window.veyra.open(url) : window.open(url, '_blank', 'noopener'))
 

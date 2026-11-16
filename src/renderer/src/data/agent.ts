@@ -1,9 +1,10 @@
-import type { Note, Rec, Task } from '@shared/types'
+import type { DriveRead, Note, Rec, Task } from '@shared/types'
 import { docPlain, markdownToDoc, noteMarkdown } from '@shared/notetext'
 import { db } from './store'
 import { groupCall } from './groups'
 import { keepVersion } from '../lib/history'
 import { liveNotes, scoreNote, searchTerms, snippet, trashNotes } from '../lib/notes'
+import { markdownHtml } from './drive'
 
 /* =====================================================================
    The Assistant (Veyra AI agent) on this device: starts a task on the
@@ -39,6 +40,8 @@ export interface NoteContext {
 export interface AgentChange {
   id: string
   label: string
+  /** Where to see it (a Google Doc). */
+  url?: string
   undo?: () => Promise<void>
   undone?: boolean
 }
@@ -62,12 +65,16 @@ export async function describeChange(name: string, input: Record<string, unknown
     const title = id === 'current' || id === ctx?.id ? ctx?.title || 'this note' : ((await db.list('note')) as Rec<'note'>[]).find((n) => n.id === id)?.data.title || 'a note'
     return { name, input, label: `Add to “${title}”`, preview: str(input.markdown, 4000) }
   }
+  if (name === 'create_google_doc') return { name, input, label: `Make a Google Doc “${str(input.title, 120) || 'Untitled'}” in your Drive`, preview: str(input.markdown, 4000) }
   if (name === 'add_task') return { name, input, label: `Add a task: ${str(input.title, 200)}${input.due ? ` (due ${str(input.due, 10)})` : ''}`, preview: str(input.notes, 2000) || undefined }
   return { name, input, label: name }
 }
 
-/** Runs one note or task tool here. Returns the text the agent gets back. */
-export async function runAppTool(name: string, input: Record<string, unknown>, ctx: NoteContext | null, changed: (c: AgentChange) => void): Promise<string> {
+/** What a tool gives back: text, or (drive_read) text and the file itself. */
+export type ToolAnswer = string | { result: string; file: DriveRead['file'] }
+
+/** Runs one note, task or Drive tool here. Returns what the agent gets back. */
+export async function runAppTool(name: string, input: Record<string, unknown>, ctx: NoteContext | null, changed: (c: AgentChange) => void): Promise<ToolAnswer> {
   const notes = () => db.list('note') as Promise<Rec<'note'>[]>
   const find = async (id: string) => {
     const n = (await notes()).find((x) => x.id === (id === 'current' && ctx ? ctx.id : id))
@@ -138,6 +145,25 @@ export async function runAppTool(name: string, input: Record<string, unknown>, c
       changed({ id: rec.id, label: `Added the task “${title}”`, undo: async () => void (await db.remove('task', rec.id)) })
       return `Added the task “${title}”${due ? `, due ${due}` : ''}.`
     }
+    case 'drive_search': {
+      const found = await window.veyra.drive.search(str(input.query, 300), Math.min(25, Math.max(1, Number(input.limit) || 10)))
+      if (!found.length) return input.query ? 'No Drive files match.' : 'There are no files in this Drive.'
+      return found
+        .map((f) => `- id: ${f.id} · “${f.name}” · ${driveKind(f.mimeType)} · changed ${f.modified.slice(0, 10)}${f.owner ? ` · ${f.owner}` : ''}${f.size ? ` · ${Math.max(1, Math.round(f.size / 1024))} KB` : ''}`)
+        .join('\n')
+    }
+    case 'drive_read': {
+      const r = await window.veyra.drive.read(str(input.id, 200))
+      const about = `“${r.name}” (${driveKind(r.mime)}).${r.note ? ` ${r.note}` : ''}`
+      // Text goes in the result itself; PDFs and pictures go along as the file.
+      return r.file.type === 'text' ? `${about}\n\n${r.file.data}` : { result: about, file: r.file }
+    }
+    case 'create_google_doc': {
+      const title = str(input.title, 200).trim() || 'Untitled'
+      const doc = await window.veyra.drive.createDoc(title, markdownHtml(str(input.markdown)))
+      changed({ id: doc.id, label: `Made the Google Doc “${title}”`, url: doc.url, undo: async () => void (await window.veyra.drive.trash(doc.id)) })
+      return `Made the Google Doc “${title}”: ${doc.url}`
+    }
     default:
       throw new Error('That tool isn’t available.')
   }
@@ -152,7 +178,7 @@ export interface AgentRun {
  * decline); `onEvent` gets everything that happens, in order.
  */
 export function startAgent(
-  req: { message: string; history: { role: 'user' | 'assistant'; text: string }[]; model?: string; note: NoteContext | null; web: boolean; subagents: boolean },
+  req: { message: string; history: { role: 'user' | 'assistant'; text: string }[]; model?: string; note: NoteContext | null; web: boolean; subagents: boolean; files?: AgentFile[]; drive?: boolean },
   on: { event: (e: AgentEvent) => void; approve: (ask: ToolAsk) => Promise<boolean>; changed: (c: AgentChange) => void; tool: (label: string) => void }
 ): AgentRun {
   let id: string | null = null
@@ -160,7 +186,16 @@ export function startAgent(
   void (async () => {
     try {
       const note = req.note ? { title: req.note.title, markdown: req.note.markdown() } : undefined
-      const run = await groupCall<{ id: string }>('POST', '/ai/agent/runs', { message: req.message, history: req.history, model: req.model, note, web: req.web, subagents: req.subagents })
+      const run = await groupCall<{ id: string }>('POST', '/ai/agent/runs', {
+        message: req.message,
+        history: req.history,
+        model: req.model,
+        note,
+        web: req.web,
+        subagents: req.subagents,
+        ...(req.files?.length ? { attachments: req.files.map(({ type, name, mime, data }) => ({ type, name, mime, data })) } : {}),
+        ...(req.drive ? { drive: true } : {})
+      })
       id = run.id
       if (stopped) return void groupCall('DELETE', `/ai/agent/runs/${encodeURIComponent(run.id)}`).catch(() => {})
       let from = 0
@@ -194,7 +229,8 @@ export function startAgent(
         const ok = await on.approve(await describeChange(ev.name, ev.input, req.note))
         if (!ok) return void (await reply({ denied: true }))
       } else on.tool(readLabel(ev.name, ev.input))
-      await reply({ result: await runAppTool(ev.name, ev.input, req.note, on.changed) })
+      const out = await runAppTool(ev.name, ev.input, req.note, on.changed)
+      await reply(typeof out === 'string' ? { result: out } : out)
     } catch (e) {
       await reply({ error: e instanceof Error ? e.message : 'That didn’t work.' })
     }
@@ -213,6 +249,8 @@ export function readLabel(name: string, input: Record<string, unknown>): string 
   if (name === 'search_notes') return input.query ? `Searched your notes for “${str(input.query, 60)}”` : 'Looked through your recent notes'
   if (name === 'read_note') return input.id === 'current' ? 'Read this note' : 'Read a note'
   if (name === 'list_tasks') return 'Looked at your tasks'
+  if (name === 'drive_search') return input.query ? `Searched your Google Drive for “${str(input.query, 60)}”` : 'Looked through your recent Drive files'
+  if (name === 'drive_read') return 'Read a file from your Google Drive'
   return name
 }
 
@@ -220,6 +258,8 @@ export function readLabel(name: string, input: Record<string, unknown>): string 
 export interface ChatTurn {
   role: 'user' | 'assistant'
   text: string
+  /** Names of the files sent with this message (never the files: chats are kept in localStorage). */
+  files?: string[]
   /** The assistant's steps, plan, subagents and sources, for showing again. */
   steps?: { label: string; state?: 'done' | 'error' | 'running' }[]
   plan?: Extract<AgentEvent, { t: 'plan' }>['items']
@@ -255,3 +295,71 @@ export const TURBO_KEY = 'veyra.assistant.turbo'
 /** The person's Web search and Subagents switches ('1' on, '0' off; on unless set). */
 export const WEB_KEY = 'veyra.assistant.web'
 export const SUBAGENTS_KEY = 'veyra.assistant.subagents'
+/** The person's Google Drive switch (on unless set; only shown when Drive allows it). */
+export const DRIVE_KEY = 'veyra.assistant.drive'
+
+const driveKind = (mime: string) =>
+  ({
+    'application/vnd.google-apps.document': 'Google Doc',
+    'application/vnd.google-apps.spreadsheet': 'Google Sheet',
+    'application/vnd.google-apps.presentation': 'Google Slides',
+    'application/pdf': 'PDF'
+  })[mime] ?? (mime.startsWith('image/') ? 'picture' : mime.startsWith('text/') ? 'text file' : mime || 'file')
+
+/* ---------- files sent with a message ---------- */
+/** A file ready to send (server/agent.mjs checks it again): pictures shrunk, PDFs as they are, text as text. */
+export interface AgentFile {
+  type: 'image' | 'pdf' | 'text'
+  name: string
+  mime?: string
+  data: string
+  /** Bytes sent, roughly (for the chip). */
+  size: number
+}
+export const MAX_FILES = 5
+const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|xml|html?|css|js|jsx|ts|tsx|py|java|c|cc|cpp|h|cs|go|rs|rb|php|swift|kt|sql|ya?ml|tex|log|ini|toml)$/i
+
+const toBase64 = (buf: ArrayBuffer) => {
+  const bytes = new Uint8Array(buf)
+  let s = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(s)
+}
+
+/** About 1.15 megapixels (1568 px at most), as JPEG: the most detail Claude uses, for the fewest tokens. */
+async function shrink(file: File): Promise<AgentFile> {
+  let bmp: ImageBitmap
+  try {
+    bmp = await createImageBitmap(file)
+  } catch {
+    throw new Error(`“${file.name}” is a kind of picture that can’t be read here. Try a JPEG or PNG.`)
+  }
+  const scale = Math.min(1, 1568 / Math.max(bmp.width, bmp.height), Math.sqrt(1_150_000 / (bmp.width * bmp.height)))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(bmp.width * scale))
+  canvas.height = Math.max(1, Math.round(bmp.height * scale))
+  const g = canvas.getContext('2d')!
+  g.fillStyle = '#fff' // transparent parts (JPEG has none)
+  g.fillRect(0, 0, canvas.width, canvas.height)
+  g.drawImage(bmp, 0, 0, canvas.width, canvas.height)
+  bmp.close()
+  const data = canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
+  return { type: 'image', name: file.name || 'picture.jpg', mime: 'image/jpeg', data, size: Math.round((data.length * 3) / 4) }
+}
+
+/** Gets a picked, pasted or dropped file ready to send, or says why it can't be. */
+export async function prepareFile(file: File): Promise<AgentFile> {
+  const name = file.name || 'file'
+  if (file.type.startsWith('image/')) return shrink(file)
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(name)) {
+    if (file.size > 10 * 1024 * 1024) throw new Error(`“${name}” is over 10 MB, which is too big to send.`)
+    return { type: 'pdf', name, mime: 'application/pdf', data: toBase64(await file.arrayBuffer()), size: file.size }
+  }
+  if (file.type.startsWith('text/') || /^application\/(json|xml)/.test(file.type) || TEXT_EXT.test(name)) {
+    if (file.size > 2 * 1024 * 1024) throw new Error(`“${name}” is too long to send.`)
+    const text = await file.text()
+    if (text.length > 150_000) throw new Error(`“${name}” is too long to send (up to 150,000 characters).`)
+    return { type: 'text', name, data: text, size: file.size }
+  }
+  throw new Error(`The Assistant can read pictures, PDFs and text files, not “${name}”. For Word or PowerPoint files, save them as PDF first.`)
+}

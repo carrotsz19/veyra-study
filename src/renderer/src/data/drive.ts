@@ -4,6 +4,7 @@ import type { DriveState, Note } from '@shared/types'
 import { db, onRecordsChanged } from './store'
 import { docText, noteExtensions } from '../components/notes/extensions'
 import { noteToMarkdown } from '../components/notes/markdown'
+import { markdownToDoc } from '@shared/notetext'
 
 const api = window.veyra.drive
 export const cleanError = (e: unknown, fallback = 'Something went wrong. Try again.') =>
@@ -52,6 +53,9 @@ export function noteHtml(n: Note): string {
   }
   return parts.join('')
 }
+
+/** Markdown as a web page, for making a Google Doc (the Assistant's create_google_doc). */
+export const markdownHtml = (md: string): string => html(markdownToDoc(md))
 
 export async function saveNoteToDocs(id: string, n: Note): Promise<string> {
   const r = await api.saveDoc(id, n.title || 'Untitled', noteHtml(n))

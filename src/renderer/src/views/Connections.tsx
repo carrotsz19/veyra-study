@@ -409,6 +409,39 @@ export function DriveSection() {
                 </div>
               )}
               {status.error && <p className="welcome-err" style={{ textAlign: 'left' }}>{status.error}</p>}
+              <label className="toggle-row" style={{ marginTop: 14 }}>
+                <span>
+                  <b>Let the Assistant use my Drive</b>
+                  <span className="sm dim">
+                    {d.canRead
+                      ? 'The Assistant in notes can search and read your Drive files, and make Google Docs (it asks first). It only looks when you ask it something.'
+                      : 'The Assistant in notes could search and read your Drive files, and make Google Docs. Turning this on asks Google for permission to read your Drive.'}
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  className="switch"
+                  checked={!!d.assistant}
+                  disabled={!!busy}
+                  onChange={async (e) => {
+                    const on = e.target.checked
+                    setErr('')
+                    if (!on || d.canRead) return void run(() => window.veyra.drive.setAssistant(on))
+                    setBusy('connect')
+                    try {
+                      await run(() => window.veyra.drive.connect(true))
+                      toast('The Assistant can use your Google Drive')
+                    } catch (er) {
+                      setErr(clean(er))
+                      void run(() => window.veyra.drive.state())
+                    } finally {
+                      setBusy('')
+                    }
+                  }}
+                />
+              </label>
+              {busy === 'connect' && <p className="sm dim">Finish in your browser…</p>}
+              {err && <p className="welcome-err" style={{ textAlign: 'left' }}>{err}</p>}
               <p className="sm dim" style={{ marginTop: 12 }}>
                 To save one note as a Google Doc, open it and choose <b>Save to Google Docs</b> from its ••• menu.
               </p>

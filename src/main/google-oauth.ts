@@ -19,6 +19,8 @@ export interface GoogleTokens {
   access_token: string
   expires_in: number
   id_token?: string
+  /** What the person actually allowed (they can untick a permission on Google's page). */
+  scope?: string
 }
 
 export const emailFromIdToken = (idToken?: string): string => {

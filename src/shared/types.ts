@@ -448,6 +448,10 @@ export interface DriveState {
   error?: string
   /** The file picker is set up (Open from Drive). */
   canPick: boolean
+  /** Google allowed reading all of Drive (asked for only when the Assistant is turned on). */
+  canRead?: boolean
+  /** The Assistant may search and read Drive. */
+  assistant?: boolean
 }
 
 export interface DriveBackupFile {
@@ -460,7 +464,14 @@ export interface DriveBackupFile {
 
 export interface DriveApi {
   state(): Promise<DriveState>
-  connect(): Promise<DriveState>
+  /** `read`: also let the Assistant search and read Drive. */
+  connect(read?: boolean): Promise<DriveState>
+  setAssistant(on: boolean): Promise<DriveState>
+  /** For the Assistant (needs `assistant`): search, read one file, make a Doc, bin a Doc it made. */
+  search(query: string, limit?: number): Promise<DriveFound[]>
+  read(id: string): Promise<DriveRead>
+  createDoc(title: string, html: string): Promise<{ id: string; url: string }>
+  trash(id: string): Promise<void>
   disconnect(): Promise<DriveState>
   setBackup(on: boolean): Promise<DriveState>
   saveDoc(noteId: string, title: string, html: string): Promise<{ url: string }>
@@ -468,6 +479,23 @@ export interface DriveApi {
   resetBackup(): Promise<DriveState>
   /** Opens Google's file picker in the browser; Docs come back as HTML, other files as attachments. */
   pick(): Promise<DrivePicked[]>
+}
+
+export interface DriveFound {
+  id: string
+  name: string
+  mimeType: string
+  modified: string
+  size?: number
+  owner?: string
+}
+/** A Drive file for the Assistant: text, or the file itself (base64), as server/agent.mjs takes it. */
+export interface DriveRead {
+  name: string
+  mime: string
+  /** Anything to tell the Assistant about it (e.g. only the first sheet). */
+  note: string
+  file: { type: 'text' | 'pdf' | 'image'; name: string; mime?: string; data: string }
 }
 
 export type DrivePicked = { kind: 'doc'; name: string; html: string } | { kind: 'file'; file: Attachment }

@@ -392,7 +392,12 @@ app.whenReady().then(async () => {
     return drive
   }
   ipcMain.handle('drive:state', () => friendly(async () => gdrive().state()))
-  ipcMain.handle('drive:connect', () => friendly(() => gdrive().connect()))
+  ipcMain.handle('drive:connect', (_e, read?: boolean) => friendly(() => gdrive().connect(read === true)))
+  ipcMain.handle('drive:setAssistant', (_e, on: boolean) => friendly(async () => gdrive().setAssistant(!!on)))
+  ipcMain.handle('drive:search', (_e, query: string, limit?: number) => friendly(() => gdrive().search(String(query ?? ''), Number(limit) || 10)))
+  ipcMain.handle('drive:read', (_e, id: string) => friendly(() => gdrive().read(String(id ?? ''))))
+  ipcMain.handle('drive:createDoc', (_e, title: string, html: string) => friendly(() => gdrive().createDoc(String(title ?? ''), String(html ?? '').slice(0, 5_000_000))))
+  ipcMain.handle('drive:trash', (_e, id: string) => friendly(() => gdrive().trash(String(id ?? ''))))
   ipcMain.handle('drive:disconnect', () => friendly(async () => gdrive().disconnect()))
   ipcMain.handle('drive:setBackup', (_e, on: boolean) => friendly(async () => gdrive().setBackup(!!on)))
   ipcMain.handle('drive:pick', () => friendly(() => gdrive().pickAndImport()))

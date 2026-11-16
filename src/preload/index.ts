@@ -183,7 +183,12 @@ const syncApi = {
 
 const driveApi = {
   state: () => ipcRenderer.invoke('drive:state'),
-  connect: () => ipcRenderer.invoke('drive:connect'),
+  connect: (read?: boolean) => ipcRenderer.invoke('drive:connect', read),
+  setAssistant: (on: boolean) => ipcRenderer.invoke('drive:setAssistant', on),
+  search: (query: string, limit?: number) => ipcRenderer.invoke('drive:search', query, limit),
+  read: (id: string) => ipcRenderer.invoke('drive:read', id),
+  createDoc: (title: string, html: string) => ipcRenderer.invoke('drive:createDoc', title, html),
+  trash: (id: string) => ipcRenderer.invoke('drive:trash', id),
   disconnect: () => ipcRenderer.invoke('drive:disconnect'),
   setBackup: (on: boolean) => ipcRenderer.invoke('drive:setBackup', on),
   resetBackup: () => ipcRenderer.invoke('drive:resetBackup'),

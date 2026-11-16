@@ -155,7 +155,12 @@ const drive: Veyra['drive'] = {
   saveDoc: onComputer('Google Docs'),
   backup: onComputer('Google Drive'),
   resetBackup: onComputer('Google Drive'),
-  pick: onComputer('Google Drive')
+  pick: onComputer('Google Drive'),
+  setAssistant: onComputer('Google Drive'),
+  search: onComputer('Google Drive'),
+  read: onComputer('Google Drive'),
+  createDoc: onComputer('Google Docs'),
+  trash: onComputer('Google Drive')
 }
 const sync: Veyra['sync'] = {
   status: () => online.sync.state(),

@@ -43,7 +43,7 @@ import { setupAi } from './ai.mjs'
 import { setupAgent } from './agent.mjs'
 import { setupAnnouncements } from './announce.mjs'
 
-const VERSION = '1.11.0'
+const VERSION = '1.12.0'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -1183,6 +1183,9 @@ setupAnnouncements({ db, q, route, HttpError, requireAdmin, isOwner, getUser, us
 /* ---------- HTTP plumbing ---------- */
 const MAX_BODY = 600_000
 const MAX_SYNC_BODY = 4_000_000
+// The Assistant's attached files (and Drive files it reads): agent.mjs checks each one.
+const MAX_AI_BODY = 24_000_000
+const aiFiles = (p) => p === '/ai/agent/runs' || /^\/ai\/agent\/runs\/[^/]+\/calls\/[^/]+$/.test(p)
 
 async function readBody(req, max = MAX_BODY) {
   const chunks = []
@@ -1225,7 +1228,7 @@ const server = createServer(async (req, res) => {
       const params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]))
       limit(`all:${ip}`, 1200, 60_000)
       const auth = r.auth ? sessionUser(req) : {}
-      const body = req.method === 'GET' || req.method === 'DELETE' ? null : await readBody(req, url.pathname === '/sync/push' ? MAX_SYNC_BODY : url.pathname === '/files' || url.pathname.endsWith('/snapshot') ? MAX_FILE_BODY : MAX_BODY)
+      const body = req.method === 'GET' || req.method === 'DELETE' ? null : await readBody(req, url.pathname === '/sync/push' ? MAX_SYNC_BODY : url.pathname === '/files' || url.pathname.endsWith('/snapshot') ? MAX_FILE_BODY : aiFiles(url.pathname) ? MAX_AI_BODY : MAX_BODY)
       const out = await r.handler({ ...auth, params, body, url, req, ip })
       return send(200, out)
     }

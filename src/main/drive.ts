@@ -11,9 +11,9 @@
  * connected alone. Disconnecting only forgets the token here: revoking it
  * at Google could also end Calendar's access, since both use one client.
  */
-import { safeStorage } from 'electron'
+import { nativeImage, safeStorage } from 'electron'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import type { DriveBackupFile, DrivePicked, DriveState } from '../shared/types'
+import type { DriveBackupFile, DriveFound, DrivePicked, DriveRead, DriveState } from '../shared/types'
 import { emailFromIdToken, googleSignIn, tokenRequest } from './google-oauth'
 import type { Files } from './files'
 import { shell } from 'electron'
@@ -22,6 +22,15 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
 const SCOPES = ['https://www.googleapis.com/auth/drive.file', 'openid', 'email']
+/**
+ * Asked for only when someone lets the Assistant search and read their Drive (Settings →
+ * Connections). Google calls it restricted: until the app is verified, people see Google's
+ * "unverified app" page, and the app can have at most 100 users with it.
+ */
+const READ_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
+const GOOGLE_DOC = 'application/vnd.google-apps.document'
+const MAX_DOWNLOAD = 10 * 1024 * 1024
+const MAX_TEXT = 150_000
 /** Dev checks can point Drive at a stand-in server. */
 const BASE = (process.env['VEYRA_DRIVE_URL'] || 'https://www.googleapis.com').replace(/\/$/, '')
 const FOLDER = 'application/vnd.google-apps.folder'
@@ -44,6 +53,10 @@ interface Config {
   backupThrough: number
   lastBackup?: number
   error?: string
+  /** What Google says was allowed (space-separated); missing for sign-ins before it was kept. */
+  scope?: string
+  /** The Assistant may search and read Drive (needs READ_SCOPE). */
+  assistant?: boolean
 }
 
 const blank = (): Config => ({ docs: {}, backup: true, backups: {}, backupThrough: 0 })
@@ -92,30 +105,137 @@ export class GoogleDrive {
       backedUp: Object.keys(c.backups).length,
       lastBackup: c.lastBackup,
       error: c.error,
-      canPick: !!__GOOGLE_CLIENT__.apiKey
+      canPick: !!__GOOGLE_CLIENT__.apiKey,
+      canRead: this.canRead(),
+      assistant: !!c.assistant && this.canRead()
     }
   }
+  private canRead = () => !!this.cfg.refreshToken && (this.cfg.scope ?? '').split(' ').includes(READ_SCOPE)
 
   /* ---------- sign-in ---------- */
-  async connect(): Promise<DriveState> {
+  /** `read`: also let the Assistant search and read Drive (Google's page asks for that too). */
+  async connect(read = false): Promise<DriveState> {
     if (!__GOOGLE_CLIENT__.id) throw new DriveError('This build has no Google client, so Drive can’t connect.')
+    const scopes = read ? [...SCOPES, READ_SCOPE] : SCOPES
     // Dev checks: VEYRA_FAKE_DRIVE=1 skips Google's page (with VEYRA_GOOGLE_TOKEN_URL pointing at a stand-in).
     const tok = process.env['VEYRA_FAKE_DRIVE']
-      ? { refresh_token: 'fake-refresh', access_token: 'fake-access', expires_in: 3600, id_token: undefined }
-      : await googleSignIn({ clientId: __GOOGLE_CLIENT__.id, clientSecret: __GOOGLE_CLIENT__.secret, scopes: SCOPES, what: 'Google Drive' }).catch((e) => {
+      ? { refresh_token: 'fake-refresh', access_token: 'fake-access', expires_in: 3600, id_token: undefined, scope: scopes.join(' ') }
+      : await googleSignIn({ clientId: __GOOGLE_CLIENT__.id, clientSecret: __GOOGLE_CLIENT__.secret, scopes, what: 'Google Drive' }).catch((e) => {
           throw new DriveError(e instanceof Error ? e.message : 'Google sign-in didn’t finish.')
         })
     if (!tok.refresh_token) throw new DriveError('Google didn’t give Veyra lasting access. Remove Veyra in your Google account’s third-party access, then connect again.')
+    // Without a scope in the answer, Google gave what was asked (older stand-ins).
+    const granted = tok.scope ?? scopes.join(' ')
     this.cfg = {
       ...this.cfg,
       refreshToken: tok.refresh_token,
       accessToken: tok.access_token,
       accessExpires: Date.now() + (tok.expires_in - 60) * 1000,
       email: emailFromIdToken(tok.id_token) || (process.env['VEYRA_FAKE_DRIVE'] ? 'test@example.com' : ''),
-      error: undefined
+      error: undefined,
+      scope: granted
     }
+    this.cfg.assistant = read ? this.canRead() : !!this.cfg.assistant && this.canRead()
+    this.save()
+    if (read && !this.canRead()) throw new DriveError('Google Drive is connected, but the Assistant can’t read it: tick “See and download all your Google Drive files” on Google’s page to allow that.')
+    return this.state()
+  }
+
+  /** Lets the Assistant use Drive, or stops it (the permission stays until you disconnect). */
+  setAssistant(on: boolean): DriveState {
+    this.cfg.assistant = !!on && this.canRead()
     this.save()
     return this.state()
+  }
+
+  /* ---------- the Assistant: search, read, make a Doc ---------- */
+  private needRead() {
+    if (!this.cfg.assistant || !this.canRead()) throw new DriveError('The Assistant isn’t allowed to read Google Drive. Turn it on in Settings → Connections → Google Drive.')
+  }
+
+  /** Files whose name or text has these words (or the most recently changed), newest first. */
+  async search(query: string, limit = 10): Promise<DriveFound[]> {
+    this.needRead()
+    const words = String(query ?? '').trim().slice(0, 200)
+    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const q = [`trashed = false`, `mimeType != '${FOLDER}'`, ...(words ? [`(name contains '${esc(words)}' or fullText contains '${esc(words)}')`] : [])].join(' and ')
+    const params = new URLSearchParams({
+      q,
+      pageSize: String(Math.min(25, Math.max(1, Math.floor(limit) || 10))),
+      fields: 'files(id,name,mimeType,modifiedTime,size,owners(displayName))',
+      // Google won't sort full-text results.
+      ...(words ? {} : { orderBy: 'modifiedTime desc' }),
+      includeItemsFromAllDrives: 'true',
+      supportsAllDrives: 'true'
+    })
+    const r = await this.api('GET', `/drive/v3/files?${params}`)
+    if (r.status !== 200) throw new DriveError(r.json?.error?.message || `Google Drive answered ${r.status}.`)
+    return (r.json.files ?? []).map((f: any) => ({
+      id: String(f.id),
+      name: String(f.name || 'Untitled'),
+      mimeType: String(f.mimeType || ''),
+      modified: String(f.modifiedTime || ''),
+      size: f.size ? Number(f.size) : undefined,
+      owner: f.owners?.[0]?.displayName ? String(f.owners[0].displayName) : undefined
+    }))
+  }
+
+  /**
+   * One file for the Assistant: Docs (Markdown, or text), Slides (text) and Sheets (CSV, the first
+   * sheet) as text; PDFs, and pictures (made smaller), as the file; text files as text.
+   */
+  async read(id: string): Promise<DriveRead> {
+    this.needRead()
+    if (!/^[\w-]{1,200}$/.test(id)) throw new DriveError('That isn’t a Drive file id.')
+    const meta = await this.api('GET', `/drive/v3/files/${encodeURIComponent(id)}?fields=id,name,mimeType,size,trashed&supportsAllDrives=true`)
+    if (meta.status === 404) throw new DriveError('There’s no Drive file with that id (or it isn’t shared with you).')
+    if (meta.status !== 200) throw new DriveError(meta.json?.error?.message || `Google Drive answered ${meta.status}.`)
+    const name = String(meta.json.name || 'Untitled')
+    const mime = String(meta.json.mimeType || '')
+    const size = Number(meta.json.size || 0)
+    const text = (t: string, note = '') => {
+      const cut = t.length > MAX_TEXT
+      return { name, mime, note: `${note}${cut ? `${note ? ' ' : ''}It was cut at ${MAX_TEXT.toLocaleString('en')} characters.` : ''}`, file: { type: 'text' as const, name, data: t.slice(0, MAX_TEXT) } }
+    }
+    const exp = async (as: string) => (await this.raw(`/drive/v3/files/${encodeURIComponent(id)}/export?mimeType=${encodeURIComponent(as)}`)).text()
+    if (mime === GOOGLE_DOC) {
+      // Markdown keeps headings and lists, where Google offers it.
+      try {
+        return text(await exp('text/markdown'))
+      } catch {
+        return text(await exp('text/plain'))
+      }
+    }
+    if (mime === 'application/vnd.google-apps.presentation') return text(await exp('text/plain'))
+    if (mime === 'application/vnd.google-apps.spreadsheet') return text(await exp('text/csv'), 'This is the first sheet only.')
+    if (mime.startsWith('application/vnd.google-apps.')) throw new DriveError('The Assistant can read Google Docs, Sheets and Slides, but not this kind of Google file.')
+    if (size > MAX_DOWNLOAD) throw new DriveError(`“${name}” is ${Math.round(size / 1048576)} MB, which is too big to read (up to 10 MB).`)
+    const isText = mime.startsWith('text/') || /^application\/(json|xml|x-yaml|javascript)/.test(mime)
+    if (mime !== 'application/pdf' && !mime.startsWith('image/') && !isText)
+      throw new DriveError(`The Assistant can’t read this kind of file (${mime || 'unknown'}). For Word, Excel or PowerPoint files, open them in Google Drive and use File → Save as Google Docs (or Sheets, or Slides), then ask again.`)
+    const bytes = Buffer.from(await (await this.raw(`/drive/v3/files/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true`)).arrayBuffer())
+    if (bytes.length > MAX_DOWNLOAD) throw new DriveError(`“${name}” is too big to read (up to 10 MB).`)
+    if (isText) return text(bytes.toString('utf8'))
+    if (mime === 'application/pdf') return { name, mime, note: '', file: { type: 'pdf', name, data: bytes.toString('base64') } }
+    return { name, mime, note: '', file: { type: 'image', name, ...shrinkImage(bytes, mime, name) } }
+  }
+
+  /** A new Google Doc in "Veyra Study", made from a web page. */
+  createDoc(title: string, html: string): Promise<{ id: string; url: string }> {
+    return this.queue(async () => {
+      const name = (title || 'Untitled').slice(0, 200)
+      const page = `<!doctype html><html><head><meta charset="utf-8"><title>${escape(name)}</title></head><body>${html}</body></html>`
+      const r = await this.upload(null, { name, mimeType: GOOGLE_DOC, parents: [await this.root()] }, page, 'text/html')
+      if (r.status !== 200) throw new DriveError(r.json?.error?.message || 'Couldn’t make the Google Doc.')
+      return { id: r.json.id, url: r.json.webViewLink || `https://docs.google.com/document/d/${r.json.id}/edit` }
+    })
+  }
+
+  /** Moves a file Veyra made to Drive's bin (Undo for createDoc). */
+  async trash(id: string): Promise<void> {
+    if (!/^[\w-]{1,200}$/.test(id)) throw new DriveError('That isn’t a Drive file id.')
+    const r = await this.api('PATCH', `/drive/v3/files/${encodeURIComponent(id)}`, JSON.stringify({ trashed: true }), 'application/json')
+    if (r.status !== 200) throw new DriveError(r.json?.error?.message || 'Couldn’t move it to the bin.')
   }
 
   /** Forgets the sign-in here; files already in Drive stay. */
@@ -374,6 +494,23 @@ export class GoogleDrive {
     this.save()
     return this.state()
   }
+}
+
+/**
+ * A picture made small enough for Claude (about 1.15 megapixels, 1568 px at most), as JPEG.
+ * GIFs and anything Electron can't open are sent as they are, if they're small enough.
+ */
+function shrinkImage(bytes: Buffer, mime: string, name: string): { mime: string; data: string } {
+  const img = mime === 'image/gif' ? null : nativeImage.createFromBuffer(bytes)
+  if (img && !img.isEmpty()) {
+    const { width, height } = img.getSize()
+    const scale = Math.min(1, 1568 / Math.max(width, height), Math.sqrt(1_150_000 / (width * height)))
+    const out = scale < 1 ? img.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'good' }) : img
+    return { mime: 'image/jpeg', data: out.toJPEG(85).toString('base64') }
+  }
+  if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mime)) throw new DriveError(`“${name}” is a kind of picture the Assistant can’t read.`)
+  if (bytes.length > 3_700_000) throw new DriveError(`“${name}” is too big a picture to read.`)
+  return { mime, data: bytes.toString('base64') }
 }
 
 const escape = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)

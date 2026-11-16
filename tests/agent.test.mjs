@@ -32,8 +32,9 @@ const mock = createServer(async (req, res) => {
     return res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'tool web_search_20250305 is not supported' } }))
   }
   // The student's latest message (the last plain-text one; tool results come after it).
-  const text0 = [...body.messages].reverse().find((m) => m.role === 'user' && typeof m.content === 'string')?.content ?? ''
-  const scenario = sub ? 'SUB' : (/\b(PLAN|WRITE|SUBS|PAUSE|LOOP|NOAPP|SLOW|HISTORY)\b/.exec(text0) ?? [, 'PLAIN'])[1]
+  const plain = (m) => (typeof m.content === 'string' ? m.content : m.content.some((b) => b.type === 'tool_result') ? null : m.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n'))
+  const text0 = [...body.messages].reverse().map((m) => (m.role === 'user' ? plain(m) : null)).find((t) => t != null) ?? ''
+  const scenario = sub ? 'SUB' : (/\b(PLAN|WRITE|SUBS|PAUSE|LOOP|NOAPP|SLOW|HISTORY|FILES|DRIVE)\b/.exec(text0) ?? [, 'PLAIN'])[1]
   const turn = body.messages.filter((m) => m.role === 'assistant').length
   const lastUser = body.messages.at(-1)
   const results = Array.isArray(lastUser.content) ? lastUser.content.filter((b) => b.type === 'tool_result') : []
@@ -108,6 +109,21 @@ const mock = createServer(async (req, res) => {
   } else if (scenario === 'SLOW') {
     await sleep(3000)
     text('slow answer')
+  } else if (scenario === 'FILES') {
+    // What came with the message: each block's kind (and the PDF/text titles), and the cache setting.
+    const first = body.messages.at(-1).content
+    text(`Got ${first.map((b) => (b.type === 'document' ? `${b.source.type === 'base64' ? 'pdf' : 'text'}:${b.title}` : b.type)).join(',')} cache=${body.cache_control?.type}`)
+  } else if (scenario === 'DRIVE') {
+    if (turn === 0) {
+      tool('drive_search', { query: 'biology' })
+      stop = 'tool_use'
+    } else if (turn === 1) {
+      tool('drive_read', { id: 'doc_1' })
+      stop = 'tool_use'
+    } else {
+      const r = results[0]
+      text(`Read: ${Array.isArray(r.content) ? r.content.map((b) => (b.type === 'text' ? b.text : b.type)).join('+') : r.content}`)
+    }
   } else if (scenario === 'HISTORY') {
     text(`Saw ${body.messages.length} messages; roles ${body.messages.map((m) => m.role[0]).join('')}`)
   } else text('Plain answer.')
@@ -154,8 +170,8 @@ const login = async (u) => {
 const spendOf = async (boss, u) => (await api(boss, 'GET', '/admin/ai/users')).body.users.find((x) => x.username === u)
 
 /** Runs a task like the app does: reads events, answers app tool calls with `answer(ev)`. */
-async function agent(token, message, { answer, note, history, web, subagents } = {}) {
-  const r = await api(token, 'POST', '/ai/agent/runs', { message, note, history, web, subagents })
+async function agent(token, message, { answer, note, history, web, subagents, attachments, drive } = {}) {
+  const r = await api(token, 'POST', '/ai/agent/runs', { message, note, history, web, subagents, attachments, drive })
   if (r.status !== 200) return { status: r.status, error: r.body.error }
   const events = []
   let from = 0
@@ -339,4 +355,66 @@ test('the person can switch off web search and subagents for their tasks', async
   await agent(dan, 'plain question')
   assert.ok(seen.at(-1).tools.some((t) => t.name === 'run_subagents'))
   assert.equal((await api(dan, 'GET', '/ai')).body.agentWeb, true)
+})
+
+/* ---------- files and Google Drive ---------- */
+const PDF = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Pages /Count 2 >>\n2 0 obj << /Type /Page >>\n3 0 obj << /Type /Page >>\n%%EOF').toString('base64')
+const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').toString('base64')
+
+test('attached files go before the message as image and document blocks, with caching on', async () => {
+  const r = await agent(await login('ann'), 'FILES what is in these?', {
+    attachments: [
+      { type: 'image', name: 'diagram.png', mime: 'image/png', data: PNG },
+      { type: 'pdf', name: 'worksheet.pdf', data: PDF },
+      { type: 'text', name: 'notes.md', data: '# Cells\nMitochondria' }
+    ]
+  })
+  assert.equal(r.text(), 'Got image,pdf:worksheet.pdf,text:notes.md,text cache=ephemeral')
+  const last = seen.at(-1).messages.at(-1).content.at(-1)
+  assert.match(last.text, /^Attached: “diagram\.png”, “worksheet\.pdf”, “notes\.md”\./)
+})
+
+test('files that can’t be used are refused before anything is charged', async () => {
+  const ann = await login('ann')
+  const bad = (attachments) => api(ann, 'POST', '/ai/agent/runs', { message: 'hi', attachments })
+  assert.match((await bad([{ type: 'image', name: 'a.bmp', mime: 'image/bmp', data: PNG }])).body.error, /isn’t a picture/)
+  assert.match((await bad([{ type: 'pdf', name: 'fake.pdf', data: PNG }])).body.error, /isn’t a PDF/)
+  assert.match((await bad([{ type: 'exe', name: 'x.exe', data: 'AA' }])).body.error, /isn’t a kind of file/)
+  assert.equal((await bad(Array.from({ length: 6 }, () => ({ type: 'text', name: 't', data: 'x' })))).status, 413)
+  // Too many pages together: a 30-page PDF is more than one message can read.
+  const big = Buffer.from('%PDF-1.4\n' + '<< /Type /Page >>\n'.repeat(30)).toString('base64')
+  const r = await bad([{ type: 'pdf', name: 'book.pdf', data: big }])
+  assert.equal(r.status, 413)
+  assert.match(r.body.error, /too much to read at once/)
+  assert.equal((await api(ann, 'GET', '/ai')).body.busy, false)
+})
+
+test('Google Drive tools: only when the app says Drive is on, and a read file comes back as a block', async () => {
+  const dan = await login('dan')
+  await agent(dan, 'plain question')
+  assert.ok(seen.at(-1).tools.every((t) => !t.name.startsWith('drive_') && t.name !== 'create_google_doc'))
+  const calls = []
+  const r = await agent(dan, 'DRIVE find my biology doc', {
+    drive: true,
+    answer: (ev) => {
+      calls.push(`${ev.name}:${ev.write}`)
+      return ev.name === 'drive_search' ? { result: '- id: doc_1 · Biology notes' } : { result: 'Biology notes (PDF)', file: { type: 'pdf', name: 'Biology notes.pdf', data: PDF } }
+    }
+  })
+  assert.deepEqual(calls, ['drive_search:false', 'drive_read:false'])
+  assert.equal(r.text(), 'Read: Biology notes (PDF)+document')
+  const req = seen.at(-1)
+  assert.ok(req.tools.some((t) => t.name === 'create_google_doc'))
+  assert.match(req.system, /Google Drive/)
+  // Subagents never get Drive.
+  assert.ok(seen.filter((b) => b.system.startsWith('You are a research assistant')).every((b) => b.tools.every((t) => !t.name.startsWith('drive_'))))
+})
+
+test('a Drive file that can’t be used comes back as a note in the tool result, not a failed task', async () => {
+  const r = await agent(await login('dan'), 'DRIVE read it', {
+    drive: true,
+    answer: (ev) => (ev.name === 'drive_search' ? { result: 'doc_1' } : { result: 'A file', file: { type: 'pdf', name: 'x.pdf', data: PNG } })
+  })
+  assert.match(r.text(), /^Read: A file\n\[“x\.pdf” isn’t a PDF\.\]$/)
+  assert.equal(r.end.error, undefined)
 })
