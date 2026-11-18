@@ -296,9 +296,11 @@ function ChangePasswordDialog({ onClose, onChanged }: { onClose: () => void; onC
           </label>
           <input id="cp-next" type={show ? 'text' : 'password'} autoComplete="new-password" placeholder="At least 8 characters" value={next} onChange={(e) => setNext(e.target.value)} />
         </div>
-        <label className="row sm" style={{ gap: 6, marginTop: 4 }}>
-          <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show passwords
-        </label>
+        <div className="row" style={{ justifyContent: 'flex-end', marginTop: -2 }}>
+          <button type="button" className="linkbtn sm" aria-pressed={show} onClick={() => setShow(!show)}>
+            {show ? 'Hide passwords' : 'Show passwords'}
+          </button>
+        </div>
         <p className="xs dim">Forgot your current one? Sign out, then use “Forgot password?” on the sign-in screen.</p>
         {err && <p className="sm" style={{ color: 'var(--bad)' }} role="alert">{err}</p>}
         <div className="actions row" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
