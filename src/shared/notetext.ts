@@ -108,7 +108,18 @@ function marks(text: string): N[] {
 }
 const para = (t: string): N => ({ type: 'paragraph', ...(t.trim() ? { content: marks(t.trim()) } : {}) })
 
-/** Headings, bullet / numbered / check lists, quotes, code, dividers and paragraphs. */
+const TABLE_ROW = /^\s*\|.*\|\s*$/
+const TABLE_SEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/
+/** A table row's cells (| a | b |), keeping escaped pipes (\|) inside a cell. */
+const tableCells = (row: string) =>
+  row
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/(?<!\\)\|$/, '')
+    .split(/(?<!\\)\|/)
+    .map((c) => c.trim().replace(/\\\|/g, '|'))
+
+/** Headings, bullet / numbered / check lists, quotes, code, dividers, tables and paragraphs. */
 export function markdownToDoc(md: string): { type: 'doc'; content: N[] } {
   const lines = String(md ?? '').replace(/\r/g, '').split('\n')
   const out: N[] = []
@@ -153,13 +164,27 @@ export function markdownToDoc(md: string): { type: 'doc'; content: N[] } {
         i++
       }
       out.push({ type: 'orderedList', attrs: { start: 1 }, content: items })
+    } else if (TABLE_ROW.test(line) && TABLE_SEP.test(lines[i + 1] ?? '')) {
+      // | a | b | / | --- | --- | / rows: a table with a header row (as the editor's tables).
+      const head = tableCells(line)
+      i += 2
+      const rows: string[][] = []
+      while (i < lines.length && TABLE_ROW.test(lines[i])) rows.push(tableCells(lines[i++]))
+      const cell = (type: string, t: string): N => ({ type, content: [para(t)] })
+      out.push({
+        type: 'table',
+        content: [
+          { type: 'tableRow', content: head.map((c) => cell('tableHeader', c)) },
+          ...rows.map((r) => ({ type: 'tableRow', content: head.map((_, j) => cell('tableCell', r[j] ?? '')) }))
+        ]
+      })
     } else if (line.startsWith('>')) {
       const q: string[] = []
       while (i < lines.length && lines[i].startsWith('>')) q.push(lines[i++].replace(/^>\s?/, ''))
       out.push({ type: 'blockquote', content: q.join('\n').split(/\n{2,}/).map(para) })
     } else {
       const p: string[] = []
-      while (i < lines.length && lines[i].trim() && !/^(#{1,3}\s|```|>|\s*[-*]\s|\s*\d+[.)]\s|-{3,}\s*$)/.test(lines[i])) p.push(lines[i++].trim())
+      while (i < lines.length && lines[i].trim() && !/^(#{1,3}\s|```|>|\s*[-*]\s|\s*\d+[.)]\s|-{3,}\s*$)/.test(lines[i]) && !(TABLE_ROW.test(lines[i]) && TABLE_SEP.test(lines[i + 1] ?? ''))) p.push(lines[i++].trim())
       out.push(para(p.join(' ')))
     }
   }
