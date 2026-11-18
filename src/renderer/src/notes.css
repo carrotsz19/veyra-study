@@ -869,3 +869,8 @@ main.main.main-ai { padding: 0; overflow: hidden; display: flex; flex-direction:
 .aic-title b { min-width: 0; }
 .aic-phone-list, .aic-phone-chat { grid-template-columns: minmax(0, 1fr); }
 .aic-phone-list .aic-list { border-right: 0; }
+/* The page fills the space beside the list (the panel beside a note is 400px). */
+.agent-page.agent-panel { width: auto; border-left: 0; animation: none; }
+.agent-page .agent-empty { max-width: 640px; margin: 8vh auto 0; text-align: center; }
+.agent-page .agent-suggest { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; text-align: left; }
+.aic-phone-chat .agent-page .agent-suggest { grid-template-columns: minmax(0, 1fr); }
