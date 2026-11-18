@@ -7,7 +7,7 @@ in Settings → Software update. Write new changes under "## Unreleased":
 Versions are year.month.release-in-that-month (26.11.1, 26.11.2, then 26.12.1),
 picked automatically. They come after the older 1.0.x numbers.
 
-## Unreleased
+## 26.11.1
 
 - **Past chats in the Assistant:** a new clock button in a note's Assistant lists every chat you've had, from any note, newest first. Click one to pick it up again: a chat from another note opens that note with the chat showing, and a chat whose note was deleted carries on in the note you're in. Delete chats you don't need with the bin icon.
 - **New chat keeps your old chat:** starting a new chat no longer throws the last one away. It's saved under Past chats (the 60 most recent are kept on this device).
