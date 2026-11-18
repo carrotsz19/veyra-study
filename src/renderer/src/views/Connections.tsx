@@ -7,6 +7,7 @@ import type { AccountState, GoogleState, McpState, SyncStatus } from '@shared/ty
 import { useSettings } from '../data/settings'
 import { Avatar, useAccount, Welcome } from '../components/account'
 import { Dialog, useToast } from '../components/ui'
+import { rewrapChats, startChatsOver, turnOffChatsHere, unlockChats, useChatSync } from '../data/chat-sync'
 import { IS_DEV } from '@shared/channel'
 
 const clean = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
@@ -110,6 +111,7 @@ function EmailAndPassword() {
           </button>
         )}
       </div>
+      <ChatSyncRow />
       <div className="acct-row">
         <KeyRound size={16} className="dim" />
         <div className="grow">
@@ -153,6 +155,124 @@ function EmailAndPassword() {
         />
       )}
     </div>
+  )
+}
+
+/** AI chats sync: end-to-end encrypted, unlocked with your password. */
+function ChatSyncRow() {
+  const sync = useChatSync()
+  const toast = useToast()
+  const [open, setOpen] = useState<null | 'unlock' | 'over'>(null)
+  const text =
+    sync.status === 'on'
+      ? `On. Encrypted on your devices, so nobody else, not even the server’s owner, can read them.${sync.lastSync ? ` Synced ${formatDistanceToNowStrict(sync.lastSync, { addSuffix: true })}.` : ''}`
+      : sync.status === 'locked'
+        ? 'Your chats are synced, but locked on this device. Enter your password to unlock them here.'
+        : sync.status === 'unavailable'
+          ? sync.error || 'Can’t reach the Veyra server right now.'
+          : 'Off. Turn it on to have your AI chats on all your devices, encrypted so only you can read them.'
+  return (
+    <div className="acct-row">
+      <Bot size={16} className="dim" />
+      <div className="grow" style={{ minWidth: 0 }}>
+        <div className="sm" style={{ fontWeight: 600 }}>
+          AI chats sync {sync.syncing && <RefreshCw size={11} className="spin dim" style={{ marginLeft: 4 }} />}
+        </div>
+        <div className="xs dim">{text}</div>
+        {sync.status === 'on' && sync.error && <div className="xs" style={{ color: 'var(--bad)' }}>{sync.error}</div>}
+      </div>
+      {sync.status === 'on' ? (
+        <button
+          className="btn ghost sm"
+          onClick={() => {
+            turnOffChatsHere()
+            toast('Chat sync is off on this device. Your chats stay here.')
+          }}
+        >
+          Turn off here
+        </button>
+      ) : sync.status === 'unavailable' ? null : (
+        <button className="btn sm" onClick={() => setOpen('unlock')}>
+          {sync.status === 'locked' ? 'Unlock' : 'Turn on'}
+        </button>
+      )}
+      {open === 'unlock' && (
+        <ChatPasswordDialog
+          title={sync.status === 'locked' ? 'Unlock your synced chats' : 'Turn on AI chats sync'}
+          text="Enter your Veyra password. Your chats are encrypted with a key only your password opens: the server only ever sees scrambled data."
+          action={sync.status === 'locked' ? 'Unlock' : 'Turn on'}
+          run={unlockChats}
+          onClose={() => setOpen(null)}
+          onDone={() => {
+            setOpen(null)
+            toast('AI chats sync is on')
+          }}
+          extra={
+            sync.status === 'locked' ? (
+              <button type="button" className="linkbtn xs" onClick={() => setOpen('over')}>
+                Forgot the password they were locked with? Start over…
+              </button>
+            ) : null
+          }
+        />
+      )}
+      {open === 'over' && (
+        <ChatPasswordDialog
+          title="Start your synced chats over?"
+          text="The chats synced with your old password are deleted from the server, and can’t be opened again. The chats on this device are kept and synced again with your current password. Your other devices will need your password to see them."
+          action="Start over"
+          danger
+          run={startChatsOver}
+          onClose={() => setOpen(null)}
+          onDone={() => {
+            setOpen(null)
+            toast('Started over: the chats on this device are syncing again')
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function ChatPasswordDialog({ title, text, action, danger, run, onClose, onDone, extra }: { title: string; text: string; action: string; danger?: boolean; run: (password: string) => Promise<void>; onClose: () => void; onDone: () => void; extra?: React.ReactNode }) {
+  const [pw, setPw] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  return (
+    <Dialog title={title} onClose={onClose} width={440}>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault()
+          if (busy || !pw) return
+          setBusy(true)
+          setErr('')
+          try {
+            await run(pw)
+            onDone()
+          } catch (ex) {
+            setErr(clean(ex))
+            setBusy(false)
+          }
+        }}
+      >
+        <p className="sm dim" style={{ marginTop: 0 }}>
+          {text}
+        </p>
+        <div className="field">
+          <input type="password" autoFocus autoComplete="current-password" placeholder="Password" value={pw} onChange={(e) => setPw(e.target.value)} aria-label="Password" />
+        </div>
+        {err && <p className="sm" style={{ color: 'var(--bad)' }} role="alert">{err}</p>}
+        {extra}
+        <div className="actions row" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
+          <button type="button" className="btn sec" onClick={onClose}>
+            Cancel
+          </button>
+          <button className={`btn ${danger ? 'dan' : ''}`} disabled={!pw || busy}>
+            {busy ? 'Working…' : action}
+          </button>
+        </div>
+      </form>
+    </Dialog>
   )
 }
 
@@ -277,6 +397,8 @@ function ChangePasswordDialog({ onClose, onChanged }: { onClose: () => void; onC
           setErr('')
           try {
             await window.veyra.account.changePassword(current, next)
+            // Synced AI chats: the same key, now opened by the new password.
+            await rewrapChats(next)
             onChanged()
           } catch (ex) {
             setErr(clean(ex))

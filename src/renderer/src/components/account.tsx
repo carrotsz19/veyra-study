@@ -8,6 +8,8 @@ import './auth.css'
 import { deviceWord } from '../lib/phone'
 import type { AccountState } from '@shared/types'
 import { IS_DEV } from '@shared/channel'
+import { setChatOwner } from '../data/agent'
+import { chatSyncAfterSignIn, startChatSync } from '../data/chat-sync'
 
 const api = window.veyra.account
 
@@ -27,11 +29,17 @@ export function AccountGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     api.state().then((s) => {
+      // Whose AI chats these are, before any screen reads them.
+      setChatOwner(s.mode === 'account' ? (s.user?.username ?? null) : null)
       setState(s)
       // Check the saved sign-in with the server in the background.
       if (s.mode === 'account') api.refresh().then((r) => (r.mode !== 'account' ? location.reload() : setState(r)))
     })
   }, [])
+
+  // AI chats sync (end-to-end encrypted) while you're signed in.
+  const syncAs = state?.mode === 'account' && !state.ended ? (state.user?.username ?? null) : null
+  useEffect(() => (syncAs ? startChatSync(syncAs) : undefined), [syncAs])
 
   const apply = useCallback((s: AccountState) => {
     if (s.notice === 'moved') sessionStorage.setItem('veyra.moved', '1')
@@ -140,6 +148,8 @@ export function Welcome({
       const s = up
         ? await api.signUp({ username: username.trim(), email: email.trim(), password, acceptLegal: accept })
         : await api.signIn(username.trim(), password)
+      // AI chat sync: switched on (or unlocked) with the password just typed. Never holds sign-in up for long.
+      if (s.mode === 'account' && s.user) await Promise.race([chatSyncAfterSignIn(s.user.username, password), new Promise((r) => setTimeout(r, 12_000))])
       setPassword('')
       // A new account with an email: confirm it now (it's how a forgotten password is reset).
       if (up && email.trim() && s.user && !s.user.emailVerified) {

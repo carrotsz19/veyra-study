@@ -12,6 +12,8 @@ picked automatically. They come after the older 1.0.x numbers.
 - **Forgot your password? Reset it in the app:** on the sign-in screen, Forgot password? now asks for your username or email, emails you a 6-digit code, and lets you set a new password right there, instead of sending you to the Veyra website. It works when your account has a confirmed email.
 - **Confirm your email in the app:** after creating an account with an email, enter the code we email you to confirm it (or do it later). Settings → Account now shows your email, lets you add one if you don't have one, and confirm it with a code.
 - **Change your password in Settings → Account.** Your other devices are signed out when you do.
+- **AI chats sync between your devices, end-to-end encrypted:** your chats with the Assistant are now on your computer and your phone alike. They're encrypted on your device with a key only your password opens, so nobody else can read them, not even the server's owner. It switches on when you sign in; see Settings → Account → AI chats sync. Each account on a shared computer now keeps its own chats.
+- **Tables from the Assistant:** answers with tables show as real tables, and stay tables when you add them to a note.
 
 ## 26.11.1
 

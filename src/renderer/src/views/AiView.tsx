@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, History, Lock, NotebookPen, Pencil, Search, Sparkles, SquarePen, Trash2 } from 'lucide-react'
+import { ArrowLeft, CloudOff, History, Lock, LockKeyhole, NotebookPen, Pencil, RefreshCw, Search, Sparkles, SquarePen, Trash2 } from 'lucide-react'
 import { docPlain, markdownToDoc, noteMarkdown } from '@shared/notetext'
 import type { Note, Rec } from '@shared/types'
 import { useNav } from '../nav'
@@ -11,6 +11,7 @@ import { db, useRecords } from '../data/store'
 import { groupCall } from '../data/groups'
 import type { VeyraAiStatus } from '../data/veyra-ai'
 import { usePhone } from '../lib/phone'
+import { syncNow, useChatSync } from '../data/chat-sync'
 
 /**
  * The Veyra AI tab: every AI chat in one place, like claude.ai — the chats on the left (newest
@@ -120,6 +121,29 @@ function useNoteContext(rec: Rec<'note'> | undefined): NoteContext | null {
       restore: (was: Note) => save(was)
     }
   }, [id, title])
+}
+
+/** Under the chats: whether they sync (encrypted) to your other devices. */
+function SyncLine() {
+  const sync = useChatSync()
+  const { go } = useNav()
+  const toSettings = () => {
+    sessionStorage.setItem('veyra.settingsSection', 'account')
+    go({ name: 'settings' })
+  }
+  if (sync.status === 'on')
+    return (
+      <button className="aic-sync" onClick={() => void syncNow()} title={sync.error || 'Encrypted on your devices: only you can read them. Click to sync now.'}>
+        {sync.syncing ? <RefreshCw size={12} className="spin" /> : <LockKeyhole size={12} />}
+        <span className="grow">{sync.error ? 'Couldn’t sync just now' : 'Synced, end-to-end encrypted'}</span>
+      </button>
+    )
+  return (
+    <button className="aic-sync" onClick={toSettings} title="Settings → Account → AI chats sync">
+      <CloudOff size={12} />
+      <span className="grow">{sync.status === 'locked' ? 'Locked on this device: unlock to sync' : sync.status === 'unavailable' ? 'On this device (sync unavailable)' : 'On this device only: turn on sync'}</span>
+    </button>
+  )
 }
 
 function AiChats({ initial }: { initial?: string }) {
@@ -257,6 +281,7 @@ function AiChats({ initial }: { initial?: string }) {
           )
         })}
       </div>
+      <SyncLine />
     </nav>
   )
 

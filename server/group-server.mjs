@@ -44,7 +44,7 @@ import { setupAgent } from './agent.mjs'
 import { setupAnnouncements } from './announce.mjs'
 import { setupCalls } from './calls.mjs'
 
-const VERSION = '1.15.0'
+const VERSION = '1.16.0'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -1156,6 +1156,130 @@ route('GET', '/sync/pull', ({ me, url }) => {
   }
 })
 
+/* ---------- AI chat sync: end-to-end encrypted (the server only ever holds scrambled data) ----------
+ * Each person's devices share one random chat key. It's kept here only wrapped (encrypted) with a key
+ * made from their password on their own device, so neither this server nor its owner can read a chat.
+ * A device that knows the password unwraps it; a password change re-wraps it; "start over" (after a
+ * forgotten password) makes a new key, a new generation, and the old chats here are deleted (each
+ * device still has its own copy and sends it again).
+ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS chat_keys (
+    username TEXT PRIMARY KEY, gen INTEGER NOT NULL, salt TEXT NOT NULL, iter INTEGER NOT NULL,
+    iv TEXT NOT NULL, wrapped TEXT NOT NULL, updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS chat_sync (
+    username TEXT NOT NULL, id TEXT NOT NULL, gen INTEGER NOT NULL, at INTEGER NOT NULL,
+    iv TEXT NOT NULL, data TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL,
+    PRIMARY KEY (username, id)
+  );
+  CREATE INDEX IF NOT EXISTS chat_sync_seq ON chat_sync(username, seq);
+`)
+const CHAT_ID = /^[A-Za-z0-9:~_-]{1,100}$/
+const B64 = /^[A-Za-z0-9+/=]*$/
+const CHAT_MAX = 700_000 // one chat, encrypted and base64 (40 turns with sources is well under)
+const CHAT_MAX_ROWS = 2000
+const CHAT_MAX_BYTES = 40_000_000
+const chatKey = (me) => q('SELECT gen, salt, iter, iv, wrapped, updated_at AS updatedAt FROM chat_keys WHERE username = ?').get(me) ?? null
+
+route('GET', '/chats/key', ({ me }) => {
+  limit(`chats:${me}`, 240, 60_000)
+  return { key: chatKey(me) }
+})
+
+// mode: 'create' (none yet), 'rewrap' (same key, new password) or 'reset' (a new key: the old chats go).
+route('PUT', '/chats/key', ({ me, body }) => {
+  limit(`chatkey:${me}`, 20, 60_000)
+  const { mode, salt, iv, wrapped } = body ?? {}
+  const iter = Number(body?.iter)
+  const ok =
+    ['create', 'rewrap', 'reset'].includes(mode) && typeof salt === 'string' && B64.test(salt) && salt.length >= 16 && salt.length <= 64 &&
+    typeof iv === 'string' && B64.test(iv) && iv.length >= 16 && iv.length <= 32 && typeof wrapped === 'string' && B64.test(wrapped) && wrapped.length >= 40 && wrapped.length <= 200 &&
+    Number.isInteger(iter) && iter >= 100_000 && iter <= 5_000_000
+  if (!ok) throw new HttpError(400, 'That key isn’t valid.')
+  const old = chatKey(me)
+  if (mode === 'create' && old) throw new HttpError(409, 'Your chats already have a key. Unlock them with your password.')
+  if (mode === 'rewrap' && (!old || Number(body?.gen) !== old.gen)) throw new HttpError(409, 'Your chat key changed on another device.')
+  const gen = mode === 'reset' ? (old?.gen ?? 0) + 1 : old?.gen ?? 1
+  db.exec('BEGIN')
+  try {
+    q(
+      `INSERT INTO chat_keys (username, gen, salt, iter, iv, wrapped, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(username) DO UPDATE SET gen = excluded.gen, salt = excluded.salt, iter = excluded.iter, iv = excluded.iv, wrapped = excluded.wrapped, updated_at = excluded.updated_at`
+    ).run(me, gen, salt, iter, iv, wrapped, now())
+    if (mode === 'reset') q('DELETE FROM chat_sync WHERE username = ?').run(me)
+    db.exec('COMMIT')
+  } catch (e) {
+    db.exec('ROLLBACK')
+    throw e
+  }
+  notify([me])
+  return { key: chatKey(me) }
+})
+
+// Your devices send chats they changed (encrypted) or deleted. The newest edit of each chat wins.
+route('POST', '/chats/push', ({ me, body }) => {
+  limit(`chats:${me}`, 240, 60_000)
+  const key = chatKey(me)
+  if (!key) throw new HttpError(409, 'Turn on chat sync first.')
+  if (Number(body?.gen) !== key.gen) throw new HttpError(409, 'Your chat key changed on another device.')
+  const list = Array.isArray(body?.chats) ? body.chats.slice(0, 200) : null
+  if (!list) throw new HttpError(400, 'Nothing to sync.')
+  const totals = q('SELECT count(*) AS n, coalesce(sum(length(data)), 0) AS bytes FROM chat_sync WHERE username = ?').get(me)
+  let rows = totals.n
+  let bytes = totals.bytes
+  let accepted = 0
+  let skipped = 0
+  db.exec('BEGIN')
+  try {
+    for (const c of list) {
+      const deleted = c?.deleted === true
+      const ok =
+        c && typeof c.id === 'string' && CHAT_ID.test(c.id) && Number.isFinite(c.at) && c.at > 0 &&
+        (deleted || (typeof c.iv === 'string' && B64.test(c.iv) && c.iv.length <= 32 && typeof c.data === 'string' && B64.test(c.data) && c.data.length > 0 && c.data.length <= CHAT_MAX))
+      if (!ok) {
+        skipped++
+        continue
+      }
+      const old = q('SELECT at, length(data) AS size FROM chat_sync WHERE username = ? AND id = ?').get(me, c.id)
+      if (old && old.at >= c.at) continue
+      const data = deleted ? '' : c.data
+      if (!old && rows >= CHAT_MAX_ROWS) throw new HttpError(413, `Synced chats are over the limit (${CHAT_MAX_ROWS}). Delete some old ones.`)
+      if (bytes - (old?.size ?? 0) + data.length > CHAT_MAX_BYTES) throw new HttpError(413, 'Synced chats are over the size limit (40 MB). Delete some old ones.')
+      q(
+        `INSERT INTO chat_sync (username, id, gen, at, iv, data, deleted, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(username, id) DO UPDATE SET gen = excluded.gen, at = excluded.at, iv = excluded.iv, data = excluded.data, deleted = excluded.deleted, seq = excluded.seq`
+      ).run(me, c.id, key.gen, c.at, deleted ? '' : c.iv, data, deleted ? 1 : 0, nextSeq())
+      if (!old) rows++
+      bytes += data.length - (old?.size ?? 0)
+      accepted++
+    }
+    db.exec('COMMIT')
+  } catch (e) {
+    db.exec('ROLLBACK')
+    throw e
+  }
+  if (accepted) notify([me])
+  return { accepted, skipped, seq }
+})
+
+// …and fetch what your other devices changed since you last asked.
+route('GET', '/chats/pull', ({ me, url }) => {
+  limit(`chats:${me}`, 240, 60_000)
+  const key = chatKey(me)
+  const since = Number(url.searchParams.get('since') || 0)
+  const max = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 100)))
+  const list = key ? q('SELECT id, at, iv, data, deleted, seq FROM chat_sync WHERE username = ? AND gen = ? AND seq > ? ORDER BY seq LIMIT ?').all(me, key.gen, since, max + 1) : []
+  const more = list.length > max
+  const page = list.slice(0, max)
+  return {
+    gen: key?.gen ?? null,
+    chats: page.map((c) => (c.deleted ? { id: c.id, at: c.at, deleted: true } : { id: c.id, at: c.at, iv: c.iv, data: c.data })),
+    seq: page.length ? page[page.length - 1].seq : Math.max(since, 0),
+    more
+  }
+})
+
 // Long-poll: answers as soon as anything in your groups or invites changes, or after ~25 s.
 route('GET', '/poll', async ({ me, url, req }) => {
   const since = Number(url.searchParams.get('since') || 0)
@@ -1234,7 +1358,7 @@ const server = createServer(async (req, res) => {
       const params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]))
       limit(`all:${ip}`, 1200, 60_000)
       const auth = r.auth ? sessionUser(req) : {}
-      const body = req.method === 'GET' || req.method === 'DELETE' ? null : await readBody(req, url.pathname === '/sync/push' ? MAX_SYNC_BODY : url.pathname === '/files' || url.pathname.endsWith('/snapshot') ? MAX_FILE_BODY : aiFiles(url.pathname) ? MAX_AI_BODY : MAX_BODY)
+      const body = req.method === 'GET' || req.method === 'DELETE' ? null : await readBody(req, url.pathname === '/sync/push' || url.pathname === '/chats/push' ? MAX_SYNC_BODY : url.pathname === '/files' || url.pathname.endsWith('/snapshot') ? MAX_FILE_BODY : aiFiles(url.pathname) ? MAX_AI_BODY : MAX_BODY)
       const out = await r.handler({ ...auth, params, body, url, req, ip })
       return send(200, out)
     }

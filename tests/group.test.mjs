@@ -254,6 +254,52 @@ test('personal sync: your own records only, newest edit wins, paged pulls', asyn
   assert.equal(r.body.accepted, 1)
 })
 
+test('chat sync: one wrapped key per person, encrypted chats only, newest wins, start over wipes', async () => {
+  const a = await login('carol')
+  const b = await login('dave')
+  const key = (extra = {}) => ({ mode: 'create', salt: 'c2FsdHNhbHRzYWx0c2FsdA==', iter: 310000, iv: 'aXZpdml2aXZpdml2', wrapped: 'd'.repeat(64), ...extra })
+  const chat = (id, at, extra = {}) => ({ id, at, iv: 'aXZpdml2aXZpdml2', data: Buffer.from(`secret ${id} ${at}`).toString('base64'), ...extra })
+
+  // No key yet: nothing to push to; then one key, and only one.
+  assert.equal((await api(a, 'GET', '/chats/key')).body.key, null)
+  assert.equal((await api(a, 'POST', '/chats/push', { gen: 1, chats: [chat('chat:x', 1)] })).status, 409)
+  let r = await api(a, 'PUT', '/chats/key', key())
+  assert.equal(r.status, 200)
+  assert.equal(r.body.key.gen, 1)
+  assert.equal((await api(a, 'PUT', '/chats/key', key())).status, 409)
+  assert.equal((await api(a, 'PUT', '/chats/key', key({ wrapped: 'not base64!' }))).status, 400)
+
+  // Chats go up encrypted; the newest edit wins; Dave sees none of Carol's.
+  r = await api(a, 'POST', '/chats/push', { gen: 1, chats: [chat('chat:x', 100), chat('n1~5', 100), { id: '../bad', at: 1, iv: 'x', data: 'x' }] })
+  assert.equal(r.body.accepted, 2)
+  assert.equal(r.body.skipped, 1)
+  r = await api(a, 'POST', '/chats/push', { gen: 1, chats: [chat('chat:x', 50), chat('n1~5', 200)] })
+  assert.equal(r.body.accepted, 1)
+  assert.equal((await api(b, 'GET', '/chats/pull?since=0')).body.chats.length, 0)
+  let pulled = (await api(a, 'GET', '/chats/pull?since=0')).body
+  assert.equal(pulled.gen, 1)
+  assert.deepEqual(pulled.chats.map((c) => [c.id, c.at]).sort(), [['chat:x', 100], ['n1~5', 200]])
+
+  // A delete travels as a tombstone; pulls page from a cursor.
+  r = await api(a, 'POST', '/chats/push', { gen: 1, chats: [{ id: 'chat:x', at: 300, deleted: true }] })
+  assert.equal(r.body.accepted, 1)
+  const after = (await api(a, 'GET', `/chats/pull?since=${pulled.seq}`)).body
+  assert.deepEqual(after.chats, [{ id: 'chat:x', at: 300, deleted: true }])
+
+  // A new password re-wraps the same key (same generation, chats kept)…
+  r = await api(a, 'PUT', '/chats/key', key({ mode: 'rewrap', gen: 1, wrapped: 'e'.repeat(64) }))
+  assert.equal(r.body.key.gen, 1)
+  assert.equal((await api(a, 'GET', '/chats/pull?since=0')).body.chats.length, 2)
+  assert.equal((await api(a, 'PUT', '/chats/key', key({ mode: 'rewrap', gen: 7 }))).status, 409)
+
+  // …starting over makes a new generation: old chats go, and a device still on the old key is refused.
+  r = await api(a, 'PUT', '/chats/key', key({ mode: 'reset' }))
+  assert.equal(r.body.key.gen, 2)
+  assert.equal((await api(a, 'GET', '/chats/pull?since=0')).body.chats.length, 0)
+  assert.equal((await api(a, 'POST', '/chats/push', { gen: 1, chats: [chat('chat:y', 400)] })).status, 409)
+  assert.equal((await api(a, 'POST', '/chats/push', { gen: 2, chats: [chat('chat:y', 400)] })).body.accepted, 1)
+})
+
 /* ---------------- relay ---------------- */
 function relayEnv(home) {
   const kv = new Map()

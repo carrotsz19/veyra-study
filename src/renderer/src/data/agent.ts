@@ -268,14 +268,14 @@ export interface ChatTurn {
   error?: string
   note?: string
 }
-const CHATS_KEY = 'veyra.assistant.chats'
 /**
- * Chats by id, on this device:
+ * Chats by id, on this device, one list per account (the guest's is the old shared one):
  * - a note's current chat under the note's id, and its earlier ones as `<noteId>~<time>` (New chat);
  * - chats of their own, from the Veyra AI tab, as `chat:<uuid>`.
  * The Veyra AI tab lists them all; a note's Assistant shows that note's current chat.
+ * Chats changed here are marked, so chat sync (data/chat-sync.ts) sends just those.
  */
-interface SavedChat {
+export interface SavedChat {
   at: number
   turns: ChatTurn[]
   /** The note it belongs to (null: a chat of its own). Older saves leave it out: see noteOf. */
@@ -287,18 +287,52 @@ interface SavedChat {
   model?: string
 }
 type Saved = Record<string, SavedChat>
-const readChats = (): Saved => {
+const LEGACY_KEY = 'veyra.assistant.chats'
+let owner: string | null = null
+const chatsKey = () => (owner ? `${LEGACY_KEY}.${owner}` : LEGACY_KEY)
+const dirtyKey = () => `${chatsKey()}.dirty`
+/**
+ * Whose chats these are (the signed-in username, or null for no account). Set before anything reads
+ * them. The first account to sign in after this update takes over the chats kept before it.
+ */
+export function setChatOwner(username: string | null): void {
+  owner = username ? username.toLowerCase() : null
+  if (!owner) return
   try {
-    return JSON.parse(localStorage.getItem(CHATS_KEY) ?? '{}') as Saved
+    if (localStorage.getItem(chatsKey()) === null) {
+      const legacy = localStorage.getItem(LEGACY_KEY)
+      if (legacy) {
+        localStorage.setItem(chatsKey(), legacy)
+        localStorage.removeItem(LEGACY_KEY)
+      }
+    }
   } catch {
-    return {}
+    /* storage unavailable */
   }
 }
-function writeChats(all: Saved): void {
-  // Keep the 100 most recent chats.
-  const keep = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 100)
+export const chatOwner = () => owner
+
+const readJson = <T,>(key: string, fallback: T): T => {
   try {
-    localStorage.setItem(CHATS_KEY, JSON.stringify(Object.fromEntries(keep)))
+    return (JSON.parse(localStorage.getItem(key) ?? 'null') as T) ?? fallback
+  } catch {
+    return fallback
+  }
+}
+const readChats = (): Saved => readJson<Saved>(chatsKey(), {})
+/** Chats changed here and not yet synced: id → when it was marked. */
+const readDirty = (): Record<string, number> => readJson<Record<string, number>>(dirtyKey(), {})
+function writeChats(all: Saved, touched: string[] = []): void {
+  // Keep the 300 most recent chats.
+  const keep = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 300)
+  try {
+    localStorage.setItem(chatsKey(), JSON.stringify(Object.fromEntries(keep)))
+    if (touched.length && owner) {
+      const dirty = readDirty()
+      const at = Date.now()
+      for (const id of touched) dirty[id] = at
+      localStorage.setItem(dirtyKey(), JSON.stringify(dirty))
+    }
   } catch {
     /* storage full or unavailable */
   }
@@ -325,14 +359,17 @@ export function saveChat(id: string, turns: ChatTurn[], meta: { title?: string; 
     const first = turns.find((t) => t.role === 'user')?.text ?? ''
     const title = was?.named ? was.title : noteId ? meta.title || was?.title : was?.title || titleFrom(first)
     all[id] = { ...was, at: Date.now(), turns: turns.slice(-40), noteId, title, ...(meta.model ? { model: meta.model } : {}) }
-  } else delete all[id]
-  writeChats(all)
+  } else {
+    if (!was) return
+    delete all[id]
+  }
+  writeChats(all, [id])
 }
 export function renameChat(id: string, title: string): void {
   const all = readChats()
   if (!all[id]) return
-  all[id] = { ...all[id], title: title.trim() || all[id].title, named: !!title.trim() }
-  writeChats(all)
+  all[id] = { ...all[id], title: title.trim() || all[id].title, named: !!title.trim(), at: Date.now() }
+  writeChats(all, [id])
 }
 
 export interface PastChat {
@@ -363,9 +400,10 @@ export function archiveChat(noteId: string): void {
   const all = readChats()
   const cur = all[noteId]
   if (!cur?.turns?.length) return
-  all[`${noteId}~${cur.at}`] = { ...cur, noteId }
+  const kept = `${noteId}~${cur.at}`
+  all[kept] = { ...cur, noteId, at: Date.now() }
   delete all[noteId]
-  writeChats(all)
+  writeChats(all, [noteId, kept])
 }
 /**
  * Makes a saved chat the current chat of a note (that note's current chat is kept in Past chats).
@@ -377,18 +415,91 @@ export function resumeChat(id: string, intoNoteId: string, title?: string): Chat
   if (!chat) return []
   if (id !== intoNoteId) {
     const cur = all[intoNoteId]
-    if (cur?.turns?.length) all[`${intoNoteId}~${cur.at}`] = { ...cur, noteId: intoNoteId }
+    const touched = [id, intoNoteId]
+    if (cur?.turns?.length) {
+      all[`${intoNoteId}~${cur.at}`] = { ...cur, noteId: intoNoteId, at: Date.now() }
+      touched.push(`${intoNoteId}~${cur.at}`)
+    }
     delete all[id]
     all[intoNoteId] = { ...chat, at: Date.now(), noteId: intoNoteId, title: title ?? chat.title }
-    writeChats(all)
+    writeChats(all, touched)
   }
   return chat.turns
 }
 export function deleteChat(id: string): void {
   const all = readChats()
   delete all[id]
-  writeChats(all)
+  writeChats(all, [id])
 }
+
+/* ---------- for chat sync (data/chat-sync.ts) ---------- */
+/** What changed here since the last sync: chats to send, chats deleted, and the marks to clear once sent. */
+export function pendingChats(): { put: { id: string; chat: SavedChat }[]; del: { id: string; at: number }[]; marks: Record<string, number> } {
+  const marks = readDirty()
+  const all = readChats()
+  const put: { id: string; chat: SavedChat }[] = []
+  const del: { id: string; at: number }[] = []
+  for (const [id, at] of Object.entries(marks)) {
+    if (all[id]) put.push({ id, chat: all[id] })
+    else del.push({ id, at })
+  }
+  return { put, del, marks }
+}
+/** Clears the marks that were sent (a chat changed again meanwhile keeps its newer mark). */
+export function clearPending(sent: Record<string, number>): void {
+  const dirty = readDirty()
+  for (const [id, at] of Object.entries(sent)) if (dirty[id] === at) delete dirty[id]
+  try {
+    localStorage.setItem(dirtyKey(), JSON.stringify(dirty))
+  } catch {
+    /* storage unavailable */
+  }
+}
+/** Marks every chat here to be sent (sync just turned on, or started over). */
+export function markAllChats(): void {
+  const all = readChats()
+  const dirty = readDirty()
+  const at = Date.now()
+  for (const id of Object.keys(all)) dirty[id] = at
+  try {
+    localStorage.setItem(dirtyKey(), JSON.stringify(dirty))
+  } catch {
+    /* storage unavailable */
+  }
+}
+/** Chats from your other devices: the newest edit of each wins (a delete too). */
+export function applyRemoteChats(list: ({ id: string; at: number; deleted: true } | { id: string; at: number; deleted?: false; chat: SavedChat })[]): number {
+  if (!list.length) return 0
+  const all = readChats()
+  const dirty = readDirty()
+  let changed = 0
+  for (const r of list) {
+    const local = all[r.id]
+    // A local delete not yet sent counts as newer when it was marked after the remote edit.
+    if (!local && dirty[r.id] && dirty[r.id] >= r.at) continue
+    if (local && local.at >= r.at) continue
+    if (r.deleted) {
+      if (local) {
+        delete all[r.id]
+        changed++
+      }
+    } else {
+      all[r.id] = { ...r.chat, at: r.at }
+      changed++
+    }
+    delete dirty[r.id]
+  }
+  if (changed) {
+    try {
+      localStorage.setItem(dirtyKey(), JSON.stringify(dirty))
+    } catch {
+      /* storage unavailable */
+    }
+    writeChats(all)
+  }
+  return changed
+}
+
 /** Asks the next note editor for this note to open with the Assistant showing. */
 export const OPEN_ASSISTANT_KEY = 'veyra.openAssistant'
 
