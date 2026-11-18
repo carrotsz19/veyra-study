@@ -276,3 +276,9 @@ main.main.main-settings { padding: 0; overflow: hidden; }
 /* Veyra AI: a usage bar with its percentage */
 .vai-meter { display: flex; align-items: center; gap: 10px; width: 220px; max-width: 100%; }
 .vai-meter .bar { flex: 1; }
+
+/* Settings → Account: email and password */
+.acct-rows { margin-top: 14px; border-top: 1px solid var(--line); }
+.acct-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.acct-row:last-child { border-bottom: 0; }
+.acct-ok { display: inline-flex; align-items: center; gap: 4px; color: var(--ok); font-weight: 600; }

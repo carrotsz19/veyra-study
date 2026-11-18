@@ -19,7 +19,7 @@
  * bindings (VEYRA, RELAY): a Worker can't fetch another one's workers.dev address.
  */
 
-const ACCOUNT_CALLS = new Set(['getLoginSalt', 'veyraLogIn', 'veyraSignUp', 'launcherWhoAmI', 'logOut'])
+const ACCOUNT_CALLS = new Set(['getLoginSalt', 'veyraLogIn', 'veyraSignUp', 'launcherWhoAmI', 'logOut', 'requestPasswordReset', 'resetPasswordWithCode', 'verifyEmail', 'resendVerificationEmail', 'linkEmail', 'changePassword'])
 const ACCOUNT_URL = 'https://veyra.igreenrobotz.workers.dev'
 const NO_STORE = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...NO_STORE } })

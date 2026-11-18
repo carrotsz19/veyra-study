@@ -15,6 +15,8 @@ interface AccountCtx {
   state: AccountState
   /** Apply a new state; switching who is signed in reloads the app on their data. */
   apply: (s: AccountState) => void
+  /** The same person with new details (email added or verified): no reload. */
+  update: (s: AccountState) => void
 }
 const Ctx = createContext<AccountCtx | null>(null)
 export const useAccount = () => useContext(Ctx)!
@@ -41,7 +43,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
   if (!state) return null
   if (state.mode === 'none') return <Welcome notice={state.notice} onDone={apply} />
   return (
-    <Ctx.Provider value={{ state, apply }}>
+    <Ctx.Provider value={{ state, apply, update: setState }}>
       {children}
       {state.ended && <SignInAgain onDone={apply} />}
     </Ctx.Provider>
@@ -103,6 +105,10 @@ export function Welcome({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(notice && notice !== 'moved' ? notice : '')
   const [legal, setLegal] = useState<{ legal: string } | null>(null)
+  // Forgot password, or confirming the email of a new account (it's signed in by then: pending).
+  const [pane, setPane] = useState<null | 'reset' | 'verify'>(null)
+  const [pending, setPending] = useState<AccountState | null>(null)
+  const [info, setInfo] = useState('')
   const titleRef = useRef<HTMLHeadingElement>(null)
   const up = mode === 'signup'
 
@@ -118,6 +124,7 @@ export function Welcome({
   const switchTo = (m: Mode) => {
     setMode(m)
     setErr('')
+    setInfo('')
   }
 
   const submit = async (e: React.FormEvent) => {
@@ -134,6 +141,12 @@ export function Welcome({
         ? await api.signUp({ username: username.trim(), email: email.trim(), password, acceptLegal: accept })
         : await api.signIn(username.trim(), password)
       setPassword('')
+      // A new account with an email: confirm it now (it's how a forgotten password is reset).
+      if (up && email.trim() && s.user && !s.user.emailVerified) {
+        setPending(s)
+        setPane('verify')
+        return
+      }
       onDone(s)
     } catch (ex) {
       setErr(String((ex as Error).message || ex).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
@@ -143,10 +156,6 @@ export function Welcome({
   }
 
   const open = (url?: string) => url && window.veyra.open(url)
-  const [server, setServer] = useState('')
-  useEffect(() => {
-    api.state().then((st) => setServer(st.server + '/'))
-  }, [])
   const [showPw, setShowPw] = useState(false)
 
   return (
@@ -197,6 +206,23 @@ export function Welcome({
             <VeyraMark />
             Veyra
           </div>
+          {pane === 'reset' ? (
+            <ResetPassword
+              start={username.trim()}
+              onBack={(changedFor) => {
+                setPane(null)
+                setMode('signin')
+                setErr('')
+                if (changedFor) {
+                  if (!changedFor.includes('@')) setUsername(changedFor)
+                  setInfo('Password changed. Log in with the new one.')
+                }
+              }}
+            />
+          ) : pane === 'verify' && pending ? (
+            <VerifyEmail email={pending.user?.email ?? ''} onVerified={onDone} onLater={() => onDone(pending)} />
+          ) : (
+          <>
           <div
             className="seg"
             role="tablist"
@@ -220,7 +246,7 @@ export function Welcome({
           <h1 className="title" id="auth-title" ref={titleRef}>
             {up ? 'Create your Veyra account' : 'Welcome back'}
           </h1>
-          <p className="lede">{up ? 'One account for Veyra Study, IronLog and Cashline.' : 'Log in to open Veyra Study.'}</p>
+          <p className="lede">{info || (up ? 'One account for Veyra Study, IronLog and Cashline.' : 'Log in to open Veyra Study.')}</p>
           {IS_DEV && (
             <p className="dev-warn">
               <b>This is Veyra Study Dev, a test build.</b> Signing in uses your real account: anything a test build changes syncs to
@@ -276,7 +302,15 @@ export function Welcome({
             {busy ? (up ? 'Creating your account…' : 'Logging in…') : up ? 'Create account' : 'Log in'}
           </button>
           {!up && (
-            <button type="button" className="btn btn-plain" onClick={() => open(server)}>
+            <button
+              type="button"
+              className="btn btn-plain"
+              onClick={() => {
+                setErr('')
+                setInfo('')
+                setPane('reset')
+              }}
+            >
               Forgot password?
             </button>
           )}
@@ -288,9 +322,171 @@ export function Welcome({
               <p className="guest-note">Everything stays on this {deviceWord()}. You can sign in later and keep it all.</p>
             </>
           )}
+          </>
+          )}
         </div>
       </section>
     </div>
+  )
+}
+
+const clean = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+
+/**
+ * Forgot password, in the app: Veyra emails a code to the account's verified email, and the code
+ * with a new password sets it (as on Veyra's own pages). Every sign-in of the account then ends.
+ */
+function ResetPassword({ start, onBack }: { start: string; onBack: (changedFor?: string) => void }) {
+  const [id, setId] = useState(start)
+  const [stage, setStage] = useState<'ask' | 'code'>('ask')
+  const [code, setCode] = useState('')
+  const [pw, setPw] = useState('')
+  const [showPw, setShowPw] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [lede, setLede] = useState('Enter your username or email. We’ll email a code to the address on your account.')
+
+  const send = async () => {
+    if (!id.trim()) return setErr('Enter your username or email.')
+    setBusy(true)
+    setErr('')
+    try {
+      const r = await api.requestReset(id.trim())
+      setStage('code')
+      setLede(r.sentTo ? `A code is on its way to ${r.sentTo}. Enter it with a new password.` : 'If that account has a verified email, a code is on its way. Enter it with a new password.')
+    } catch (ex) {
+      setErr(clean(ex))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (busy) return
+    if (stage === 'ask') return send()
+    if (!/^\d{6}$/.test(code.trim())) return setErr('Enter the 6-digit code from your email.')
+    if (pw.length < 8 || pw.length > 200) return setErr('Use a password of at least 8 characters.')
+    setBusy(true)
+    setErr('')
+    try {
+      await api.resetPassword(id.trim(), code.trim(), pw)
+      onBack(id.trim())
+    } catch (ex) {
+      setErr(clean(ex))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <h1 className="title" id="auth-title">
+        Reset your password
+      </h1>
+      <p className="lede">{lede}</p>
+      <form id="reset-form" onSubmit={submit} noValidate>
+        <div className="fields">
+          <div className="field">
+            <input aria-label="Username or email" autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="Username or email" autoFocus={stage === 'ask'} readOnly={stage === 'code'} value={id} onChange={(e) => setId(e.target.value)} />
+          </div>
+          {stage === 'code' && (
+            <>
+              <div className="field">
+                <input aria-label="Code from the email" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6-digit code" autoFocus value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
+              </div>
+              <div className="field">
+                <input aria-label="New password" type={showPw ? 'text' : 'password'} autoComplete="new-password" placeholder="New password" value={pw} onChange={(e) => setPw(e.target.value)} />
+                <button type="button" className="pw-toggle" aria-label={showPw ? 'Hide password' : 'Show password'} aria-pressed={showPw} onClick={() => setShowPw(!showPw)}>
+                  {showPw ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </form>
+      {stage === 'code' ? (
+        <p className="hint">At least 8 characters. Changing it signs your account out everywhere, including IronLog and Cashline.</p>
+      ) : (
+        <p className="hint">This works when your account has a verified email. It’s the same Veyra account as IronLog and Cashline.</p>
+      )}
+      <p className="err" role="alert">
+        {err}
+      </p>
+      <div className="push-down" />
+      <button type="submit" form="reset-form" className="btn btn-primary" aria-disabled={busy || undefined}>
+        {busy ? (stage === 'ask' ? 'Sending…' : 'Saving…') : stage === 'ask' ? 'Send code' : 'Set new password'}
+      </button>
+      {stage === 'code' && (
+        <button type="button" className="btn btn-plain" disabled={busy} onClick={() => void send()}>
+          Send a new code
+        </button>
+      )}
+      <button type="button" className="btn btn-plain dim" onClick={() => onBack()}>
+        Back to log in
+      </button>
+    </>
+  )
+}
+
+/** A new account's email: the code Veyra sent to it (or later, from Settings → Account). */
+function VerifyEmail({ email, onVerified, onLater }: { email: string; onVerified: (s: AccountState) => void; onLater: () => void }) {
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [lede, setLede] = useState(`We sent a 6-digit code to ${email}. Enter it to confirm your email, so you can reset your password if you ever forget it.`)
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (busy) return
+    if (!/^\d{6}$/.test(code.trim())) return setErr('Enter the 6-digit code from your email.')
+    setBusy(true)
+    setErr('')
+    try {
+      onVerified(await api.verifyEmail(code.trim()))
+    } catch (ex) {
+      setErr(clean(ex))
+      setBusy(false)
+    }
+  }
+  return (
+    <>
+      <h1 className="title" id="auth-title">
+        Check your email
+      </h1>
+      <p className="lede">{lede}</p>
+      <form id="verify-form" onSubmit={submit} noValidate>
+        <div className="fields">
+          <div className="field">
+            <input aria-label="Code from the email" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6-digit code" autoFocus value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
+          </div>
+        </div>
+      </form>
+      <p className="err" role="alert">
+        {err}
+      </p>
+      <div className="push-down" />
+      <button type="submit" form="verify-form" className="btn btn-primary" aria-disabled={busy || undefined}>
+        {busy ? 'Checking…' : 'Confirm email'}
+      </button>
+      <button
+        type="button"
+        className="btn btn-plain"
+        disabled={busy}
+        onClick={async () => {
+          setErr('')
+          try {
+            const r = await api.resendVerification()
+            if (r.alreadyVerified) return onVerified(await api.state())
+            setLede(r.sentTo ? `A new code is on its way to ${r.sentTo}.` : 'A new code is on its way.')
+          } catch (ex) {
+            setErr(clean(ex))
+          }
+        }}
+      >
+        Send a new code
+      </button>
+      <button type="button" className="btn btn-plain dim" onClick={onLater}>
+        Later (Settings → Account)
+      </button>
+    </>
   )
 }
 

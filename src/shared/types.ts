@@ -178,6 +178,17 @@ export interface AccountApi {
   signOut(): Promise<AccountState>
   continueAsGuest(): Promise<AccountState>
   legalUrls(): Promise<{ legal: string; terms: string; privacy: string; terms2: string; privacy2: string }>
+  /** Forgot password: emails a code to the account's verified email. sentTo is the address, partly hidden. */
+  requestReset(usernameOrEmail: string): Promise<{ sentTo: string }>
+  /** Sets a new password with the emailed code. Veyra signs the account out everywhere. */
+  resetPassword(usernameOrEmail: string, code: string, newPassword: string): Promise<void>
+  /** Signed in: confirms the email with the code Veyra sent to it. */
+  verifyEmail(code: string): Promise<AccountState>
+  resendVerification(): Promise<{ sentTo: string; alreadyVerified: boolean }>
+  /** Signed in, no verified email yet: adds (or replaces) the email and sends it a code. */
+  setEmail(email: string): Promise<AccountState>
+  /** Signed in: Veyra signs the account out on every other device. */
+  changePassword(current: string, next: string): Promise<void>
 }
 
 export interface GoogleEvent {

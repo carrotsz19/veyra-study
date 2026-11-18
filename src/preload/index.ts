@@ -22,7 +22,13 @@ const account = {
   signUp: (input: { username: string; email: string; password: string; acceptLegal: boolean }) => ipcRenderer.invoke('account:signUp', input),
   signOut: () => ipcRenderer.invoke('account:signOut'),
   continueAsGuest: () => ipcRenderer.invoke('account:guest'),
-  legalUrls: () => ipcRenderer.invoke('account:legal')
+  legalUrls: () => ipcRenderer.invoke('account:legal'),
+  requestReset: (id: string) => ipcRenderer.invoke('account:requestReset', id),
+  resetPassword: (id: string, code: string, pw: string) => ipcRenderer.invoke('account:resetPassword', id, code, pw),
+  verifyEmail: (code: string) => ipcRenderer.invoke('account:verifyEmail', code),
+  resendVerification: () => ipcRenderer.invoke('account:resendVerification'),
+  setEmail: (email: string) => ipcRenderer.invoke('account:setEmail', email),
+  changePassword: (current: string, next: string) => ipcRenderer.invoke('account:changePassword', current, next)
 }
 
 const google = {

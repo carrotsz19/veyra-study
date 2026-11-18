@@ -63,7 +63,13 @@ const account: Veyra['account'] = {
   legalUrls: async () => {
     const b = acct.SERVER + '/'
     return { legal: `${b}?page=legal`, terms: `${b}?page=terms&app=ironlog`, privacy: `${b}?page=privacy&app=ironlog`, terms2: `${b}?page=terms&app=cashline`, privacy2: `${b}?page=privacy&app=cashline` }
-  }
+  },
+  requestReset: (id) => acct.requestReset(id),
+  resetPassword: (id, code, pw) => acct.resetPassword(id, code, pw),
+  verifyEmail: (code) => acct.verifyEmail(code),
+  resendVerification: () => acct.resendVerification(),
+  setEmail: (email) => acct.setEmail(email),
+  changePassword: (current, next) => acct.changePassword(current, next)
 }
 
 /* ---------- computer-only features, reported as off ---------- */

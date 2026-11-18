@@ -331,6 +331,69 @@ export class Accounts {
     return this.state()
   }
 
+  /* ---------- password and email (Veyra's own checks and emails, as on its pages) ---------- */
+  async requestReset(id: string): Promise<{ sentTo: string }> {
+    id = id.trim()
+    if (!id) throw new ApiError('Enter your username or email.')
+    const { v } = await call<{ sentTo?: string }>('requestPasswordReset', [id])
+    return { sentTo: v?.sentTo || '' }
+  }
+
+  async resetPassword(id: string, code: string, password: string): Promise<void> {
+    if (!code.trim()) throw new ApiError('Enter the code from your email.')
+    if (password.length < 8 || password.length > 200) throw new ApiError('Use a password of at least 8 characters.')
+    const salt = pwSalt()
+    await call('resetPasswordWithCode', [id.trim(), code.trim(), await pwHash(password, salt), salt])
+  }
+
+  /** A call as the signed-in person (their handle first, with the session cookies). */
+  private async authed<T>(name: string, args: unknown[]): Promise<T> {
+    const s = this.session
+    if (!s || s.ended) throw new ApiError('Sign in again first.')
+    const { v, set } = await call<T>(name, [s.handle, ...args], s.cookies)
+    s.cookies = applyCookies(s.cookies, set)
+    writeSession(s)
+    return v
+  }
+  private markUser(change: Partial<AccountUser>): void {
+    if (!this.session) return
+    this.session.user = { ...this.session.user, ...change }
+    writeSession(this.session)
+  }
+
+  async verifyEmail(code: string): Promise<AccountState> {
+    if (!code.trim()) throw new ApiError('Enter the code from your email.')
+    await this.authed('verifyEmail', [code.trim()])
+    this.markUser({ emailVerified: true })
+    return this.state()
+  }
+
+  async resendVerification(): Promise<{ sentTo: string; alreadyVerified: boolean }> {
+    const v = await this.authed<{ sentTo?: string; alreadyVerified?: boolean }>('resendVerificationEmail', [])
+    if (v?.alreadyVerified) this.markUser({ emailVerified: true })
+    return { sentTo: v?.sentTo || '', alreadyVerified: !!v?.alreadyVerified }
+  }
+
+  async setEmail(email: string): Promise<AccountState> {
+    email = email.trim()
+    if (!email) throw new ApiError('Enter your email address.')
+    const v = await this.authed<{ email?: string }>('linkEmail', [email])
+    this.markUser({ email: v?.email || email, emailVerified: false })
+    return this.state()
+  }
+
+  async changePassword(current: string, next: string): Promise<void> {
+    const s = this.session
+    if (!s || s.ended) throw new ApiError('Sign in again first.')
+    if (!current) throw new ApiError('Enter your current password.')
+    if (next.length < 8 || next.length > 200) throw new ApiError('Use a new password of at least 8 characters.')
+    // The current password as Veyra checks it (as when signing in).
+    const { v: info } = await call<{ salt: string; scheme: string }>('getLoginSalt', [s.user.username])
+    const material = info && info.scheme === 'v2' && info.salt ? await pwHash(current, info.salt) : current
+    const salt = pwSalt()
+    await this.authed('changePassword', [material, await pwHash(next, salt), salt])
+  }
+
   /**
    * Main process only (never sent to the UI): the handle and the Cookie
    * header, so the group relay can confirm who this is with Veyra.

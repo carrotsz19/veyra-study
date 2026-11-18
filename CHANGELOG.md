@@ -7,6 +7,12 @@ in Settings → Software update. Write new changes under "## Unreleased":
 Versions are year.month.release-in-that-month (26.11.1, 26.11.2, then 26.12.1),
 picked automatically. They come after the older 1.0.x numbers.
 
+## Unreleased
+
+- **Forgot your password? Reset it in the app:** on the sign-in screen, Forgot password? now asks for your username or email, emails you a 6-digit code, and lets you set a new password right there, instead of sending you to the Veyra website. It works when your account has a confirmed email.
+- **Confirm your email in the app:** after creating an account with an email, enter the code we email you to confirm it (or do it later). Settings → Account now shows your email, lets you add one if you don't have one, and confirm it with a code.
+- **Change your password in Settings → Account.** Your other devices are signed out when you do.
+
 ## 26.11.1
 
 - **Past chats in the Assistant:** a new clock button in a note's Assistant lists every chat you've had, from any note, newest first. Click one to pick it up again: a chat from another note opens that note with the chat showing, and a chat whose note was deleted carries on in the note you're in. Delete chats you don't need with the bin icon.

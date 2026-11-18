@@ -253,6 +253,67 @@ export async function refresh(): Promise<AccountState> {
   return state()
 }
 
+/* ---------- password and email (Veyra's own checks and emails, as on its pages) ---------- */
+export async function requestReset(id: string): Promise<{ sentTo: string }> {
+  id = id.trim()
+  if (!id) throw new Error('Enter your username or email.')
+  const { v } = await call<{ sentTo?: string }>('requestPasswordReset', [id])
+  return { sentTo: v?.sentTo || '' }
+}
+
+export async function resetPassword(id: string, code: string, password: string): Promise<void> {
+  if (!code.trim()) throw new Error('Enter the code from your email.')
+  if (password.length < 8 || password.length > 200) throw new Error('Use a password of at least 8 characters.')
+  const salt = pwSalt()
+  await call('resetPasswordWithCode', [id.trim(), code.trim(), await pwHash(password, salt), salt])
+}
+
+/** A call as the signed-in person (their handle first, with the session cookies). */
+async function authed<T>(name: string, args: unknown[]): Promise<T> {
+  const s = session
+  if (!s || s.ended) throw new Error('Sign in again first.')
+  const { v, set } = await call<T>(name, [s.handle, ...args], s.cookies)
+  s.cookies = applyCookies(s.cookies, set)
+  await SecureStorage.setItem(SESSION, JSON.stringify(s))
+  return v
+}
+async function markUser(change: Partial<AccountUser>): Promise<void> {
+  if (!session) return
+  session.user = { ...session.user, ...change }
+  await SecureStorage.setItem(SESSION, JSON.stringify(session))
+}
+
+export async function verifyEmail(code: string): Promise<AccountState> {
+  if (!code.trim()) throw new Error('Enter the code from your email.')
+  await authed('verifyEmail', [code.trim()])
+  await markUser({ emailVerified: true })
+  return state()
+}
+
+export async function resendVerification(): Promise<{ sentTo: string; alreadyVerified: boolean }> {
+  const v = await authed<{ sentTo?: string; alreadyVerified?: boolean }>('resendVerificationEmail', [])
+  if (v?.alreadyVerified) await markUser({ emailVerified: true })
+  return { sentTo: v?.sentTo || '', alreadyVerified: !!v?.alreadyVerified }
+}
+
+export async function setEmail(email: string): Promise<AccountState> {
+  email = email.trim()
+  if (!email) throw new Error('Enter your email address.')
+  const v = await authed<{ email?: string }>('linkEmail', [email])
+  await markUser({ email: v?.email || email, emailVerified: false })
+  return state()
+}
+
+export async function changePassword(current: string, next: string): Promise<void> {
+  if (!session || session.ended) throw new Error('Sign in again first.')
+  if (!current) throw new Error('Enter your current password.')
+  if (next.length < 8 || next.length > 200) throw new Error('Use a new password of at least 8 characters.')
+  const { v: info } = await call<{ salt: string; scheme: string }>('getLoginSalt', [session.user.username])
+  const material = info?.scheme === 'v2' && info.salt ? await pwHash(current, info.salt) : current
+  const salt = pwSalt()
+  await authed('changePassword', [material, await pwHash(next, salt), salt])
+}
+
 async function drop(why?: string) {
   session = null
   notice = why
