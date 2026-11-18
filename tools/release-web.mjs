@@ -24,6 +24,7 @@ import { randomBytes } from 'node:crypto'
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { devVersion as nextDevVersion, nextVersion } from './version.mjs'
 
 const dev = process.argv.includes('--dev')
 const worker = dev ? 'veyra-study-dev' : 'veyra-study-web'
@@ -33,9 +34,7 @@ const run = (cmd, args, env = process.env, cwd = process.cwd()) => {
 }
 
 const { version } = JSON.parse(readFileSync('package.json', 'utf8'))
-const [a, b, c] = version.split('.').map(Number)
-const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 12)
-const siteVersion = dev ? `${a}.${b}.${c + 1}-dev.${stamp}` : version
+const siteVersion = dev ? nextDevVersion(version) : version
 const env = { ...process.env, VEYRA_WEB: '1', VEYRA_CHANNEL: dev ? 'dev' : 'prod', VEYRA_VERSION: siteVersion }
 
 console.log(`Building the ${dev ? 'Dev ' : ''}website ${siteVersion}…`)

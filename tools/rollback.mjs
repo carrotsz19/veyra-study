@@ -23,6 +23,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { devVersion as nextDevVersion, nextVersion } from './version.mjs'
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const dev = process.argv.includes('--dev')
@@ -60,9 +61,8 @@ try {
 }
 
 const pkg = JSON.parse(readFileSync(join(HERE, 'package.json'), 'utf8'))
-const [a, b, c] = pkg.version.split('.').map(Number)
-// Prod: the next version after the one out now (the bad one).
-const next = `${a}.${b}.${c + 1}`
+// Prod: the next version after the one out now (the bad one), e.g. 26.11.3 after a bad 26.11.2.
+const next = nextVersion(pkg.version)
 const dir = resolve(HERE, '..', `veyra-rollback-${dev ? commit.slice(0, 8) : next}`)
 
 console.log(dev ? `Publishing ${ref} (${commit.slice(0, 8)}) as a new Dev build…` : `Rolling back: v${target}'s code as Veyra Study ${next}…`)

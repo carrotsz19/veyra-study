@@ -33,13 +33,22 @@ npm run release:dev
 
 Only when the owner says to ship. Everyday changes go out as Dev builds.
 
-1. Bump `"version"` in `package.json` (1.0.0 → 1.0.1).
-2. Add a `## 1.0.1` section to `CHANGELOG.md`. It becomes the release notes and the "What's new" in the app.
-3. Commit.
-4. `npm run release` publishes Windows (`v1.0.1`, marked Latest).
-5. `npm run release:android` publishes Android (`android-v1.0.1`, a pre-release, so the Windows updater ignores it).
+```
+npm run ship
+```
 
-Both refuse to run with uncommitted changes, or for a version that's already out.
+That's all. It:
+
+1. Picks the next version itself. Versions are **year.month.release-in-that-month**: 26.11.1, 26.11.2, …, then 26.12.1 in December and 27.1.1 next year (`tools/version.mjs`). They count as newer than the old 1.0.x numbers, so installed apps update as usual.
+2. Turns the `## Unreleased` section of `CHANGELOG.md` into that version's section, which becomes the release notes and the "What's new" in the app. With no Unreleased section, it lists the commit titles since the last release instead.
+3. Sets the version in `package.json`, commits `Veyra Study <version>` and pushes.
+4. Publishes Windows (`npm run release`: `v<version>`, marked Latest), then Android (`npm run release:android`: `android-v<version>`, a pre-release, so the Windows updater ignores it).
+
+- `npm run ship -- --dry-run` shows the version and notes without changing anything.
+- `npm run ship -- --windows-only` skips Android.
+- It refuses to run with uncommitted changes, or when the branch is behind origin.
+- If a step fails after the version commit is pushed, fix it and run `npm run release` / `npm run release:android` again: they publish the version already in `package.json`.
+- Android's version code is yy·1000000 + month·10000 + n (26.11.1 → 26110001).
 
 ## Rules that keep Prod safe
 
@@ -52,7 +61,7 @@ Both refuse to run with uncommitted changes, or for a version that's already out
 Installed apps only move up a version. Windows follows the newest release, and Android won't install a lower version over a higher one. So a rollback re-publishes the good version's code under a **new, higher** version number, and every device moves to it through its normal update, Windows and Android alike.
 
 ```
-npm run rollback -- 1.0.0              # Prod: v1.0.0's code goes out as the next version (e.g. 1.0.2 after a bad 1.0.1)
+npm run rollback -- 26.11.1            # Prod: v26.11.1's code goes out as the next version (e.g. 26.11.3 after a bad 26.11.2)
 npm run rollback:dev -- <commit|tag>   # Dev: that commit goes out as a new Dev build
 ```
 

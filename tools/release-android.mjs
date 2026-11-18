@@ -20,6 +20,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { devVersion as nextDevVersion, nextVersion } from './version.mjs'
 
 const REPO = 'carrotsz19/veyra-study'
 /** Private: Dev test builds (only you can see them). */
@@ -33,10 +34,8 @@ const ghEnv = { ...process.env, GH_TOKEN: token }
 const gh = (args) => execFileSync('gh', args, { stdio: 'inherit', env: ghEnv })
 
 const { version } = JSON.parse(readFileSync('package.json', 'utf8'))
-// Dev: the same version scheme as the Windows Dev build (0.2.12 → 0.2.13-dev.<date and time>).
-const [a, b, c] = version.split('.').map(Number)
-const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 12)
-const appVersion = dev ? process.env.VEYRA_VERSION || `${a}.${b}.${c + 1}-dev.${stamp}` : version
+// Dev: the same version scheme as the Windows Dev build (26.11.1 → 26.11.2-dev.<date and time>).
+const appVersion = dev ? process.env.VEYRA_VERSION || nextDevVersion(version) : version
 const env = { ...process.env, VEYRA_CHANNEL: dev ? 'dev' : 'prod', VEYRA_VERSION: dev ? appVersion : '' }
 
 if (!dev) {
@@ -45,7 +44,7 @@ if (!dev) {
     process.exit(1)
   }
   if (git('ls-remote', '--tags', 'origin', `android-v${version}`)) {
-    console.error(`android-v${version} is already released. Bump "version" in package.json first.`)
+    console.error(`android-v${version} is already released. Use npm run ship: it picks the next version (${nextVersion(version)}) itself.`)
     process.exit(1)
   }
 }

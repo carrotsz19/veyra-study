@@ -3,9 +3,9 @@
  * Publishes the Windows app. Two kinds of build:
  *
  *  Prod: the real Veyra Study everyone uses.
- *   1. bump "version" in package.json (e.g. 0.2.0 → 0.2.1), add its section
- *      to CHANGELOG.md, and commit
- *   2. npm run release
+ *   Use npm run ship: it picks the next version (26.11.1 → 26.11.2), writes its
+ *      CHANGELOG.md section, commits and then runs this (and Android). By hand:
+ *   npm run release
  *  It builds the app and the installer and publishes them as a GitHub release
  *  (tag v<version>) on carrotsz19/veyra-study. Installed copies find it at their
  *  next start, through GitHub's release pages (not its rate-limited API).
@@ -28,6 +28,7 @@ import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
 import { signing } from './signing.mjs'
+import { devVersion as nextDevVersion, nextVersion } from './version.mjs'
 
 const REPO = 'carrotsz19/veyra-study'
 /** Private: Dev test builds (only you can see them). */
@@ -68,10 +69,8 @@ const checkFlags = sign ? ['--signed'] : []
 if (sign) console.log('Signing the Windows app with Azure Trusted Signing.')
 
 if (dev) {
-  // The next version, marked as a test build: 0.2.12 → 0.2.13-dev.202611121905.
-  const [a, b, c] = version.split('.').map(Number)
-  const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 12)
-  const devVersion = `${a}.${b}.${c + 1}-dev.${stamp}`
+  // The next version, marked as a test build: 26.11.1 → 26.11.2-dev.202611181905 (tools/version.mjs).
+  const devVersion = nextDevVersion(version)
   const commit = git('rev-parse', '--short', 'HEAD') + (git('status', '--porcelain') ? ' + uncommitted changes' : '')
   console.log(`Publishing Veyra Study Dev ${devVersion} (${commit})…`)
   const env = { ...process.env, VEYRA_CHANNEL: 'dev', VEYRA_VERSION: devVersion }
@@ -114,7 +113,7 @@ if (git('status', '--porcelain')) {
 }
 const tags = git('ls-remote', '--tags', 'origin', `v${version}`)
 if (tags) {
-  console.error(`v${version} is already released. Bump "version" in package.json first.`)
+  console.error(`v${version} is already released. Use npm run ship: it picks the next version (${nextVersion(version)}) itself.`)
   process.exit(1)
 }
 // The notes are this version's section of CHANGELOG.md (shown in Settings → Software update).

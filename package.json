@@ -17,6 +17,7 @@
     "android:setup": "node tools/setup-android.mjs",
     "android:build": "node tools/android-build.mjs",
     "android:install": "node tools/android-build.mjs --install",
+    "ship": "node tools/ship.mjs",
     "release": "node tools/release.mjs",
     "release:dev": "node tools/release.mjs --dev",
     "release:android": "node tools/release-android.mjs",
