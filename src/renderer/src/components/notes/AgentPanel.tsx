@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowUp, Bot, Users, Check, ChevronDown, ChevronRight, CircleDashed, Copy, ExternalLink, FilePlus2, FileText, Globe, HardDrive, History, Image as ImageIcon, ListChecks, Loader2, MessageSquarePlus, Paperclip, Square, Trash2, Undo2, X, XCircle, Zap } from 'lucide-react'
+import { ArrowUp, Bot, Users, Check, ChevronDown, ChevronRight, CircleDashed, Copy, ExternalLink, FilePlus2, FileText, Globe, HardDrive, History, Image as ImageIcon, ListChecks, Loader2, MessageSquarePlus, Paperclip, Sparkles, Square, Trash2, Undo2, X, XCircle, Zap } from 'lucide-react'
 import { archiveChat, chatInfo, deleteChat, DRIVE_KEY, listChats, loadChat, OPEN_ASSISTANT_KEY, resumeChat, type PastChat, MAX_FILES, prepareFile, saveChat, startAgent, SUBAGENTS_KEY, TURBO_KEY, WEB_KEY, type AgentChange, type AgentEvent, type AgentFile, type AgentRun, type ChatTurn, type NoteContext, type ToolAsk } from '../../data/agent'
 import { useDrive } from '../../data/drive'
 import { setAiState, useAiState, useVeyraAi } from '../../data/veyra-ai'
@@ -291,7 +291,7 @@ export function AgentPanel({
 
   return (
     <aside
-      className={`${page ? 'agent-page' : 'ai-panel'} agent-panel ${dropping ? 'agent-drop' : ''}`}
+      className={`${page ? 'agent-page' : 'ai-panel'} agent-panel ${dropping ? 'agent-drop' : ''} ${!turns.length && !live && !blocked ? 'is-empty' : ''}`}
       aria-label={page ? 'Veyra AI chat' : 'Assistant'}
       onDragOver={(e) => {
         if (blocked || !e.dataTransfer.types.includes('Files')) return
@@ -361,6 +361,14 @@ export function AgentPanel({
           </div>
         ) : !turns.length && !live ? (
           <div className="agent-empty">
+            {page && (
+              <>
+                <span className="agent-hello-mark" aria-hidden="true">
+                  <Sparkles size={22} />
+                </span>
+                <h2 className="agent-hello">{note ? `Let’s work on “${note.title || 'this note'}”` : 'What are we studying today?'}</h2>
+              </>
+            )}
             <p className="dim">
               {note ? 'Ask for research, a summary, a quiz or a study plan.' : 'Ask anything: research, explanations, quizzes or a study plan.'} The Assistant can search the web, send helpers to research in parallel, and read and add to your notes and tasks{turbo ? ' (Turbo is on: it won’t ask first)' : ' (it asks before changing anything)'}.
             </p>
@@ -430,6 +438,7 @@ export function AgentPanel({
         {!live && done.some((c) => c.undo && !c.undone) && <Changes list={done.filter((c) => c.undo)} onUndo={undo} title="Changes in this chat" />}
       </div>
 
+      <div className="agent-dock">
       {(files.length > 0 || reading > 0) && (
         <div className="agent-files" aria-label="Attached files">
           {files.map((f) => (
@@ -545,6 +554,7 @@ export function AgentPanel({
           </button>
         )}
       </form>
+      </div>
       </>
       )}
       <p className="ai-note">
@@ -802,7 +812,44 @@ export function Markdown({ text }: { text: string }) {
     list = null
   }
   let code: string[] | null = null
-  for (const line of lines) {
+  // Tables: | a | b | rows, the second one | --- | --- |.
+  let table: string[][] | null = null
+  const cells = (row: string) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+  const flushTable = () => {
+    if (table && table.length) {
+      const [head, ...body] = table
+      blocks.push(
+        <div key={blocks.length} className="agent-table">
+          <table>
+            <thead>
+              <tr>{head.map((c, i) => <th key={i}>{inline(c)}</th>)}</tr>
+            </thead>
+            <tbody>
+              {body.map((r, i) => (
+                <tr key={i}>{head.map((_, j) => <td key={j}>{inline(r[j] ?? '')}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+    }
+    table = null
+  }
+  for (const [n, line] of lines.entries()) {
+    const isRow = /^\s*\|.*\|\s*$/.test(line)
+    if (!code && isRow) {
+      const sep = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/
+      if (table) {
+        if (!sep.test(line)) table.push(cells(line))
+        continue
+      }
+      if (sep.test(lines[n + 1] ?? '')) {
+        flushPara()
+        flushList()
+        table = [cells(line)]
+        continue
+      }
+    } else if (table) flushTable()
     if (line.trim().startsWith('```')) {
       if (code) {
         blocks.push(<pre key={blocks.length}>{code.join('\n')}</pre>)
@@ -841,6 +888,7 @@ export function Markdown({ text }: { text: string }) {
     }
   }
   if (code) blocks.push(<pre key={blocks.length}>{(code as string[]).join('\n')}</pre>)
+  flushTable()
   flushPara()
   flushList()
   return <div className="agent-md">{blocks.map((b, i) => <Fragment key={i}>{b}</Fragment>)}</div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Bot, History, Lock, MessageSquarePlus, NotebookPen, Pencil, Search, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, History, Lock, NotebookPen, Pencil, Search, Sparkles, SquarePen, Trash2 } from 'lucide-react'
 import { docPlain, markdownToDoc, noteMarkdown } from '@shared/notetext'
 import type { Note, Rec } from '@shared/types'
 import { useNav } from '../nav'
@@ -76,6 +76,15 @@ function ComingSoon() {
 }
 
 const DAY = 86_400_000
+/** 3:40 PM today, Tue this week, 12 Nov before that. */
+const when = (at: number) => {
+  const d = new Date(at)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (at >= today.getTime()) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  if (at >= today.getTime() - 6 * DAY) return d.toLocaleDateString([], { weekday: 'short' })
+  return d.toLocaleDateString([], { day: 'numeric', month: 'short' })
+}
 const groupOf = (at: number) => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -180,9 +189,15 @@ function AiChats({ initial }: { initial?: string }) {
 
   const list = (
     <nav className="aic-list" aria-label="Chats">
-      <button className="btn aic-new" onClick={startNew}>
-        <MessageSquarePlus size={15} /> New chat
-      </button>
+      <div className="aic-top">
+        <span className="aic-top-mark" aria-hidden="true">
+          <Sparkles size={15} />
+        </span>
+        <b className="grow">Veyra AI</b>
+        <button className="iconbtn aic-new" aria-label="New chat" title="New chat (Ctrl+N)" onClick={startNew}>
+          <SquarePen size={16} />
+        </button>
+      </div>
       <label className="aic-search">
         <Search size={14} />
         <input placeholder="Search chats" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search chats" />
@@ -220,8 +235,11 @@ function AiChats({ initial }: { initial?: string }) {
                     }}
                     title={c.noteId ? `A chat from the note “${name}”` : name}
                   >
-                    {c.noteId && <NotebookPen size={13} className="aic-note-ic" aria-label="Note chat" />}
-                    <span className="trunc">{name}</span>
+                    <span className="aic-name trunc">{name}</span>
+                    <span className="aic-meta trunc">
+                      {c.noteId && <NotebookPen size={11} aria-hidden="true" />}
+                      {c.noteId ? (noteById.has(c.noteId) ? 'Note' : 'Note deleted') : `${Math.ceil(c.count / 2)} ${c.count > 2 ? 'questions' : 'question'}`} · {when(c.at)}
+                    </span>
                   </button>
                 )}
                 {!c.noteId && editing !== c.id && (
@@ -249,7 +267,11 @@ function AiChats({ initial }: { initial?: string }) {
           <ArrowLeft size={17} />
         </button>
       )}
-      <span className="ai-badge">{noteId ? <NotebookPen size={14} /> : <Bot size={15} />}</span>
+      {noteId && (
+        <span className="ai-badge">
+          <NotebookPen size={14} />
+        </span>
+      )}
       <span className="grow aic-title">
         <b className="trunc">{title}</b>
         {noteId &&
