@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { NavId, ThemeMode } from '@shared/settings'
 import { SettingsProvider, useSettings } from './data/settings'
 import { phaseLabel } from './components/timer'
-import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Monitor, Moon, NotebookPen, Plus, Search, Settings as SettingsIcon, Sun, Timer, Users } from 'lucide-react'
+import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Monitor, Moon, NotebookPen, Plus, Search, Settings as SettingsIcon, Sparkles, Sun, Timer, Users } from 'lucide-react'
 import { useRecords } from './data/store'
 import { clock, isOverdue } from './lib/dates'
 import { NavCtx, useNav, type Route } from './nav'
@@ -16,6 +16,7 @@ import { SubjectDialog } from './components/editors'
 import { Today } from './views/Today'
 import { Tasks } from './views/Tasks'
 import { Notes } from './views/Notes'
+import { AiView } from './views/AiView'
 import { Calendar, usePrefetchCalendar } from './views/Calendar'
 import { TimerView } from './views/TimerView'
 import { Stats } from './views/Stats'
@@ -62,6 +63,7 @@ function Sidebar({ route, go, onEnter, onLeave }: { route: Route; go: (r: Route)
     today: ['Today', Home, overdue ? `${overdue} late` : undefined],
     tasks: ['Tasks', ListTodo, open ? String(open) : undefined],
     notes: ['Notes', NotebookPen],
+    ai: ['Veyra AI', Sparkles, 'Soon'],
     calendar: ['Calendar', CalendarDays],
     groups: ['Group work', Users],
     timer: ['Focus timer', Timer],
@@ -93,7 +95,7 @@ function Sidebar({ route, go, onEnter, onLeave }: { route: Route; go: (r: Route)
         {nav.map(([name, label, Icon, count]) => (
           <button key={name} className="navbtn" aria-current={route.name === name} onClick={() => go({ name } as Route)} title={tip(count ? `${label} (${count})` : label)} aria-label={label}>
             <Icon size={17} /> <span className="nav-label">{label}</span>
-            {count && s.showCounts && <span className="count">{count}</span>}
+            {name === 'ai' ? <span className="count soon nav-label">{count}</span> : count && s.showCounts && <span className="count">{count}</span>}
           </button>
         ))}
       </nav>
@@ -170,6 +172,8 @@ function Screen({ route }: { route: Route }) {
       return <Tasks />
     case 'notes':
       return <Notes noteId={route.noteId} />
+    case 'ai':
+      return <AiView />
     case 'calendar':
       return <Calendar />
     case 'groups':
@@ -251,7 +255,7 @@ function AnnouncementsHost({ signedIn }: { signedIn: boolean }) {
   return signedIn ? <Announcements online={status?.state === 'online'} /> : null
 }
 
-const ROUTES = ['today', 'tasks', 'notes', 'calendar', 'groups', 'timer', 'stats', 'settings']
+const ROUTES = ['today', 'tasks', 'notes', 'ai', 'calendar', 'groups', 'timer', 'stats', 'settings']
 
 /** The page this tab was on before a reload, if it was reloaded. */
 function reloadedOn(): Route | null {

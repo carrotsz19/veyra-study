@@ -21,6 +21,7 @@ import { NoteToolbar } from './Toolbar'
 import { LinkInput } from './LinkInput'
 import { NoteAgentCtx, NoteAiCtx } from './aiContext'
 import { AgentPanel } from './AgentPanel'
+import { OPEN_ASSISTANT_KEY } from '../../data/agent'
 import { markdownToDoc } from '@shared/notetext'
 import { AiPanel } from './AiPanel'
 import { useAiState } from '../../data/veyra-ai'
@@ -530,7 +531,21 @@ export function NoteEditor({
   const mainEditor = useRef<Editor | null>(null)
   // On the phone and the website, AI tools are there once Veyra AI is on (Settings → AI).
   const aiCfg = useAiState()
-  const [agentOpen, setAgentOpen] = useState(false)
+  // Opened from another note's Past chats: start with the Assistant showing.
+  const [agentOpen, setAgentOpen] = useState(() => {
+    try {
+      return sessionStorage.getItem(OPEN_ASSISTANT_KEY) === note.id
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(OPEN_ASSISTANT_KEY) === note.id) sessionStorage.removeItem(OPEN_ASSISTANT_KEY)
+    } catch {
+      /* storage unavailable */
+    }
+  }, [note.id])
   const [aiJob, setAiJob] = useState<{ task: AiTask; source: string; editor?: Editor; from?: number; to?: number } | null>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const { s: settings } = useSettings()

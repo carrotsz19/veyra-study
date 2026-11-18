@@ -4,6 +4,7 @@ export type Route =
   | { name: 'today'; edit?: boolean }
   | { name: 'tasks' }
   | { name: 'notes'; noteId?: string }
+  | { name: 'ai' }
   | { name: 'calendar' }
   | { name: 'groups' }
   | { name: 'timer' }

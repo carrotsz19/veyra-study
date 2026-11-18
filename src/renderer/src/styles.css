@@ -1194,3 +1194,13 @@ button.dc-row:hover, .dc-row.task:hover { background: var(--fill-tertiary); }
 .oan-preview { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 14px; }
 .oan-preview p { margin: 6px 0 0; white-space: pre-wrap; }
 .oan-row .oan-lasts { width: auto; flex: none; }
+
+/* Veyra AI tab (coming soon) */
+.ai-soon { max-width: 440px; margin: 64px auto 0; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.ai-soon-icon { position: relative; width: 64px; height: 64px; border-radius: 20px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+.ai-soon-lock { position: absolute; right: -6px; bottom: -6px; width: 26px; height: 26px; border-radius: 50%; background: var(--panel); box-shadow: var(--elev-1); color: var(--dim); display: flex; align-items: center; justify-content: center; }
+.ai-soon h2 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+.ai-soon-sub { margin: 0 0 8px; font-weight: 650; color: var(--accent); }
+.ai-soon .dim { margin: 0 0 14px; font-size: 13.5px; line-height: 1.5; }
+.ai-soon-inline { vertical-align: -2px; }
+.navbtn .count.soon { text-transform: uppercase; font-size: 9.5px; letter-spacing: .04em; }

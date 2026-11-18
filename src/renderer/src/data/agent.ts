@@ -269,7 +269,11 @@ export interface ChatTurn {
   note?: string
 }
 const CHATS_KEY = 'veyra.assistant.chats'
-type Saved = Record<string, { at: number; turns: ChatTurn[] }>
+/**
+ * Chats by id. A note's current chat is kept under the note's id; New chat keeps the old one as
+ * `<noteId>~<time>`, so it's still in Past chats. Older saves had only the current chats.
+ */
+type Saved = Record<string, { at: number; turns: ChatTurn[]; noteId?: string; title?: string }>
 const readChats = (): Saved => {
   try {
     return JSON.parse(localStorage.getItem(CHATS_KEY) ?? '{}') as Saved
@@ -277,19 +281,77 @@ const readChats = (): Saved => {
     return {}
   }
 }
-export const loadChat = (noteId: string): ChatTurn[] => readChats()[noteId]?.turns ?? []
-export function saveChat(noteId: string, turns: ChatTurn[]): void {
-  const all = readChats()
-  if (turns.length) all[noteId] = { at: Date.now(), turns: turns.slice(-40) }
-  else delete all[noteId]
-  // Keep the 30 most recent chats.
-  const keep = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 30)
+function writeChats(all: Saved): void {
+  // Keep the 60 most recent chats.
+  const keep = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 60)
   try {
     localStorage.setItem(CHATS_KEY, JSON.stringify(Object.fromEntries(keep)))
   } catch {
     /* storage full or unavailable */
   }
+  window.dispatchEvent(new Event('veyra:chats'))
 }
+const noteOf = (id: string, c: Saved[string]): string => c.noteId ?? id.split('~')[0]
+export const loadChat = (noteId: string): ChatTurn[] => readChats()[noteId]?.turns ?? []
+export function saveChat(noteId: string, turns: ChatTurn[], title?: string): void {
+  const all = readChats()
+  if (turns.length) all[noteId] = { at: Date.now(), turns: turns.slice(-40), noteId, title: title || all[noteId]?.title }
+  else delete all[noteId]
+  writeChats(all)
+}
+
+export interface PastChat {
+  id: string
+  noteId: string
+  /** The note's name when the chat was last saved. */
+  title?: string
+  at: number
+  /** The first question asked, for the list. */
+  first: string
+  count: number
+  /** It's the note's current chat (not one put away by New chat). */
+  current: boolean
+}
+/** Every saved chat, newest first. */
+export function listChats(): PastChat[] {
+  return Object.entries(readChats())
+    .filter(([, c]) => c.turns?.length)
+    .map(([id, c]) => ({ id, noteId: noteOf(id, c), title: c.title, at: c.at, first: c.turns.find((t) => t.role === 'user')?.text ?? '', count: c.turns.length, current: !id.includes('~') }))
+    .sort((a, b) => b.at - a.at)
+}
+/** New chat: the note's current chat is kept in Past chats. */
+export function archiveChat(noteId: string): void {
+  const all = readChats()
+  const cur = all[noteId]
+  if (!cur?.turns?.length) return
+  all[`${noteId}~${cur.at}`] = { ...cur, noteId }
+  delete all[noteId]
+  writeChats(all)
+}
+/**
+ * Makes a saved chat the current chat of a note (that note's current chat is kept in Past chats).
+ * Used to reopen a chat on its own note, or to continue one from a deleted note in this one.
+ */
+export function resumeChat(id: string, intoNoteId: string, title?: string): ChatTurn[] {
+  const all = readChats()
+  const chat = all[id]
+  if (!chat) return []
+  if (id !== intoNoteId) {
+    const cur = all[intoNoteId]
+    if (cur?.turns?.length) all[`${intoNoteId}~${cur.at}`] = { ...cur, noteId: intoNoteId }
+    delete all[id]
+    all[intoNoteId] = { ...chat, at: Date.now(), noteId: intoNoteId, title: title ?? chat.title }
+    writeChats(all)
+  }
+  return chat.turns
+}
+export function deleteChat(id: string): void {
+  const all = readChats()
+  delete all[id]
+  writeChats(all)
+}
+/** Asks the next note editor for this note to open with the Assistant showing. */
+export const OPEN_ASSISTANT_KEY = 'veyra.openAssistant'
 
 export const TURBO_KEY = 'veyra.assistant.turbo'
 /** The person's Web search and Subagents switches ('1' on, '0' off; on unless set). */

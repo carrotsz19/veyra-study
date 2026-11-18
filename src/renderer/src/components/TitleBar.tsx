@@ -25,7 +25,8 @@ const SCREENS: [NavId, string][] = [
   ['calendar', 'Calendar'],
   ['groups', 'Group work'],
   ['timer', 'Focus timer'],
-  ['stats', 'Stats']
+  ['stats', 'Stats'],
+  ['ai', 'Veyra AI']
 ]
 const REPO = 'https://github.com/carrotsz19/veyra-study'
 // Windows 11: menus open in an acrylic window of their own, so what's behind them is truly blurred.
@@ -148,7 +149,7 @@ export function TitleBar() {
       if (e.key === 'F11') {
         e.preventDefault()
         win('fullscreen')
-      } else if (ctrl && !e.shiftKey && !e.altKey && /^[1-7]$/.test(e.key)) {
+      } else if (ctrl && !e.shiftKey && !e.altKey && /^[1-8]$/.test(e.key)) {
         e.preventDefault()
         go({ name: SCREENS[Number(e.key) - 1][0] } as Route)
       } else if (ctrl && e.key === ',') {

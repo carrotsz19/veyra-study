@@ -760,6 +760,21 @@ main.main:has(> * > .notes-embed) { padding-bottom: 20px; }
 .agent-model > button { max-width: 100%; min-width: 0; overflow: hidden; }
 .agent-model > button > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .agent-turbo.on { color: var(--accent); background: var(--accent-soft); }
+.agent-panel .ai-head .iconbtn.on { color: var(--accent); background: var(--accent-soft); }
+/* Past chats */
+.agent-past { gap: 8px; }
+.agent-past-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.agent-past-empty { margin: 4px 0; font-size: 13px; }
+.agent-past-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.agent-past-row { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.agent-past-row:hover { border-color: var(--accent); }
+.agent-past-row.open { background: var(--accent-soft); }
+.agent-past-open { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: 8px 10px; cursor: pointer; }
+.agent-past-title { font-weight: 600; font-size: 13.5px; }
+.agent-past-first { font-size: 12.5px; color: var(--dim); }
+.agent-past-open .trunc { display: block; max-width: 100%; }
+.agent-past-x { align-self: center; margin-right: 4px; opacity: .6; }
+.agent-past-x:hover { opacity: 1; }
 .agent-body { display: flex; flex-direction: column; gap: 12px; }
 .agent-empty p { margin: 0 0 10px; }
 .agent-suggest { display: flex; flex-direction: column; gap: 6px; }

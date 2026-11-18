@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BarChart3, CalendarDays, Home, ListTodo, MoreHorizontal, NotebookPen, PenLine, Plus, Search, Settings as SettingsIcon, Timer, Users, X } from 'lucide-react'
+import { BarChart3, CalendarDays, Home, ListTodo, MoreHorizontal, NotebookPen, PenLine, Plus, Search, Settings as SettingsIcon, Sparkles, Timer, Users, X } from 'lucide-react'
 import type { Route } from '../nav'
 import type { NavId } from '@shared/settings'
 import { useRecords } from '../data/store'
@@ -22,6 +22,7 @@ const SCREENS: Record<NavId, [string, typeof Home]> = {
   today: ['Today', Home],
   tasks: ['Tasks', ListTodo],
   notes: ['Notes', NotebookPen],
+  ai: ['Veyra AI', Sparkles],
   calendar: ['Calendar', CalendarDays],
   groups: ['Groups', Users],
   timer: ['Focus', Timer],
