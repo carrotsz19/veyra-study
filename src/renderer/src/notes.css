@@ -839,3 +839,33 @@ main.main:has(> * > .notes-embed) { padding-bottom: 20px; }
 @media (max-width: 720px) {
   .hist-preview .share-toolbar { top: -16px; margin: -16px -18px 12px; }
 }
+
+/* ---------- the Veyra AI tab: chats on the left, the open chat on the right ---------- */
+main.main.main-ai { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.ai-locked { padding: 28px 32px; flex: 1; min-height: 0; overflow-y: auto; }
+.aic { display: grid; grid-template-columns: 272px minmax(0, 1fr); flex: 1; min-height: 0; }
+.aic-list { display: flex; flex-direction: column; gap: 8px; padding: 14px 10px 10px; border-right: 1px solid var(--line); min-height: 0; }
+.aic-new { justify-content: center; }
+.aic-search { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; color: var(--dim); }
+.aic-search input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: 13px; outline: none; padding: 0; }
+.aic-scroll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.aic-empty { padding: 8px 6px; margin: 0; }
+.aic-group { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; color: var(--label-tertiary); padding: 12px 8px 4px; }
+.aic-row { display: flex; align-items: center; border-radius: 9px; }
+.aic-row:hover { background: var(--panel-2); }
+.aic-row.on { background: var(--accent-soft); }
+.aic-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; background: none; border: 0; color: inherit; font: inherit; font-size: 13.5px; text-align: left; padding: 7px 8px; cursor: pointer; }
+.aic-row.on .aic-open { font-weight: 600; }
+.aic-note-ic { flex: none; color: var(--dim); }
+.aic-act { opacity: 0; flex: none; }
+.aic-row:hover .aic-act, .aic-row.on .aic-act, .aic-act:focus-visible { opacity: .7; }
+.aic-act:hover { opacity: 1; }
+.aic-rename { flex: 1; min-width: 0; margin: 3px; padding: 4px 6px; border: 1px solid var(--accent); border-radius: 7px; background: var(--panel); color: inherit; font: inherit; font-size: 13.5px; }
+.agent-page { display: flex; flex-direction: column; min-height: 0; min-width: 0; height: 100%; background: transparent; }
+.agent-page .ai-body { padding: 18px max(20px, calc((100% - 760px) / 2)); }
+.agent-page .agent-switches, .agent-page .agent-compose, .agent-page .agent-files, .agent-page .ai-note { padding-left: max(14px, calc((100% - 760px) / 2)); padding-right: max(14px, calc((100% - 760px) / 2)); }
+.agent-page .ai-head { padding: 12px 16px 10px; }
+.aic-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.aic-title b { min-width: 0; }
+.aic-phone-list, .aic-phone-chat { grid-template-columns: minmax(0, 1fr); }
+.aic-phone-list .aic-list { border-right: 0; }

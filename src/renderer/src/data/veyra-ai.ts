@@ -30,6 +30,8 @@ export interface VeyraAiStatus {
   maxChars: number
   /** The owner allows web research in the Assistant. */
   agentWeb?: boolean
+  /** The owner opened the Veyra AI tab to everyone (servers before 1.15.0 leave it out). */
+  aiTab?: boolean
   /** Why a request can't be sent now, or null. */
   blocked: string | null
   busy: boolean

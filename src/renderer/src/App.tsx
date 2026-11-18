@@ -16,7 +16,7 @@ import { SubjectDialog } from './components/editors'
 import { Today } from './views/Today'
 import { Tasks } from './views/Tasks'
 import { Notes } from './views/Notes'
-import { AiView } from './views/AiView'
+import { AiView, useAiTabOpen } from './views/AiView'
 import { Calendar, usePrefetchCalendar } from './views/Calendar'
 import { TimerView } from './views/TimerView'
 import { Stats } from './views/Stats'
@@ -59,11 +59,12 @@ function Sidebar({ route, go, onEnter, onLeave }: { route: Route; go: (r: Route)
   const live = tasks.filter((t) => !t.data.subjectId || !archivedSubjects.has(t.data.subjectId))
   const open = live.filter((t) => !t.data.done).length
   const overdue = live.filter((t) => isOverdue(t.data.due, t.data.done)).length
+  const aiOpen = useAiTabOpen()
   const items: Record<NavId, [string, typeof Home, string?]> = {
     today: ['Today', Home, overdue ? `${overdue} late` : undefined],
     tasks: ['Tasks', ListTodo, open ? String(open) : undefined],
     notes: ['Notes', NotebookPen],
-    ai: ['Veyra AI', Sparkles, 'Soon'],
+    ai: ['Veyra AI', Sparkles, aiOpen === false ? 'Soon' : undefined],
     calendar: ['Calendar', CalendarDays],
     groups: ['Group work', Users],
     timer: ['Focus timer', Timer],
@@ -95,7 +96,7 @@ function Sidebar({ route, go, onEnter, onLeave }: { route: Route; go: (r: Route)
         {nav.map(([name, label, Icon, count]) => (
           <button key={name} className="navbtn" aria-current={route.name === name} onClick={() => go({ name } as Route)} title={tip(count ? `${label} (${count})` : label)} aria-label={label}>
             <Icon size={17} /> <span className="nav-label">{label}</span>
-            {name === 'ai' ? <span className="count soon nav-label">{count}</span> : count && s.showCounts && <span className="count">{count}</span>}
+            {name === 'ai' ? count && <span className="count soon nav-label">{count}</span> : count && s.showCounts && <span className="count">{count}</span>}
           </button>
         ))}
       </nav>
@@ -173,7 +174,7 @@ function Screen({ route }: { route: Route }) {
     case 'notes':
       return <Notes noteId={route.noteId} />
     case 'ai':
-      return <AiView />
+      return <AiView chatId={route.chatId} />
     case 'calendar':
       return <Calendar />
     case 'groups':
@@ -360,7 +361,7 @@ function Shell() {
           <BetaNotice />
           <AnnouncementsHost signedIn={signedIn} />
           <ServerHoursNotice />
-          <main className={`main ${route.name === 'settings' ? 'main-settings' : route.name === 'notes' ? 'main-notes' : route.name === 'groups' ? 'main-groups' : route.name === 'calendar' ? 'main-calendar' : ''}`}>
+          <main className={`main ${route.name === 'settings' ? 'main-settings' : route.name === 'notes' ? 'main-notes' : route.name === 'groups' ? 'main-groups' : route.name === 'ai' ? 'main-ai' : route.name === 'calendar' ? 'main-calendar' : ''}`}>
             <Screen key={route.name + ('id' in route ? route.id : '')} route={route} />
           </main>
         </div>

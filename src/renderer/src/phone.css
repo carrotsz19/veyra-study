@@ -180,6 +180,8 @@
 
   /* Group work: the page itself never scrolls; lists and messages scroll inside it */
   html .phone-shell main.main.main-groups { overflow: hidden; display: flex; flex-direction: column; }
+  html .phone-shell main.main.main-ai { padding: calc(6px + env(safe-area-inset-top)) 0 calc(var(--tabbar) + 12px); overflow: hidden; }
+  html .phone-shell .ai-locked { padding: 4px 16px; }
   html .grp { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; margin: 0; }
   html .grp > .topbar { flex-shrink: 0; }
   html .grp-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: stretch; gap: 0; }

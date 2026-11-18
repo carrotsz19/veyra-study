@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowUp, Bot, Users, Check, ChevronDown, ChevronRight, CircleDashed, Copy, ExternalLink, FilePlus2, FileText, Globe, HardDrive, History, Image as ImageIcon, ListChecks, Loader2, MessageSquarePlus, Paperclip, Square, Trash2, Undo2, X, XCircle, Zap } from 'lucide-react'
-import { archiveChat, deleteChat, DRIVE_KEY, listChats, loadChat, OPEN_ASSISTANT_KEY, resumeChat, type PastChat, MAX_FILES, prepareFile, saveChat, startAgent, SUBAGENTS_KEY, TURBO_KEY, WEB_KEY, type AgentChange, type AgentEvent, type AgentFile, type AgentRun, type ChatTurn, type NoteContext, type ToolAsk } from '../../data/agent'
+import { archiveChat, chatInfo, deleteChat, DRIVE_KEY, listChats, loadChat, OPEN_ASSISTANT_KEY, resumeChat, type PastChat, MAX_FILES, prepareFile, saveChat, startAgent, SUBAGENTS_KEY, TURBO_KEY, WEB_KEY, type AgentChange, type AgentEvent, type AgentFile, type AgentRun, type ChatTurn, type NoteContext, type ToolAsk } from '../../data/agent'
 import { useDrive } from '../../data/drive'
 import { setAiState, useAiState, useVeyraAi } from '../../data/veyra-ai'
 import { useNav } from '../../nav'
@@ -34,6 +34,7 @@ interface Live {
 }
 const fresh = (): Live => ({ text: '', steps: [], plan: null, sources: [], changes: [], pending: [], thinking: true, model: '', note: '' })
 
+const GENERAL_SUGGESTIONS = ['Explain a topic simply, with examples', 'Quiz me on what I noted this week', 'Plan my study week as tasks', 'Research a topic and save it as a note']
 const SUGGESTIONS = ['Research this topic and add a summary to the note', 'Make a 10-question quiz from this note', 'What’s missing from this note? Check it against good sources', 'Plan my revision for this subject as tasks']
 
 const readFlag = (key: string, fallback: boolean) => {
@@ -53,12 +54,36 @@ const writeFlag = (key: string, on: boolean) => {
 }
 const readTurbo = () => readFlag(TURBO_KEY, false)
 
-export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onClose: () => void; onInsert: (markdown: string) => void }) {
+/**
+ * variant 'panel': beside a note (that note's chat). 'page': the Veyra AI tab, where chatKey is any
+ * chat (a note's, or one of its own with note null) and each chat keeps its own model (the fastest
+ * to start with).
+ */
+export function AgentPanel({
+  note,
+  chatKey,
+  variant = 'panel',
+  heading,
+  onClose,
+  onInsert,
+  insertLabel = 'Insert into note'
+}: {
+  note: NoteContext | null
+  chatKey?: string
+  variant?: 'panel' | 'page'
+  heading?: ReactNode
+  onClose?: () => void
+  onInsert?: (markdown: string) => void
+  insertLabel?: string
+}) {
+  const key = chatKey ?? note?.id ?? ''
+  const page = variant === 'page'
   const toast = useToast()
   const { go } = useNav()
   const { status, error: statusError, reload } = useVeyraAi()
   const ai = useAiState()
-  const [turns, setTurns] = useState<ChatTurn[]>(() => loadChat(note.id))
+  const [turns, setTurns] = useState<ChatTurn[]>(() => loadChat(key))
+  const [chatModel, setChatModel] = useState<string | undefined>(() => chatInfo(key)?.model)
   const [live, setLive] = useState<Live | null>(null)
   const [past, setPast] = useState(false)
   const [input, setInput] = useState('')
@@ -85,8 +110,9 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
   // Saved on each change (not just for opening the note, so Past chats stays in the order they were used).
   const loaded = useRef(turns)
   useEffect(() => {
-    if (turns !== loaded.current) saveChat(note.id, turns, note.title)
-  }, [note.id, turns, note.title])
+    if (turns !== loaded.current) saveChat(key, turns, { title: note?.title, noteId: note ? note.id : chatInfo(key)?.noteId ?? null, ...(page ? { model: modelId } : {}) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, turns, note?.title])
   useEffect(() => () => run.current?.stop(), [])
   useEffect(() => {
     const el = scroller.current
@@ -163,7 +189,7 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
     liveRef.current = fresh()
     setLive(liveRef.current)
     run.current = startAgent(
-      { message, history, model: ai?.models.veyra, note, web: web && status?.agentWeb !== false, subagents, files, drive: useDriveNow },
+      { message, history, model: modelId, note, web: web && status?.agentWeb !== false, subagents, files, drive: useDriveNow },
       {
         event: (e) => {
           if (e.t === 'model') update((l) => ({ ...l, model: e.label, note: e.downgraded ? `Using ${e.label} to make your Veyra AI limit last longer.` : '' }))
@@ -215,13 +241,15 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
   // The old chat is kept under Past chats.
   const newChat = () => {
     if (live) return
-    archiveChat(note.id)
+    if (note) archiveChat(note.id)
     showChat([])
   }
   const openPast = (c: PastChat, noteThere: boolean) => {
-    if (live) return
+    if (live || !note) return
     setPast(false)
     if (c.id === note.id) return
+    // A chat of its own: it's in the Veyra AI tab.
+    if (!c.noteId) return go({ name: 'ai', chatId: c.id })
     if (c.noteId === note.id || !noteThere) {
       // One of this note's earlier chats, or one whose note was deleted: continue it here.
       showChat(resumeChat(c.id, note.id, note.title))
@@ -256,12 +284,15 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
 
   const blocked = statusError ? statusError : status && !status.approved ? status.blocked : null
   const models = status?.models ?? []
-  const model = models.find((m) => m.id === ai?.models.veyra) ?? models[0]
+  // Beside a note: the model chosen for the Assistant. In the Veyra AI tab: this chat's, the fastest to start with.
+  const cheapest = models.find((m) => /haiku/i.test(m.id)) ?? models[0]
+  const modelId = page ? (chatModel && models.some((m) => m.id === chatModel) ? chatModel : cheapest?.id) : ai?.models.veyra
+  const model = models.find((m) => m.id === modelId) ?? models[0]
 
   return (
     <aside
-      className={`ai-panel agent-panel ${dropping ? 'agent-drop' : ''}`}
-      aria-label="Assistant"
+      className={`${page ? 'agent-page' : 'ai-panel'} agent-panel ${dropping ? 'agent-drop' : ''}`}
+      aria-label={page ? 'Veyra AI chat' : 'Assistant'}
       onDragOver={(e) => {
         if (blocked || !e.dataTransfer.types.includes('Files')) return
         e.preventDefault()
@@ -279,35 +310,45 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
       }}
     >
       <header className="ai-head">
-        <span className="ai-badge">
-          <Bot size={15} />
-        </span>
-        <b className="grow">Assistant</b>
+        {heading ?? (
+          <>
+            <span className="ai-badge">
+              <Bot size={15} />
+            </span>
+            <b className="grow">Assistant</b>
+          </>
+        )}
         {models.length > 1 && (
           <Select
             className="agent-model"
             label="Model"
             value={model?.id ?? ''}
-            onChange={async (id) => setAiState(await window.veyra.ai.set({ model: { provider: 'veyra', model: id } }))}
+            onChange={async (id) => (page ? setChatModel(id) : setAiState(await window.veyra.ai.set({ model: { provider: 'veyra', model: id } })))}
             options={models.map((m) => ({ value: m.id, label: m.label }))}
           />
         )}
         <button className={`iconbtn plain agent-turbo ${turbo ? 'on' : ''}`} aria-pressed={turbo} title={turbo ? 'Turbo is on: changes are made without asking' : 'Turbo: make changes without asking'} aria-label="Turbo" onClick={flipTurbo}>
           <Zap size={16} />
         </button>
-        <button className={`iconbtn plain ${past ? 'on' : ''}`} aria-label="Past chats" aria-pressed={past} title="Past chats" disabled={!!live} onClick={() => setPast(!past)}>
-          <History size={16} />
-        </button>
-        <button className="iconbtn plain" aria-label="New chat" title="New chat (this one is kept in Past chats)" disabled={!!live || !turns.length} onClick={() => (newChat(), setPast(false))}>
-          <MessageSquarePlus size={16} />
-        </button>
-        <button className="iconbtn plain" aria-label="Close" onClick={onClose}>
-          <X size={16} />
-        </button>
+        {!page && (
+          <>
+            <button className={`iconbtn plain ${past ? 'on' : ''}`} aria-label="Past chats" aria-pressed={past} title="Past chats (every chat is also in the Veyra AI tab)" disabled={!!live} onClick={() => setPast(!past)}>
+              <History size={16} />
+            </button>
+            <button className="iconbtn plain" aria-label="New chat" title="New chat (this one is kept in Past chats)" disabled={!!live || !turns.length} onClick={() => (newChat(), setPast(false))}>
+              <MessageSquarePlus size={16} />
+            </button>
+          </>
+        )}
+        {onClose && (
+          <button className="iconbtn plain" aria-label="Close" onClick={onClose}>
+            <X size={16} />
+          </button>
+        )}
       </header>
 
-      {past ? (
-        <PastChats noteId={note.id} onOpen={openPast} onDelete={(id) => (deleteChat(id), id === note.id && showChat([]))} onClose={() => setPast(false)} />
+      {past && note ? (
+        <PastChats noteId={note.id} onOpen={openPast} onDelete={(id) => (deleteChat(id), id === key && showChat([]))} onClose={() => setPast(false)} />
       ) : (
       <>
       <div className="ai-body agent-body" ref={scroller} aria-live="polite">
@@ -321,10 +362,10 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
         ) : !turns.length && !live ? (
           <div className="agent-empty">
             <p className="dim">
-              Ask for research, a summary, a quiz or a study plan. The Assistant can search the web, send helpers to research in parallel, and read and add to your notes and tasks{turbo ? ' (Turbo is on: it won’t ask first)' : ' (it asks before changing anything)'}.
+              {note ? 'Ask for research, a summary, a quiz or a study plan.' : 'Ask anything: research, explanations, quizzes or a study plan.'} The Assistant can search the web, send helpers to research in parallel, and read and add to your notes and tasks{turbo ? ' (Turbo is on: it won’t ask first)' : ' (it asks before changing anything)'}.
             </p>
             <div className="agent-suggest">
-              {SUGGESTIONS.map((s) => (
+              {(note ? SUGGESTIONS : GENERAL_SUGGESTIONS).map((s) => (
                 <button key={s} className="agent-chip" onClick={() => send(s)}>
                   {s}
                 </button>
@@ -348,7 +389,7 @@ export function AgentPanel({ note, onClose, onInsert }: { note: NoteContext; onC
               {t.text}
             </div>
           ) : (
-            <Answer key={i} turn={t} onInsert={onInsert} />
+            <Answer key={i} turn={t} onInsert={onInsert} insertLabel={insertLabel} />
           )
         )}
 
@@ -557,20 +598,20 @@ function PastChats({ noteId, onOpen, onDelete, onClose }: { noteId: string; onOp
       ) : (
         <ul className="agent-past-list">
           {chats.map((c) => {
-            const there = !loaded || titles.has(c.noteId)
-            const title = (titles.get(c.noteId) || c.title || 'Untitled').trim() || 'Untitled'
+            const there = !loaded || !c.noteId || titles.has(c.noteId)
+            const title = ((c.noteId ? titles.get(c.noteId) : '') || c.title || 'Untitled').trim() || 'Untitled'
             const here = c.noteId === noteId
             return (
               <li key={c.id} className={`agent-past-row ${c.id === noteId ? 'open' : ''}`}>
                 <button
                   className="agent-past-open"
-                  title={here ? 'Open this chat' : there ? `Open “${title}” with this chat` : 'Its note was deleted: continue the chat in this note'}
+                  title={here ? 'Open this chat' : !c.noteId ? 'Open this chat in the Veyra AI tab' : there ? `Open “${title}” with this chat` : 'Its note was deleted: continue the chat in this note'}
                   onClick={() => onOpen(c, there)}
                 >
                   <span className="agent-past-title trunc">{title}</span>
                   <span className="agent-past-first trunc">{c.first || 'Chat'}</span>
                   <span className="xs tert">
-                    {c.id === noteId ? 'Open now' : here ? 'This note' : there ? 'Another note' : 'Note deleted'} · {ago(c.at)} · {Math.ceil(c.count / 2)} {c.count > 2 ? 'questions' : 'question'}
+                    {c.id === noteId ? 'Open now' : here ? 'This note' : !c.noteId ? 'Veyra AI' : there ? 'Another note' : 'Note deleted'} · {ago(c.at)} · {Math.ceil(c.count / 2)} {c.count > 2 ? 'questions' : 'question'}
                   </span>
                 </button>
                 <button className="iconbtn plain agent-past-x" aria-label={`Delete chat: ${c.first || title}`} title="Delete this chat" onClick={() => onDelete(c.id)}>
@@ -585,7 +626,7 @@ function PastChats({ noteId, onOpen, onDelete, onClose }: { noteId: string; onOp
   )
 }
 
-function Answer({ turn, onInsert }: { turn: ChatTurn; onInsert: (md: string) => void }) {
+function Answer({ turn, onInsert, insertLabel }: { turn: ChatTurn; onInsert?: (md: string) => void; insertLabel: string }) {
   const toast = useToast()
   return (
     <div className="agent-turn">
@@ -606,9 +647,11 @@ function Answer({ turn, onInsert }: { turn: ChatTurn; onInsert: (md: string) => 
       {turn.note && <p className="xs dim">{turn.note}</p>}
       {turn.text && (
         <div className="row agent-actions">
-          <button className="btn ghost sm" onClick={() => onInsert(turn.text)}>
-            Insert into note
-          </button>
+          {onInsert && (
+            <button className="btn ghost sm" onClick={() => onInsert(turn.text)}>
+              {insertLabel}
+            </button>
+          )}
           <button
             className="btn ghost sm"
             onClick={() => {

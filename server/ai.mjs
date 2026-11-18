@@ -48,7 +48,8 @@ const DEFAULT_MODELS = [
   { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5 · smarter' }
 ]
 // agentRun: the most one agent task (with its subagents and web research) may cost; agentWeb: research allowed.
-const DEFAULTS = { cap: 100, breaker: 0.85, scaling: true, downgrade: true, downgradeAt: 0.75, maxChars: 32_000, fiveHour: 0.4, week: 2.25, agentRun: 0.25, agentWeb: true }
+// aiTab: the apps' Veyra AI tab is open to everyone approved (off: the owner only, while it's tried out).
+const DEFAULTS = { cap: 100, breaker: 0.85, scaling: true, downgrade: true, downgradeAt: 0.75, maxChars: 32_000, fiveHour: 0.4, week: 2.25, agentRun: 0.25, agentWeb: true, aiTab: false }
 const MAX_SYSTEM = 4000
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
 
@@ -224,6 +225,7 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
       downgradeAt: st.s.downgrade ? st.s.downgradeAt : null,
       maxChars: st.s.maxChars,
       agentWeb: st.s.agentWeb,
+      aiTab: !!st.s.aiTab,
       blocked: blocked(st),
       busy: running.has(u)
     }
@@ -482,7 +484,8 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
       fiveHour: body?.fiveHour !== undefined ? limitOf(body.fiveHour) : s.fiveHour,
       week: body?.week !== undefined ? limitOf(body.week) : s.week,
       agentRun: body?.agentRun !== undefined ? num(body.agentRun, 0.01, 50) : s.agentRun,
-      agentWeb: body?.agentWeb !== undefined ? !!body.agentWeb : s.agentWeb
+      agentWeb: body?.agentWeb !== undefined ? !!body.agentWeb : s.agentWeb,
+      aiTab: body?.aiTab !== undefined ? !!body.aiTab : !!s.aiTab
     }
     metaSet('ai_settings', JSON.stringify(next))
     return { settings: next }

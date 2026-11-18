@@ -11,7 +11,7 @@ import { Bar, Dialog, useToast } from '../components/ui'
  * and each person's use, with approving and limits. Amounts are US dollars.
  */
 
-type Settings = { cap: number; breaker: number; scaling: boolean; downgrade: boolean; downgradeAt: number; maxChars: number; fiveHour: number | null; week: number | null; agentRun: number; agentWeb: boolean }
+type Settings = { cap: number; breaker: number; scaling: boolean; downgrade: boolean; downgradeAt: number; maxChars: number; fiveHour: number | null; week: number | null; agentRun: number; agentWeb: boolean; aiTab?: boolean }
 type Model = { id: string; label: string; enabled: boolean; input: number; output: number; cacheWrite: number; cacheRead: number; effort: string | null; maxTokens: number }
 type Overview = {
   keySet: boolean
@@ -197,6 +197,13 @@ function SettingsCard({ s, onSave }: { s: Settings; onSave: (p: Partial<Settings
           <div className="ig-sub">Lets the Assistant and its subagents search the web and read pages ($10 per 1,000 searches, plus what they read). Off: notes only.</div>
         </div>
         <input type="checkbox" checked={s.agentWeb} onChange={(e) => onSave({ agentWeb: e.target.checked })} />
+      </label>
+      <label className="ig-row tap">
+        <div className="grow">
+          <div className="ig-title">Veyra AI tab for everyone</div>
+          <div className="ig-sub">Opens the Veyra AI tab (full-page chats, every chat in one place) to everyone approved for Veyra AI. Off: only you, and everyone else sees “Coming soon”.</div>
+        </div>
+        <input type="checkbox" checked={!!s.aiTab} onChange={(e) => onSave({ aiTab: e.target.checked })} />
       </label>
       <div className="ig-row">
         <div className="grow">

@@ -270,10 +270,23 @@ export interface ChatTurn {
 }
 const CHATS_KEY = 'veyra.assistant.chats'
 /**
- * Chats by id. A note's current chat is kept under the note's id; New chat keeps the old one as
- * `<noteId>~<time>`, so it's still in Past chats. Older saves had only the current chats.
+ * Chats by id, on this device:
+ * - a note's current chat under the note's id, and its earlier ones as `<noteId>~<time>` (New chat);
+ * - chats of their own, from the Veyra AI tab, as `chat:<uuid>`.
+ * The Veyra AI tab lists them all; a note's Assistant shows that note's current chat.
  */
-type Saved = Record<string, { at: number; turns: ChatTurn[]; noteId?: string; title?: string }>
+interface SavedChat {
+  at: number
+  turns: ChatTurn[]
+  /** The note it belongs to (null: a chat of its own). Older saves leave it out: see noteOf. */
+  noteId?: string | null
+  /** The note's name, or the chat's: from the first question, unless renamed (named). */
+  title?: string
+  named?: boolean
+  /** Chats of the Veyra AI tab each keep their model. */
+  model?: string
+}
+type Saved = Record<string, SavedChat>
 const readChats = (): Saved => {
   try {
     return JSON.parse(localStorage.getItem(CHATS_KEY) ?? '{}') as Saved
@@ -282,8 +295,8 @@ const readChats = (): Saved => {
   }
 }
 function writeChats(all: Saved): void {
-  // Keep the 60 most recent chats.
-  const keep = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 60)
+  // Keep the 100 most recent chats.
+  const keep = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 100)
   try {
     localStorage.setItem(CHATS_KEY, JSON.stringify(Object.fromEntries(keep)))
   } catch {
@@ -291,19 +304,42 @@ function writeChats(all: Saved): void {
   }
   window.dispatchEvent(new Event('veyra:chats'))
 }
-const noteOf = (id: string, c: Saved[string]): string => c.noteId ?? id.split('~')[0]
-export const loadChat = (noteId: string): ChatTurn[] => readChats()[noteId]?.turns ?? []
-export function saveChat(noteId: string, turns: ChatTurn[], title?: string): void {
+const noteOf = (id: string, c: Partial<SavedChat>): string | null => (c.noteId !== undefined ? c.noteId : id.startsWith('chat:') ? null : id.split('~')[0])
+/** A new chat of its own (saved once something is asked). */
+export const newChatId = () => `chat:${crypto.randomUUID()}`
+const titleFrom = (text: string) => {
+  const t = text.replace(/\s+/g, ' ').trim()
+  return t.length > 60 ? `${t.slice(0, 57).trimEnd()}…` : t
+}
+
+export const loadChat = (id: string): ChatTurn[] => readChats()[id]?.turns ?? []
+export function chatInfo(id: string): { noteId: string | null; title?: string; model?: string } | null {
+  const c = readChats()[id]
+  return c ? { noteId: noteOf(id, c), title: c.title, model: c.model } : null
+}
+export function saveChat(id: string, turns: ChatTurn[], meta: { title?: string; noteId?: string | null; model?: string } = {}): void {
   const all = readChats()
-  if (turns.length) all[noteId] = { at: Date.now(), turns: turns.slice(-40), noteId, title: title || all[noteId]?.title }
-  else delete all[noteId]
+  const was = all[id]
+  if (turns.length) {
+    const noteId = meta.noteId !== undefined ? meta.noteId : noteOf(id, was ?? {})
+    const first = turns.find((t) => t.role === 'user')?.text ?? ''
+    const title = was?.named ? was.title : noteId ? meta.title || was?.title : was?.title || titleFrom(first)
+    all[id] = { ...was, at: Date.now(), turns: turns.slice(-40), noteId, title, ...(meta.model ? { model: meta.model } : {}) }
+  } else delete all[id]
+  writeChats(all)
+}
+export function renameChat(id: string, title: string): void {
+  const all = readChats()
+  if (!all[id]) return
+  all[id] = { ...all[id], title: title.trim() || all[id].title, named: !!title.trim() }
   writeChats(all)
 }
 
 export interface PastChat {
   id: string
-  noteId: string
-  /** The note's name when the chat was last saved. */
+  /** The note it belongs to, or null for a chat of its own. */
+  noteId: string | null
+  /** The chat's name (a chat of its own), or the note's name when it was last saved. */
   title?: string
   at: number
   /** The first question asked, for the list. */
@@ -316,7 +352,10 @@ export interface PastChat {
 export function listChats(): PastChat[] {
   return Object.entries(readChats())
     .filter(([, c]) => c.turns?.length)
-    .map(([id, c]) => ({ id, noteId: noteOf(id, c), title: c.title, at: c.at, first: c.turns.find((t) => t.role === 'user')?.text ?? '', count: c.turns.length, current: !id.includes('~') }))
+    .map(([id, c]) => {
+      const noteId = noteOf(id, c)
+      return { id, noteId, title: c.title, at: c.at, first: c.turns.find((t) => t.role === 'user')?.text ?? '', count: c.turns.length, current: !!noteId && id === noteId }
+    })
     .sort((a, b) => b.at - a.at)
 }
 /** New chat: the note's current chat is kept in Past chats. */
