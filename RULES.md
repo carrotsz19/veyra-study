@@ -52,25 +52,26 @@ How releases work step by step is in [RELEASING.md](RELEASING.md).
 
 ## Devices
 
-19. **Don't operate the owner's everyday phone.** The server phone (Galaxy A54) has no lock code,
-    and deploying the group server to it is fine.
+19. **Don't operate the owner's everyday phone.**
+20. **The server phone (Galaxy A54) has no lock code: unlock it yourself.** Deploying the group server
+    to it is fine without asking. Wake it, swipe up, do the work in Termux, then put it back to sleep.
 
 ## The group server
 
-20. **Server changes must be additive:** older Prod apps use the same server, so nothing they rely
+21. **Server changes must be additive:** older Prod apps use the same server, so nothing they rely
     on may change or go away.
-21. The server sleeps from about 12 am to 8 am. Group work, sync, Veyra AI and voice are off then.
+22. The server sleeps from about 12 am to 8 am. Group work, sync, Veyra AI and voice are off then.
 
 ## Privacy
 
-22. **Don't open the owner's personal documents.**
-23. **AI chat sync stays end-to-end encrypted.** The owner must never be able to read students' chats.
+23. **Don't open the owner's personal documents.**
+24. **AI chat sync stays end-to-end encrypted.** The owner must never be able to read students' chats.
 
 ## Settled decisions (don't re-open unless the owner does)
 
-24. **Code signing:** the Windows app stays unsigned for now. Don't bring signing up again.
-25. **Google Drive for the Assistant** is opt-in (Settings → Connections) and uses `drive.readonly`.
-26. **Voice-call relay cap:** 600 GB a month (`VOICE_CAP_GB` on the server). Past it, voice
+25. **Code signing:** the Windows app stays unsigned for now. Don't bring signing up again.
+26. **Google Drive for the Assistant** is opt-in (Settings → Connections) and uses `drive.readonly`.
+27. **Voice-call relay cap:** 600 GB a month (`VOICE_CAP_GB` on the server). Past it, voice
     pauses until the 1st.
-27. **Veyra AI budget:** about $100 a month for up to ~20 people. New AI features roll out to the
+28. **Veyra AI budget:** about $100 a month for up to ~20 people. New AI features roll out to the
     owner first.
