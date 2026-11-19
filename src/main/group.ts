@@ -40,6 +40,9 @@ export class GroupClient extends GroupCore {
   }
 
   watch(wc: WebContents) {
+    // group:status and group:connect are called repeatedly from the renderer.
+    // Register one cleanup callback per WebContents, not one per request.
+    if (this.listeners.has(wc)) return
     this.listeners.add(wc)
     wc.once('destroyed', () => this.listeners.delete(wc))
   }
