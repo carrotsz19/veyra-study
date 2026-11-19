@@ -7,6 +7,14 @@ in Settings → Software update. Write new changes under "## Unreleased":
 Versions are year.month.release-in-that-month (26.11.1, 26.11.2, then 26.12.1),
 picked automatically. They come after the older 1.0.x numbers.
 
+## Unreleased
+
+- **The note toolbar is back:** in 26.11.3 the formatting bar at the top of a note could show up empty. It now always follows the part of the page you're writing in.
+- **Focus mode works again:** the full-page button on a note no longer leaves the window blank and see-through.
+- **Assistant fits its panel:** it opens at its normal width again, and the model picker and Close button stay in view even when you make the panel narrow.
+- **Menus are easier to read:** right-click and drop-down menus are now nearly solid, so the sidebar no longer shows through them.
+- **File → Restart Veyra Study:** restarts the app in one click.
+
 ## 26.11.3
 
 - **Fixed the app going blank (see-through) while writing notes:** the note toolbar could keep drawing for a moment after a note closed or switched, and that took the whole window down, leaving only the translucent background. It now waits for the note instead, and if any screen ever fails to draw, Veyra shows a Reload button instead of an empty window.
