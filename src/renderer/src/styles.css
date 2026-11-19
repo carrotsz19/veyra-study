@@ -794,13 +794,14 @@ html.material .has-titlebar main.main { border-top-left-radius: 12px; }
 
 /* ---------- acrylic for floating menus: see-through, blurred and a touch more vivid ---------- */
 :root {
-  --glass-bg: color-mix(in srgb, var(--bg-elevated) 84%, transparent);
+  /* Nearly solid: over the see-through (acrylic) window there's nothing in the page to blur, so a thin tint shows text through. */
+  --glass-bg: color-mix(in srgb, var(--bg-elevated) 96%, transparent);
   --glass-filter: blur(48px) saturate(1.8);
   --glass-edge: color-mix(in srgb, var(--ink) 10%, transparent);
   --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 html.dark {
-  --glass-bg: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+  --glass-bg: color-mix(in srgb, var(--bg-elevated) 95%, transparent);
   --glass-edge: rgba(255, 255, 255, 0.1);
   --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }

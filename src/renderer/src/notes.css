@@ -319,7 +319,8 @@
 
 /* ---------- focus mode: just the page ---------- */
 body.focus-mode aside.side { display: none; }
-body.focus-mode .shell { grid-template-columns: 1fr; }
+/* The page stays in its own column (main is placed in column 2): a single 1fr column left it 1px wide. */
+body.focus-mode .shell.shell { grid-template-columns: 0px minmax(0, 1fr); --side-w: 0px; }
 
 /* ---------- AI ---------- */
 .note-page { position: relative; flex-direction: row; }
@@ -868,8 +869,11 @@ main.main:has(> * > .notes-embed) { padding-bottom: 20px; }
 
 /* ---------- the Assistant (Veyra AI agent) ---------- */
 .agent-panel { width: var(--ai-w, 380px); }
-.agent-panel .ai-head > b { flex: 1 0 auto; }
-.agent-model { flex: 0 1 auto; min-width: 0; max-width: 160px; font-size: 12.5px; }
+/* A narrow panel: the title gives way first; the model picker keeps its name and the buttons (Close too) stay in view. */
+.agent-panel .ai-head { min-width: 0; }
+.agent-panel .ai-head > b { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-panel .ai-head > .iconbtn, .agent-panel .ai-head > .ai-badge { flex: 0 0 auto; }
+.agent-model { flex: 1 1 84px; min-width: 72px; max-width: 160px; font-size: 12.5px; }
 .agent-model > button { max-width: 100%; min-width: 0; overflow: hidden; }
 .agent-model > button > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .agent-turbo.on { color: var(--accent); background: var(--accent-soft); }

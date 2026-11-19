@@ -12,7 +12,7 @@ import type { Note, NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, onExternalChange, useRecords } from '../../data/store'
 import { useToast } from '../ui'
 import { docText, noteExtensions, wordCount } from './extensions'
-import { collectPdfs, onAttachError } from './attachment'
+import { collectPdfs, editorAlive, onAttachError } from './attachment'
 import { onBlockNotice } from './blockActions'
 import { isSameNoteDoc, shouldSaveEditorUpdate } from './noteDirty'
 import { onVoiceMessage } from '../../data/voice'
@@ -532,8 +532,9 @@ function writePdfOpen(noteId: string, open: boolean): void {
 
 function readAgentWidth(): number {
   try {
-    const n = Number(localStorage.getItem(AGENT_WIDTH_KEY))
-    return Number.isFinite(n) ? Math.max(260, Math.min(560, Math.round(n))) : DEFAULT_AGENT_WIDTH
+    // Nothing saved yet reads as 0 (Number(null)): that's the default width, not the narrowest.
+    const n = Number(localStorage.getItem(AGENT_WIDTH_KEY) || NaN)
+    return Number.isFinite(n) && n > 0 ? Math.max(320, Math.min(560, Math.round(n))) : DEFAULT_AGENT_WIDTH
   } catch {
     return DEFAULT_AGENT_WIDTH
   }
@@ -588,7 +589,7 @@ export function NoteEditor({
   }
   const [agentWidth, setAgentWidth] = useState<number>(readAgentWidth)
   const saveAgentWidth = (w: number) => {
-    const clamped = Math.max(260, Math.min(560, Math.round(w)))
+    const clamped = Math.max(320, Math.min(560, Math.round(w)))
     setAgentWidth(clamped)
     try {
       localStorage.setItem(AGENT_WIDTH_KEY, String(clamped))
@@ -723,10 +724,14 @@ export function NoteEditor({
     update({ [field]: json, excerpt: preview(latest.current.title, all).slice(0, 240) })
   }
   // The main area is the toolbar's target until you click into another one.
+  // An area's editor is rebuilt when its settings change (spelling, attachments, sharing): the old one is
+  // destroyed, so the toolbar moves to the new one instead of holding on to it.
   const mainActive = (e: Editor) => {
+    const before = mainEditor.current
     mainEditor.current = e
-    setActive((cur) => cur ?? e)
+    setActive((cur) => (cur && cur !== before && editorAlive(cur) ? cur : e))
   }
+  const barEditor = editorAlive(active) ? active : editorAlive(mainEditor.current) ? mainEditor.current : null
 
   /* ---------- AI study tools ---------- */
   const askAi = (task: AiTask, ed?: Editor) => {
@@ -879,8 +884,8 @@ export function NoteEditor({
     document.body.classList.add('resizing-pane')
     const move = (ev: PointerEvent) => {
       const rect = el.getBoundingClientRect()
-      const maxW = Math.max(260, Math.min(560, Math.floor(rect.width * 0.55)))
-      latestW = Math.max(260, Math.min(maxW, Math.round(rect.right - ev.clientX)))
+      const maxW = Math.max(320, Math.min(560, Math.floor(rect.width * 0.55)))
+      latestW = Math.max(320, Math.min(maxW, Math.round(rect.right - ev.clientX)))
       setAgentWidth(latestW)
     }
     const up = () => {
@@ -904,7 +909,7 @@ export function NoteEditor({
       style={{ ['--note-base' as string]: `${settings.noteSize}px`, ['--ai-w' as string]: `${agentWidth}px` }}
     >
       <div className="note-page-main">
-        {showBar && <NoteToolbar editor={active} />}
+        {showBar && <NoteToolbar editor={barEditor} />}
         <div className="note-scroll">
           {data.archived && (
             <div className="note-banner">

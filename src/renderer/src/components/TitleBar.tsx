@@ -90,6 +90,7 @@ export function TitleBar() {
         'sep',
         { label: 'Settings', keys: 'Ctrl+,', run: () => settings() },
         'sep',
+        { label: 'Restart Veyra Study', run: () => void window.veyra.app.relaunch?.() },
         { label: 'Close window', run: () => win('close') },
         { label: 'Quit Veyra Study', keys: 'Ctrl+Q', run: () => win('quit') }
       ]
