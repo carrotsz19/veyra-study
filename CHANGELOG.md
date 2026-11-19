@@ -7,7 +7,7 @@ in Settings → Software update. Write new changes under "## Unreleased":
 Versions are year.month.release-in-that-month (26.11.1, 26.11.2, then 26.12.1),
 picked automatically. They come after the older 1.0.x numbers.
 
-## Unreleased
+## 26.11.4
 
 - **The note toolbar is back:** in 26.11.3 the formatting bar at the top of a note could show up empty. It now always follows the part of the page you're writing in.
 - **Focus mode works again:** the full-page button on a note no longer leaves the window blank and see-through.
