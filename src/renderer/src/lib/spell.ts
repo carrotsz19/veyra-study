@@ -4,11 +4,13 @@
  * A word is fine if either dictionary knows it, or you added it.
  */
 import NSpell from 'nspell'
+import { matchSuggestionCase, normalizeApostrophe } from './spell-rules'
 
 type Speller = { correct(w: string): boolean; suggest(w: string): string[]; add(w: string): void }
 let spellers: Speller[] = []
 let loading: Promise<void> | null = null
 const listeners = new Set<() => void>()
+const ignored = new Set<string>()
 
 const WORDS_KEY = 'veyra.spell.words'
 function ownWords(): string[] {
@@ -30,30 +32,45 @@ export function loadSpelling(): Promise<void> {
 }
 export const spellingReady = () => spellers.length > 0
 
-/** Runs when the dictionaries load or a word is added (to check pages again). */
+/** Runs when the dictionaries load or a word is added/ignored (to check pages again). */
 export function onSpellingChange(l: () => void): () => void {
   listeners.add(l)
   return () => void listeners.delete(l)
 }
 
-const clean = (w: string) => w.replace(/’/g, "'")
 export function isWord(word: string): boolean {
   if (!spellers.length) return true
-  const w = clean(word)
+  const w = normalizeApostrophe(word)
+  if (ignored.has(w) || ignored.has(w.toLowerCase())) return true
   return spellers.some((s) => s.correct(w))
 }
 
-/** Up to five fixes, British first. */
+/** Up to five fixes, British first, matching the original word's capitalization. */
 export function suggestions(word: string): string[] {
-  const w = clean(word)
+  const w = normalizeApostrophe(word)
+  const lower = w.toLowerCase()
   const out: string[] = []
-  for (const s of spellers) for (const x of s.suggest(w)) if (!out.includes(x)) out.push(x)
+  const push = (raw: string) => {
+    const cased = matchSuggestionCase(w, raw)
+    if (cased !== w && !out.includes(cased)) out.push(cased)
+  }
+  for (const s of spellers) for (const x of s.suggest(w)) push(x)
+  if (out.length < 5 && w !== lower) {
+    for (const s of spellers) for (const x of s.suggest(lower)) push(x)
+  }
   return out.slice(0, 5)
+}
+
+/** Ignore a word for this session without saving it permanently to the dictionary. */
+export function ignoreWord(word: string): void {
+  const w = normalizeApostrophe(word)
+  ignored.add(w)
+  listeners.forEach((l) => l())
 }
 
 /** "Add to dictionary": known from now on, on this computer. */
 export function learnWord(word: string): void {
-  const w = clean(word)
+  const w = normalizeApostrophe(word)
   spellers.forEach((s) => s.add(w))
   try {
     localStorage.setItem(WORDS_KEY, JSON.stringify([...new Set([...ownWords(), w])]))

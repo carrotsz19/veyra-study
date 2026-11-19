@@ -140,8 +140,9 @@ h3 { font-size: 15.5px; font-weight: 600; margin: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 /* ---------- shell ---------- */
-.shell { display: grid; grid-template-columns: var(--sidebar) 1fr; height: 100vh; }
+.shell { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); height: 100vh; }
 aside.side {
+  position: relative;
   background: var(--panel);
   border-right: 1px solid var(--line);
   display: flex;
@@ -172,7 +173,7 @@ aside.side {
   border: 0; background: transparent; color: var(--ink); font: inherit; font-weight: 600;
   padding: calc(8px * var(--dens)) 10px; border-radius: var(--r-control); cursor: pointer; margin-bottom: 2px;
 }
-.navbtn:hover { background: var(--panel-2); }
+.navbtn:hover { background: var(--fill-tertiary); }
 .navbtn[aria-current='true'] { background: var(--accent-soft); color: var(--accent); }
 .navbtn svg { opacity: 0.8; flex-shrink: 0; }
 .navbtn .count { margin-left: auto; font-size: 11.5px; color: var(--label-tertiary); font-weight: 600; }
@@ -646,15 +647,17 @@ html[data-nav='pop'] :is(.notes-layout:not(.phone-open) > .notes-list, .settings
 @keyframes pagePop { from { transform: translateX(-30%); } }
 
 /* ---------- the sidebar's (and phone tab bar's) selection slides to what you pick (lib/segments.ts) ---------- */
-.side nav.has-pill { position: relative; isolation: isolate; }
-.side nav.has-pill > .navbtn[aria-current='true'] { background: transparent; }
-.side nav.has-pill::before {
-  content: ''; position: absolute; z-index: -1; left: 0; right: 0; top: 0; height: var(--pill-h, 0);
-  transform: translateY(var(--pill-y, 0)); border-radius: var(--r-control); background: var(--accent-soft);
-  transition: transform var(--spring-snappy-ms) var(--spring-snappy), height var(--spring-snappy-ms) var(--spring-snappy), opacity 0.18s var(--ease-standard);
+.side-scroll.has-pill { position: relative; isolation: isolate; }
+.side-scroll.has-pill .navbtn[aria-current='true'],
+.side-scroll.has-pill .navbtn[aria-current='true']:hover { background: transparent; }
+.side-scroll.has-pill::before {
+  content: ''; position: absolute; z-index: -1; left: 0; top: 0; width: var(--pill-w, 0); height: var(--pill-h, 0);
+  transform: translate3d(var(--pill-x, 0), var(--pill-y, 0), 0); border-radius: var(--r-control); background: var(--accent-soft);
+  pointer-events: none;
+  transition: transform var(--spring-snappy-ms) var(--spring-snappy), width var(--spring-snappy-ms) var(--spring-snappy), height var(--spring-snappy-ms) var(--spring-snappy), opacity 0.18s var(--ease-standard);
 }
-.side nav.pill-off::before { opacity: 0; }
-.side nav.pill-instant::before { transition: none; }
+.side-scroll.pill-off::before { opacity: 0; }
+.side-scroll.pill-instant::before { transition: none; }
 
 /* ---------- swipe a task on the phone: right to tick off, left to delete ---------- */
 .swipe-wrap { position: relative; overflow: hidden; }
@@ -938,11 +941,28 @@ html.material .beta-notice { background: color-mix(in srgb, var(--bg-elevated) 9
 
 /* ---------- sidebar: full, icons only, or hidden until you point at the left edge (Zen-style) ---------- */
 .shell:not(.phone-shell) { transition: grid-template-columns var(--spring-spatial-ms) var(--spring-spatial); }
+.shell.resizing-sidebar:not(.phone-shell),
+.shell.resizing-sidebar aside.side { transition: none !important; }
 .shell:not(.phone-shell) > main.main { grid-column: 2; }
 .shell.side-full { --side-w: var(--sidebar); }
 .shell.side-icons { grid-template-columns: 64px minmax(0, 1fr); --side-w: 64px; }
 .shell.side-hidden { grid-template-columns: 0px minmax(0, 1fr); --side-w: 0px; }
 .beta-notice { left: calc(var(--side-w, var(--sidebar)) + 24px); }
+
+/* Zen-style sidebar edge resizer: drag to resize smoothly, pull narrow to snap to icons, double-click to reset. */
+.side-resizer {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 7px; z-index: 6;
+  cursor: col-resize; touch-action: none; user-select: none;
+}
+.side-resizer::after {
+  content: ''; position: absolute; top: 12px; bottom: 12px; right: 1px; width: 2px; border-radius: 99px;
+  background: transparent; transition: background-color 0.14s var(--ease-standard);
+}
+.side-resizer:hover::after,
+.shell.resizing-sidebar .side-resizer::after {
+  background: color-mix(in srgb, var(--accent) 72%, transparent);
+}
+.side-hidden .side-resizer::after { top: 14px; bottom: 14px; right: 2px; }
 
 /* Icons only: a slim column; names show as tooltips. */
 .side-icons aside.side { padding: 10px 8px; overflow: hidden; align-items: stretch; }

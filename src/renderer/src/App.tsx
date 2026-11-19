@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { NavId, ThemeMode } from '@shared/settings'
+import type { NavId, SidebarMode, ThemeMode } from '@shared/settings'
+import { clampSidebarWidth, resolveSidebarDrag, SIDEBAR_DEFAULT_WIDTH } from '@shared/sidebar'
 import { SettingsProvider, useSettings } from './data/settings'
 import { phaseLabel } from './components/timer'
 import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, MessageCircle, Monitor, Moon, NotebookPen, Plus, Search, Settings as SettingsIcon, Sparkles, Sun, Timer, Users } from 'lucide-react'
@@ -47,10 +48,44 @@ import { setRouteBack } from './lib/back'
 
 startSegments()
 
+const SIDEBAR_WIDTH_KEY = 'veyra.sidebarWidth'
+function readSidebarWidth(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_WIDTH_KEY)
+    if (!raw) return SIDEBAR_DEFAULT_WIDTH
+    return clampSidebarWidth(Number(raw))
+  } catch {
+    return SIDEBAR_DEFAULT_WIDTH
+  }
+}
+function saveSidebarWidth(width: number) {
+  try {
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(clampSidebarWidth(width)))
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 /** Full → icons only → hidden (slides out at the left edge) → full. */
 export const nextSidebarMode = (m: 'full' | 'icons' | 'hidden') => (m === 'full' ? 'icons' : m === 'icons' ? 'hidden' : 'full')
 
-function Sidebar({ route, go, onEnter, onLeave, compact }: { route: Route; go: (r: Route) => void; onEnter?: () => void; onLeave?: () => void; compact?: boolean }) {
+function Sidebar({
+  route,
+  go,
+  onEnter,
+  onLeave,
+  compact,
+  onResizeStart,
+  onResizeReset
+}: {
+  route: Route
+  go: (r: Route) => void
+  onEnter?: () => void
+  onLeave?: () => void
+  compact?: boolean
+  onResizeStart?: (e: React.PointerEvent<HTMLDivElement>) => void
+  onResizeReset?: () => void
+}) {
   const { items: subjects } = useRecords('subject')
   const { items: tasks } = useRecords('task')
   const timer = useTimer()
@@ -176,6 +211,17 @@ function Sidebar({ route, go, onEnter, onLeave, compact }: { route: Route; go: (
         </div>
       </div>
       {adding && <SubjectDialog onClose={() => setAdding(false)} onSaved={(id) => go({ name: 'subject', id })} />}
+      {onResizeStart && (
+        <div
+          className="side-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          title="Drag to resize or snap to icons · Double-click to reset"
+          onPointerDown={onResizeStart}
+          onDoubleClick={onResizeReset}
+        />
+      )}
     </aside>
   )
 }
@@ -288,13 +334,19 @@ function reloadedOn(): Route | null {
 
 /** The app once settings are known: picks the start screen, remembers the last one. */
 function Shell() {
-  const { ready, s } = useSettings()
+  const { ready, s, set } = useSettings()
   const [route, go] = useState<Route | null>(null)
   const signedIn = useAccount().state.mode === 'account'
   const phone = usePhone()
   const titleBar = !phone && (window.veyra.app.titleBar ?? 0) > 0 ? window.veyra.app.titleBar! : 0
   // Hidden sidebar (Zen-style): it slides out while you point at the left edge or at it, and back after a moment away.
   const [peek, setPeek] = useState(false)
+  // Zen-style resizable sidebar width, persisted locally.
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth)
+  const [resizingSide, setResizingSide] = useState(false)
+  const resizingSideRef = useRef(false)
+  const sidebarWidthRef = useRef(sidebarWidth)
+  sidebarWidthRef.current = sidebarWidth
   // Temporarily compact the full sidebar to icons while editing a note with the Assistant open,
   // according to Settings → Sidebar → When Assistant opens ('auto' | 'always' | 'never').
   const [assistState, setAssistState] = useState<{ open: boolean; inSubject: boolean }>({ open: false, inSubject: false })
@@ -320,15 +372,76 @@ function Shell() {
     (s.assistantCollapseSidebar === 'always' ||
       (s.assistantCollapseSidebar === 'auto' && (assistState.inSubject || winWidth < 1440)))
   const effectiveSide = autoCompactSide && s.sidebarMode === 'full' ? 'icons' : s.sidebarMode
+  const effectiveSideRef = useRef<SidebarMode>(effectiveSide)
+  effectiveSideRef.current = effectiveSide
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const peekIn = useCallback(() => {
     if (leaveTimer.current) clearTimeout(leaveTimer.current)
     setPeek(true)
   }, [])
   const peekOut = useCallback(() => {
+    if (resizingSideRef.current) return
     if (leaveTimer.current) clearTimeout(leaveTimer.current)
     leaveTimer.current = setTimeout(() => setPeek(false), 380)
   }, [])
+  const startResizeSidebar = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return
+      e.preventDefault()
+      e.stopPropagation()
+      resizingSideRef.current = true
+      setResizingSide(true)
+      document.body.classList.add('resizing-pane')
+
+      let activeMode: SidebarMode = effectiveSideRef.current
+      let committedMode: SidebarMode = s.sidebarMode
+      let lastFull = sidebarWidthRef.current
+      const isHidden = activeMode === 'hidden'
+      if (isHidden) {
+        if (leaveTimer.current) clearTimeout(leaveTimer.current)
+        setPeek(true)
+      }
+
+      const onMove = (ev: PointerEvent) => {
+        const pointerWidth = Math.round(isHidden ? ev.clientX - 8 : ev.clientX)
+        const next = resolveSidebarDrag(activeMode, pointerWidth, lastFull)
+        if (next.width !== lastFull) {
+          lastFull = next.width
+          sidebarWidthRef.current = next.width
+          setSidebarWidth(next.width)
+        }
+        if (next.mode !== activeMode) {
+          activeMode = next.mode
+          if (next.mode === 'full') setAssistState({ open: false, inSubject: false })
+          if (next.mode !== committedMode) {
+            committedMode = next.mode
+            set({ sidebarMode: next.mode })
+          }
+        }
+      }
+
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onUp)
+        resizingSideRef.current = false
+        setResizingSide(false)
+        document.body.classList.remove('resizing-pane')
+        saveSidebarWidth(lastFull)
+      }
+
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onUp)
+    },
+    [s.sidebarMode, set]
+  )
+  const resetSidebarWidth = useCallback(() => {
+    setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)
+    saveSidebarWidth(SIDEBAR_DEFAULT_WIDTH)
+    setAssistState({ open: false, inSubject: false })
+    if (s.sidebarMode === 'icons') set({ sidebarMode: 'full' })
+  }, [s.sidebarMode, set])
   // Moving to another screen crossfades it in (the same screen again just updates).
   const current = useRef(route)
   current.current = route
@@ -450,12 +563,30 @@ function Shell() {
   }, [route])
 
   if (!route) return null
+  const shellStyle = (!phone || titleBar)
+    ? ({
+        ...(titleBar ? { '--titlebar': `${titleBar}px` } : {}),
+        ...(!phone ? { '--sidebar': `${sidebarWidth}px` } : {})
+      } as React.CSSProperties)
+    : undefined
   return (
     <TimerProvider>
       <NavCtx.Provider value={{ route, go: navigate }}>
-        <div className={`shell ${phone ? 'phone-shell' : `${titleBar ? 'has-titlebar' : ''} side-${effectiveSide} ${peek ? 'peek' : ''}`}`} data-route={route.name} style={titleBar ? ({ '--titlebar': `${titleBar}px` } as React.CSSProperties) : undefined}>
+        <div className={`shell ${phone ? 'phone-shell' : `${titleBar ? 'has-titlebar' : ''} side-${effectiveSide} ${peek ? 'peek' : ''} ${resizingSide ? 'resizing-sidebar' : ''}`}`} data-route={route.name} style={shellStyle}>
           {titleBar > 0 && <TitleBar />}
-          {phone ? <PhoneNav route={route} go={navigate} /> : <Sidebar route={route} go={navigate} onEnter={peekIn} onLeave={peekOut} compact={effectiveSide !== 'full'} />}
+          {phone ? (
+            <PhoneNav route={route} go={navigate} />
+          ) : (
+            <Sidebar
+              route={route}
+              go={navigate}
+              onEnter={peekIn}
+              onLeave={peekOut}
+              compact={effectiveSide !== 'full'}
+              onResizeStart={startResizeSidebar}
+              onResizeReset={resetSidebarWidth}
+            />
+          )}
           {/* Hidden sidebar: pointing at the left edge slides it out. */}
           {!phone && effectiveSide === 'hidden' && <div className="side-hotzone" onMouseEnter={peekIn} onMouseLeave={peekOut} aria-hidden />}
           <UpdatedNotice />

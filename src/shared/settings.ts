@@ -5,6 +5,7 @@ export type NavId = 'today' | 'tasks' | 'notes' | 'ai' | 'calendar' | 'messages'
 export type StartScreen = NavId | 'last'
 export type TaskSort = 'due' | 'priority' | 'created' | 'title'
 export type PrivacyAudience = 'everyone' | 'friends' | 'nobody'
+export type SidebarMode = 'full' | 'icons' | 'hidden'
 export type AssistantCollapseSidebar = 'auto' | 'always' | 'never'
 
 /** Widgets on the Today page (Today → Customize). */
@@ -36,7 +37,7 @@ export interface AppSettings {
   showSubjectsInSidebar: boolean
   showTimerCard: boolean
   /** Computer: the full sidebar, just its icons, or hidden until you point at the left edge (like Zen browser). */
-  sidebarMode: 'full' | 'icons' | 'hidden'
+  sidebarMode: SidebarMode
   /** Computer: whether opening the note Assistant automatically compacts a full sidebar to icons. */
   assistantCollapseSidebar: AssistantCollapseSidebar
   /* general */

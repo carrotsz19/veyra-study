@@ -23,6 +23,9 @@ picked automatically. They come after the older 1.0.x numbers.
 - **Messages & privacy settings:** new **Settings → Messages & privacy** section lets you choose **Who can text you**, **Who can send message requests**, and **Who can add you to groups** (Everyone, Friends only, or Nobody), alongside desktop message notifications.
 - **Assistant sidebar behaviour setting:** choose in **Settings → Sidebar → When Assistant opens** whether opening the note Assistant collapses a full sidebar to icons automatically on narrow windows (**Auto**), **Always**, or **Never**.
 - **Sticky sidebar footer & smoother navigation animations:** pinned the account and theme footer at the bottom of the sidebar so it stays visible while scrolling long subject lists; fixed tab-switch transitions when leaving Messages; reworked Settings rows and segmented bars so controls fit cleanly without clipping; and fixed sliding pill/thumb animations across Settings and navigation bars.
+- **Zen-style resizable sidebar:** drag the right edge of the desktop sidebar to resize it smoothly (remembered between sessions), pull it narrow to snap cleanly into icons-only mode, drag out from icons-only mode to expand it back, or double-click the edge to reset to the default width.
+- **Smarter, less-strict spellcheck with click-to-suggest:** spellcheck now recognizes names, honorifics (`Dr.`, `Prof.`, etc.), possessives, mixed-case brand/tech words, and hyphenated prefixes without flagging them. Clicking or moving your cursor onto a red-underlined word keeps the underline visible and automatically opens an inline suggestions popover with one-click fixes, **Add to dictionary**, and **Ignore**.
+- **Reliable sidebar selection animations:** unified the sliding highlight pill across main navigation, subjects, and nested/folded subject folders so switching between any sidebar items glides smoothly without being cut short by layout resizes or covered by hover highlights.
 
 ## 26.11.1
 
