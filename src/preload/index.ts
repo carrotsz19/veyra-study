@@ -31,6 +31,14 @@ const account = {
   changePassword: (current: string, next: string) => ipcRenderer.invoke('account:changePassword', current, next)
 }
 
+const friends = {
+  list: () => ipcRenderer.invoke('friends:list'),
+  search: (query: string) => ipcRenderer.invoke('friends:search', query),
+  send: (username: string) => ipcRenderer.invoke('friends:send', username),
+  respond: (requesterId: string, accept: boolean) => ipcRenderer.invoke('friends:respond', requesterId, accept),
+  remove: (otherUserId: string) => ipcRenderer.invoke('friends:remove', otherUserId)
+}
+
 const google = {
   state: () => ipcRenderer.invoke('google:state'),
   connect: (id?: string, secret?: string) => ipcRenderer.invoke('google:connect', id, secret),
@@ -266,4 +274,4 @@ const menuApi = {
 }
 
 contextBridge.exposeInMainWorld('veyra', {
-  menu: menuApi, db, account, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, voice: voiceApi, mcp: mcpApi, update: updateApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })
+  menu: menuApi, db, account, friends, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, voice: voiceApi, mcp: mcpApi, update: updateApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })

@@ -18,6 +18,7 @@ picked automatically. They come after the older 1.0.x numbers.
 - **Hideable PDFs in notes:** PDFs attached to a note are now tucked behind an **Attachments (N)** toggle above the note so they don't push your writing down the page. Open or hide them anytime (remembered per note) without changing the note or risking accidental deletion while hidden.
 - **More room when writing with the Assistant inside a subject:** opening the Assistant inside a subject now neatly folds the notes list, top stat cards, and sidebar out of the way, and places the Assistant beside the note instead of overlapping the toolbar. Drag the edges to resize the notes list or Assistant, toggle the stat cards or notes list anytime, or use Focus mode inside a subject.
 - **Desktop notifications for new messages:** switch on **New chat messages** in Settings → Tasks to get desktop alerts for incoming direct messages and group messages when Veyra Study is in the background or minimized. Clicking a notification opens that chat directly, and a **Send test** button lets you check that notifications work on your computer.
+- **Friends (shared with Veyra IronLog):** Group work now has a **Friends** tab that uses your existing Veyra / IronLog friends list — search Veyra accounts, send or accept friend requests, message friends, invite them to study groups in one click, or add classmates from a group's Members tab. Friends stay synced across Veyra Study and IronLog, even while the group server sleeps.
 
 ## 26.11.1
 

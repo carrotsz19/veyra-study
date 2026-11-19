@@ -314,6 +314,42 @@ export async function changePassword(current: string, next: string): Promise<voi
   await authed('changePassword', [material, await pwHash(next, salt), salt])
 }
 
+/* ---------- friends (reuses Veyra IronLog's social endpoints) ---------- */
+function normFriends(v: Partial<import('@shared/types').FriendsData> | null | undefined): import('@shared/types').FriendsData {
+  return {
+    friends: Array.isArray(v?.friends) ? v.friends : [],
+    incoming: Array.isArray(v?.incoming) ? v.incoming : [],
+    outgoing: Array.isArray(v?.outgoing) ? v.outgoing : []
+  }
+}
+
+export async function friendsList(): Promise<import('@shared/types').FriendsData> {
+  return normFriends(await authed('getFriendsData', []))
+}
+
+export async function friendsSearch(query: string): Promise<import('@shared/types').FriendSearchCard[]> {
+  const clean = query.trim().replace(/^@/, '')
+  if (clean.length < 2) return []
+  const v = await authed<import('@shared/types').FriendSearchCard[]>('searchUsers', [clean])
+  return Array.isArray(v) ? v : []
+}
+
+export async function friendsSend(username: string): Promise<import('@shared/types').FriendsData> {
+  const clean = username.trim().replace(/^@/, '')
+  if (!clean) throw new Error('Enter a @username.')
+  return normFriends(await authed('sendFriendRequest', [clean]))
+}
+
+export async function friendsRespond(requesterId: string, accept: boolean): Promise<import('@shared/types').FriendsData> {
+  if (!requesterId.trim()) throw new Error('Request not found.')
+  return normFriends(await authed('respondFriendRequest', [requesterId.trim(), !!accept]))
+}
+
+export async function friendsRemove(otherUserId: string): Promise<import('@shared/types').FriendsData> {
+  if (!otherUserId.trim()) throw new Error('Person not found.')
+  return normFriends(await authed('removeFriendship', [otherUserId.trim()]))
+}
+
 async function drop(why?: string) {
   session = null
   notice = why

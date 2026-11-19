@@ -20,14 +20,16 @@ import {
   X
 } from 'lucide-react'
 import type { Editor } from '@tiptap/react'
-import type { Group, GroupInvite, GroupItem, GroupNote, GroupPreview, GroupTask, GroupUser } from '@shared/types'
+import type { FriendCard, Group, GroupInvite, GroupItem, GroupNote, GroupPreview, GroupTask, GroupUser } from '@shared/types'
 import { Dialog, Empty, Seg, useToast } from '../components/ui'
 import { Avatar, useAccount } from '../components/account'
+import { FriendsPanel } from '../components/FriendsPanel'
 import { ServerHoursBanner } from '../components/ServerHours'
 import { Area } from '../components/notes/NoteEditor'
 import { NoteToolbar } from '../components/notes/Toolbar'
 import { SlashMenu } from '../components/notes/SlashMenu'
 import { docText } from '../components/notes/extensions'
+import { useFriends } from '../data/friends'
 import { useSettings } from '../data/settings'
 import { useNav } from '../nav'
 import { usePhone } from '../lib/phone'
@@ -53,6 +55,7 @@ import { DateField, TimeField } from '../components/DateTime'
 import { VoiceBadge, VoiceRoom } from '../components/Voice'
 
 type Tab = 'tasks' | 'chat' | 'voice' | 'notes' | 'deadlines' | 'members'
+type Section = 'groups' | 'friends'
 const msg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Try again.')
 
 export function Groups() {
@@ -61,6 +64,14 @@ export function Groups() {
   const { status, retry } = useGroupStatus()
   const online = status?.state === 'online'
   const { groups, invites, reload, setGroups } = useGroups(online)
+  const friendsState = useFriends(account.mode === 'account' && !account.ended)
+  const [section, setSection] = useState<Section>(() => {
+    try {
+      return localStorage.getItem('veyra.groupSection') === 'friends' ? 'friends' : 'groups'
+    } catch {
+      return 'groups'
+    }
+  })
   const [openId, setOpenId] = useState<string | null>(() => {
     try {
       return localStorage.getItem('veyra.group') || null
@@ -77,6 +88,7 @@ export function Groups() {
   // The call dock's "open the voice room" or a clicked DM/chat notification while Group work is already showing another group.
   useEffect(() => {
     const open = (e: Event) => {
+      setSection('groups')
       setOpenId((e as CustomEvent<string>).detail)
       if (phone) setPhoneOpen(true)
     }
@@ -87,6 +99,13 @@ export function Groups() {
       window.removeEventListener('veyra:open-chat', open)
     }
   }, [phone])
+  useEffect(() => {
+    try {
+      localStorage.setItem('veyra.groupSection', section)
+    } catch {
+      /* storage unavailable */
+    }
+  }, [section])
   useEffect(() => {
     try {
       if (openId) localStorage.setItem('veyra.group', openId)
@@ -103,7 +122,7 @@ export function Groups() {
           <Empty
             icon={Users}
             title="Sign in to work with your group"
-            text="Group work uses your Veyra account, so classmates can find you by @username."
+            text="Group work and friends use your Veyra account, so classmates can find you by @username."
             action={
               <button className="btn" onClick={() => go({ name: 'settings' })}>
                 Sign in
@@ -114,10 +133,82 @@ export function Groups() {
       </div>
     )
 
+  const incomingCount = friendsState.data.incoming.length
+  const sectionSwitch = (
+    <Seg<Section>
+      value={section}
+      onChange={setSection}
+      options={[
+        ['groups', 'Groups'],
+        ['friends', incomingCount > 0 ? `Friends (${incomingCount})` : 'Friends']
+      ]}
+    />
+  )
+
+  const inviteToGroup = async (groupId: string, username: string) => {
+    await groupCall('POST', `/groups/${gid(groupId)}/invites`, { username })
+  }
+
+  const messageFriend = async (friend: FriendCard) => {
+    const target = friend.username.toLowerCase()
+    const myUser = (status?.me?.username ?? account.user?.username ?? '').toLowerCase()
+    const existing = (groups ?? []).find(
+      (g) =>
+        g.members.length === 2 &&
+        g.members.some((m) => m.username.toLowerCase() === target) &&
+        (!myUser || g.members.some((m) => m.username.toLowerCase() === myUser))
+    )
+    if (existing) {
+      try {
+        localStorage.setItem('veyra.groupTab', 'chat')
+      } catch {
+        /* storage unavailable */
+      }
+      setSection('groups')
+      setOpenId(existing.id)
+      if (phone) setPhoneOpen(true)
+      setTimeout(() => window.dispatchEvent(new CustomEvent('veyra:open-chat', { detail: existing.id })), 0)
+      return
+    }
+    const color = GROUP_COLORS[Math.floor(Math.random() * GROUP_COLORS.length)]
+    const name = (friend.displayName?.trim() || `@${friend.username}`).slice(0, 60)
+    const r = await groupCall<{ group: Group }>('POST', '/groups', { name, color })
+    await groupCall('POST', `/groups/${gid(r.group.id)}/invites`, { username: friend.username })
+    await reload()
+    try {
+      localStorage.setItem('veyra.groupTab', 'chat')
+    } catch {
+      /* storage unavailable */
+    }
+    setSection('groups')
+    setOpenId(r.group.id)
+    if (phone) setPhoneOpen(true)
+    setTimeout(() => window.dispatchEvent(new CustomEvent('veyra:open-chat', { detail: r.group.id })), 0)
+    toast(`Chat created — invite sent to @${friend.username}`)
+  }
+
+  if (section === 'friends')
+    return (
+      <div className="inner view grp">
+        <Header>{sectionSwitch}</Header>
+        <div className="fr-scroll">
+          <FriendsPanel
+            friendsState={friendsState}
+            emailVerified={!!account.user?.emailVerified}
+            onOpenSettings={() => go({ name: 'settings' })}
+            groups={groups ?? []}
+            groupOnline={online}
+            onInviteToGroup={inviteToGroup}
+            onMessageFriend={messageFriend}
+          />
+        </div>
+      </div>
+    )
+
   if (!groups && (!status || status.state === 'connecting' || status.state === 'idle' || online))
     return (
       <div className="inner view">
-        <Header />
+        <Header>{sectionSwitch}</Header>
         <div className="card grp-status">
           <RefreshCw size={16} className="spin" /> Connecting to the group server…
         </div>
@@ -127,13 +218,13 @@ export function Groups() {
   if (!groups)
     return (
       <div className="inner view">
-        <Header />
+        <Header>{sectionSwitch}</Header>
         <ServerHoursBanner />
         <div className="card grp-status grp-offline">
           <WifiOff size={18} />
           <div className="grow">
             <b>Can’t reach the group server</b>
-            <div className="sm dim">{status?.error || 'It may be switched off or restarting. Your own tasks and notes still work.'}</div>
+            <div className="sm dim">{status?.error || 'It may be switched off or restarting. Your own tasks, notes and friends still work.'}</div>
           </div>
           <button className="btn sec" onClick={retry}>
             <RefreshCw size={15} /> Try again
@@ -159,6 +250,7 @@ export function Groups() {
   return (
     <div className={`inner view grp ${phone && phoneOpen && open ? 'grp-phone-open' : ''}`}>
       <Header>
+        {sectionSwitch}
         <button className="btn ghost" onClick={() => setDialog('join')}>
           Join with a code
         </button>
@@ -257,6 +349,7 @@ export function Groups() {
               key={open.id}
               group={open}
               me={status?.me ?? null}
+              friendsState={friendsState}
               onBack={phone ? () => transition(() => setPhoneOpen(false), 'pop') : undefined}
               onChanged={(g) => setGroups((all) => all && all.map((x) => (x.id === g.id ? g : x)))}
               onGone={() => {
@@ -296,7 +389,7 @@ function Header({ children }: { children?: React.ReactNode }) {
     <div className="topbar">
       <div>
         <h1>Group work</h1>
-        <p className="dim">Shared tasks, chat, notes and deadlines with your classmates.</p>
+        <p className="dim">Shared tasks, chat, notes, deadlines and friends.</p>
       </div>
       {children && <div className="row">{children}</div>}
     </div>
@@ -304,7 +397,21 @@ function Header({ children }: { children?: React.ReactNode }) {
 }
 
 /* ---------- one group ---------- */
-function GroupPanel({ group, me, onChanged, onGone, onBack }: { group: Group; me: GroupUser | null; onChanged: (g: Group) => void; onGone: () => void; onBack?: () => void }) {
+function GroupPanel({
+  group,
+  me,
+  friendsState,
+  onChanged,
+  onGone,
+  onBack
+}: {
+  group: Group
+  me: GroupUser | null
+  friendsState: ReturnType<typeof useFriends>
+  onChanged: (g: Group) => void
+  onGone: () => void
+  onBack?: () => void
+}) {
   const [tab, setTab] = useState<Tab>(() => {
     try {
       return (localStorage.getItem('veyra.groupTab') as Tab) || 'tasks'
@@ -390,7 +497,7 @@ function GroupPanel({ group, me, onChanged, onGone, onBack }: { group: Group; me
       ) : tab === 'deadlines' ? (
         <GroupDeadlines group={group} items={items} />
       ) : (
-        <GroupMembers group={group} me={me} onChanged={onChanged} onGone={onGone} />
+        <GroupMembers group={group} me={me} friendsState={friendsState} onChanged={onChanged} onGone={onGone} />
       )}
       </div>
     </section>
@@ -1035,13 +1142,26 @@ function GroupDeadlines({ group, items }: { group: Group; items: ItemsApi }) {
 }
 
 /* ---------- members ---------- */
-function GroupMembers({ group, me, onChanged, onGone }: { group: Group; me: GroupUser | null; onChanged: (g: Group) => void; onGone: () => void }) {
+function GroupMembers({
+  group,
+  me,
+  friendsState,
+  onChanged,
+  onGone
+}: {
+  group: Group
+  me: GroupUser | null
+  friendsState: ReturnType<typeof useFriends>
+  onChanged: (g: Group) => void
+  onGone: () => void
+}) {
   const toast = useToast()
   const owner = group.role === 'owner'
   const [q, setQ] = useState('')
   const [found, setFound] = useState<GroupUser[]>([])
   const [name, setName] = useState(group.name)
   const [confirm, setConfirm] = useState<'leave' | 'delete' | null>(null)
+  const [friendBusy, setFriendBusy] = useState<string | null>(null)
 
   useEffect(() => {
     const term = q.trim().replace(/^@/, '')
@@ -1076,46 +1196,102 @@ function GroupMembers({ group, me, onChanged, onGone }: { group: Group; me: Grou
     void navigator.clipboard.writeText(text).then(() => toast('Copied'))
   }
 
+  const friendRel = (username: string) => {
+    const u = username.toLowerCase()
+    if (friendsState.data.friends.some((f) => f.username.toLowerCase() === u)) return { kind: 'friends' as const }
+    const inc = friendsState.data.incoming.find((f) => f.username.toLowerCase() === u)
+    if (inc) return { kind: 'incoming' as const, card: inc }
+    const out = friendsState.data.outgoing.find((f) => f.username.toLowerCase() === u)
+    if (out) return { kind: 'outgoing' as const, card: out }
+    return { kind: 'none' as const }
+  }
+
+  const quickFriends = friendsState.data.friends.filter((f) => !group.members.some((m) => m.username.toLowerCase() === f.username.toLowerCase()))
+
   return (
     <div className="grp-members">
       <div className="ig">
-        {group.members.map((m) => (
-          <div key={m.username} className="ig-row">
-            <Avatar user={m} />
-            <div className="grow" style={{ minWidth: 0 }}>
-              <div className="ig-title trunc row" style={{ gap: 6 }}>
-                {m.displayName}
-                {m.verified && (
-                  <span className="grp-verified" title="Email verified">
-                    <Check size={10} strokeWidth={3} />
-                  </span>
-                )}
-                {m.username === me?.username && <span className="pill">You</span>}
+        {group.members.map((m) => {
+          const isMe = m.username === me?.username
+          const rel = !isMe && friendsState.loaded ? friendRel(m.username) : null
+          return (
+            <div key={m.username} className="ig-row">
+              <Avatar user={m} />
+              <div className="grow" style={{ minWidth: 0 }}>
+                <div className="ig-title trunc row" style={{ gap: 6 }}>
+                  {m.displayName}
+                  {m.verified && (
+                    <span className="grp-verified" title="Email verified">
+                      <Check size={10} strokeWidth={3} />
+                    </span>
+                  )}
+                  {isMe && <span className="pill">You</span>}
+                  {rel?.kind === 'friends' && <span className="pill">Friend</span>}
+                </div>
+                <div className="ig-sub">
+                  @{m.username} · joined {format(m.joinedAt, 'd MMM yyyy')}
+                </div>
               </div>
-              <div className="ig-sub">
-                @{m.username} · joined {format(m.joinedAt, 'd MMM yyyy')}
-              </div>
+              {rel?.kind === 'none' && (
+                <button
+                  className="btn ghost sm"
+                  disabled={friendBusy === m.username}
+                  onClick={async () => {
+                    setFriendBusy(m.username)
+                    try {
+                      await friendsState.send(m.username)
+                      toast(`Friend request sent to @${m.username}`)
+                    } catch (e) {
+                      toast(msg(e))
+                    } finally {
+                      setFriendBusy(null)
+                    }
+                  }}
+                >
+                  <UserPlus size={13} /> Add friend
+                </button>
+              )}
+              {rel?.kind === 'outgoing' && <span className="pill">Requested</span>}
+              {rel?.kind === 'incoming' && (
+                <button
+                  className="btn sm"
+                  disabled={friendBusy === m.username}
+                  onClick={async () => {
+                    setFriendBusy(m.username)
+                    try {
+                      await friendsState.respond(rel.card.id, true)
+                      toast(`You and @${m.username} are friends now`)
+                    } catch (e) {
+                      toast(msg(e))
+                    } finally {
+                      setFriendBusy(null)
+                    }
+                  }}
+                >
+                  Accept friend
+                </button>
+              )}
+              {m.role === 'owner' && (
+                <span className="pill accent row" style={{ gap: 4 }}>
+                  <Crown size={11} /> Owner
+                </span>
+              )}
+              {owner && !isMe && (
+                <button
+                  className="btn ghost sm"
+                  onClick={() =>
+                    act(async () => {
+                      await groupCall('DELETE', `/groups/${gid(group.id)}/members/${encodeURIComponent(m.username)}`)
+                      return groupCall('GET', `/groups/${gid(group.id)}`)
+                    }, `Removed @${m.username}`)
+                  }
+                >
+                  Remove
+                </button>
+              )}
             </div>
-            {m.role === 'owner' && (
-              <span className="pill accent row" style={{ gap: 4 }}>
-                <Crown size={11} /> Owner
-              </span>
-            )}
-            {owner && m.username !== me?.username && (
-              <button
-                className="btn ghost sm"
-                onClick={() =>
-                  act(async () => {
-                    await groupCall('DELETE', `/groups/${gid(group.id)}/members/${encodeURIComponent(m.username)}`)
-                    return groupCall('GET', `/groups/${gid(group.id)}`)
-                  }, `Removed @${m.username}`)
-                }
-              >
-                Remove
-              </button>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <div className="card">
@@ -1145,6 +1321,25 @@ function GroupMembers({ group, me, onChanged, onGone }: { group: Group; me: Grou
             <button className="btn sec sm" onClick={() => invite(q.trim().replace(/^@/, ''))}>
               Invite @{q.trim().replace(/^@/, '')}
             </button>
+          </div>
+        )}
+        {quickFriends.length > 0 && (
+          <div className="fr-quick">
+            <label className="field-label">Quick invite friends</label>
+            <div className="ig grp-found">
+              {quickFriends.map((f) => (
+                <div key={f.id} className="ig-row">
+                  <Avatar user={f} />
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div className="ig-title trunc">{f.displayName || f.username}</div>
+                    <div className="ig-sub trunc">@{f.username}</div>
+                  </div>
+                  <button className="btn sm" onClick={() => invite(f.username)}>
+                    Invite
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

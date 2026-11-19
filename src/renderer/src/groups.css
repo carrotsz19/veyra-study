@@ -84,3 +84,18 @@
 .shell:not(.phone-shell) .grp-body { flex: 1; min-height: 0; overflow-y: auto; }
 .shell:not(.phone-shell) .grp-panel.tab-chat .grp-body { overflow: hidden; display: flex; flex-direction: column; }
 .shell:not(.phone-shell) .grp-chat { height: auto; flex: 1; min-height: 0; }
+
+/* friends (shared with Veyra IronLog) */
+.fr-view { display: flex; flex-direction: column; gap: 14px; max-width: 780px; width: 100%; }
+.shell:not(.phone-shell) .fr-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.fr-bar { gap: 10px; flex-wrap: wrap; }
+.fr-note { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-color: var(--accent-soft); }
+.fr-search-card { display: flex; flex-direction: column; }
+.fr-search-wrap { position: relative; display: flex; align-items: center; }
+.fr-search-ic { position: absolute; left: 11px; color: var(--dim); pointer-events: none; }
+.fr-search-wrap input { padding-left: 32px; width: 100%; }
+.fr-exact { margin-top: 10px; gap: 10px; flex-wrap: wrap; }
+.fr-section { display: flex; flex-direction: column; gap: 8px; }
+.fr-section-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; padding: 0 2px; }
+.fr-quick { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+

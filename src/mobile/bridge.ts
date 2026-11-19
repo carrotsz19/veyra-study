@@ -72,6 +72,14 @@ const account: Veyra['account'] = {
   changePassword: (current, next) => acct.changePassword(current, next)
 }
 
+const friends: Veyra['friends'] = {
+  list: () => acct.friendsList(),
+  search: (query) => acct.friendsSearch(query),
+  send: (username) => acct.friendsSend(username),
+  respond: (requesterId, accept) => acct.friendsRespond(requesterId, accept),
+  remove: (otherUserId) => acct.friendsRemove(otherUserId)
+}
+
 /* ---------- computer-only features, reported as off ---------- */
 const google: Veyra['google'] = {
   state: async () => ({ builtIn: false, customClient: false, feeds: [], connected: false, clientId: '', hasSecret: false, email: '', pushTasks: false, shown: null, calendars: [] }),
@@ -263,6 +271,7 @@ export async function installBridge(): Promise<void> {
   const veyra: Veyra = {
     db,
     account,
+    friends,
     google,
     ai,
     group,

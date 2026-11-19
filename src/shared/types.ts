@@ -191,6 +191,36 @@ export interface AccountApi {
   changePassword(current: string, next: string): Promise<void>
 }
 
+/* ---------- Friends (shared with Veyra IronLog via the Veyra account server) ---------- */
+export type FriendshipStatus = 'none' | 'friends' | 'outgoing' | 'incoming' | 'self'
+
+export interface FriendCard {
+  id: string
+  username: string
+  displayName: string
+  photoUrl: string
+  about: string
+  isPrivate: boolean
+}
+
+export interface FriendSearchCard extends FriendCard {
+  friendshipStatus: FriendshipStatus
+}
+
+export interface FriendsData {
+  friends: FriendCard[]
+  incoming: FriendCard[]
+  outgoing: FriendCard[]
+}
+
+export interface FriendsApi {
+  list(): Promise<FriendsData>
+  search(query: string): Promise<FriendSearchCard[]>
+  send(username: string): Promise<FriendsData>
+  respond(requesterId: string, accept: boolean): Promise<FriendsData>
+  remove(otherUserId: string): Promise<FriendsData>
+}
+
 export interface GoogleEvent {
   id: string
   title: string

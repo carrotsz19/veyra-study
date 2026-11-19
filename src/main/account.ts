@@ -394,6 +394,54 @@ export class Accounts {
     await this.authed('changePassword', [material, await pwHash(next, salt), salt])
   }
 
+  /* ---------- friends (reuses Veyra IronLog's social endpoints) ---------- */
+  async friendsList(): Promise<import('../shared/types').FriendsData> {
+    const v = await this.authed<Partial<import('../shared/types').FriendsData>>('getFriendsData', [])
+    return {
+      friends: Array.isArray(v?.friends) ? v.friends : [],
+      incoming: Array.isArray(v?.incoming) ? v.incoming : [],
+      outgoing: Array.isArray(v?.outgoing) ? v.outgoing : []
+    }
+  }
+
+  async friendsSearch(query: string): Promise<import('../shared/types').FriendSearchCard[]> {
+    const clean = query.trim().replace(/^@/, '')
+    if (clean.length < 2) return []
+    const v = await this.authed<import('../shared/types').FriendSearchCard[]>('searchUsers', [clean])
+    return Array.isArray(v) ? v : []
+  }
+
+  async friendsSend(username: string): Promise<import('../shared/types').FriendsData> {
+    const clean = username.trim().replace(/^@/, '')
+    if (!clean) throw new ApiError('Enter a @username.')
+    const v = await this.authed<Partial<import('../shared/types').FriendsData>>('sendFriendRequest', [clean])
+    return {
+      friends: Array.isArray(v?.friends) ? v.friends : [],
+      incoming: Array.isArray(v?.incoming) ? v.incoming : [],
+      outgoing: Array.isArray(v?.outgoing) ? v.outgoing : []
+    }
+  }
+
+  async friendsRespond(requesterId: string, accept: boolean): Promise<import('../shared/types').FriendsData> {
+    if (!requesterId.trim()) throw new ApiError('Request not found.')
+    const v = await this.authed<Partial<import('../shared/types').FriendsData>>('respondFriendRequest', [requesterId.trim(), !!accept])
+    return {
+      friends: Array.isArray(v?.friends) ? v.friends : [],
+      incoming: Array.isArray(v?.incoming) ? v.incoming : [],
+      outgoing: Array.isArray(v?.outgoing) ? v.outgoing : []
+    }
+  }
+
+  async friendsRemove(otherUserId: string): Promise<import('../shared/types').FriendsData> {
+    if (!otherUserId.trim()) throw new ApiError('Person not found.')
+    const v = await this.authed<Partial<import('../shared/types').FriendsData>>('removeFriendship', [otherUserId.trim()])
+    return {
+      friends: Array.isArray(v?.friends) ? v.friends : [],
+      incoming: Array.isArray(v?.incoming) ? v.incoming : [],
+      outgoing: Array.isArray(v?.outgoing) ? v.outgoing : []
+    }
+  }
+
   /**
    * Main process only (never sent to the UI): the handle and the Cookie
    * header, so the group relay can confirm who this is with Veyra.
