@@ -5,7 +5,7 @@ import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/r
 import { BubbleMenu } from '@tiptap/react/menus'
 import { formatDistanceToNowStrict } from 'date-fns'
 import {
-  Archive, ArchiveRestore, Bold, ChevronRight, Code, Copy, Download, FileUp, Hash, History as HistoryIcon, ImagePlus, Italic, Share2, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, PanelLeftOpen, Paperclip, Pin, PinOff,
+  Archive, ArchiveRestore, Bold, Code, Copy, Download, FileUp, Hash, History as HistoryIcon, ImagePlus, Italic, Share2, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, PanelLeftOpen, Paperclip, Pin, PinOff,
   Sparkles, Strikethrough, Trash2, Underline
 } from 'lucide-react'
 import type { Note, NoteFont, NoteTemplate, Rec } from '@shared/types'
@@ -13,6 +13,7 @@ import { db, onExternalChange, useRecords } from '../../data/store'
 import { useToast } from '../ui'
 import { docText, noteExtensions, wordCount } from './extensions'
 import { collectPdfs, onAttachError } from './attachment'
+import { onBlockNotice } from './blockActions'
 import { onVoiceMessage } from '../../data/voice'
 import { RecorderBar } from './Voice'
 import { cleanError, saveNoteToDocs } from '../../data/drive'
@@ -561,6 +562,7 @@ export function NoteEditor({
 }) {
   const toast = useToast()
   useEffect(() => onAttachError(toast), [toast])
+  useEffect(() => onBlockNotice((m, undo) => toast(m, undo ? { label: 'Undo', run: undo } : undefined)), [toast])
   useEffect(() => onVoiceMessage((m, long) => toast(m, long ? { label: 'OK', run: () => {} } : undefined)), [toast])
   const { items: subjects } = useRecords('subject')
   // One copy of the note that every field writes into, saved as a whole.
@@ -844,7 +846,7 @@ export function NoteEditor({
   const prevPdfCount = useRef(pdfs.length)
   useEffect(() => {
     if (pdfs.length > prevPdfCount.current && !pdfsOpen) {
-      toast('PDF attached (collapsed under Attachments)', { label: 'Show', run: () => setPdfsOpen(true) })
+      toast('PDF attached (hidden)', { label: 'Show', run: () => setPdfsOpen(true) })
     }
     prevPdfCount.current = pdfs.length
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1021,26 +1023,30 @@ export function NoteEditor({
                   )}
                 </>
               )}
+              {pdfs.length > 0 && (
+                <>
+                  <span className="tert">·</span>
+                  <button
+                    type="button"
+                    className={`note-pdfs-pill ${pdfsOpen ? 'open' : ''}`}
+                    aria-expanded={pdfsOpen}
+                    title={
+                      pdfsOpen
+                        ? `Hide ${pdfs.length === 1 ? pdfs[0].name : `${pdfs.length} PDFs`}`
+                        : `Show ${pdfs.map((p) => p.name).join(', ')}`
+                    }
+                    onClick={() => setPdfsOpen(!pdfsOpen)}
+                  >
+                    <Paperclip size={12} />
+                    <span>
+                      {pdfsOpen
+                        ? (pdfs.length === 1 ? 'Hide PDF' : `Hide ${pdfs.length} PDFs`)
+                        : (pdfs.length === 1 ? '1 PDF hidden' : `${pdfs.length} PDFs hidden`)}
+                    </span>
+                  </button>
+                </>
+              )}
             </div>
-
-            {pdfs.length > 0 && (
-              <div className={`note-pdfs ${pdfsOpen ? 'open' : ''}`}>
-                <button
-                  type="button"
-                  className="note-pdfs-toggle"
-                  aria-expanded={pdfsOpen}
-                  onClick={() => setPdfsOpen(!pdfsOpen)}
-                >
-                  <ChevronRight size={14} className="note-pdfs-chev" />
-                  <Paperclip size={14} />
-                  <b>Attachments ({pdfs.length})</b>
-                  <span className="note-pdfs-names trunc">
-                    {pdfs.length === 1 ? pdfs[0].name : `${pdfs.length} PDFs`}
-                  </span>
-                  <span className="note-pdfs-action">{pdfsOpen ? 'Hide' : 'Show'}</span>
-                </button>
-              </div>
-            )}
 
             {template === 'cornell' ? (
               <div className="cornell">

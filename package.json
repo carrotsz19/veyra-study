@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start": "electron-vite preview",
     "dist": "npm run build && electron-builder --win --publish never",
-    "test": "node --test tests/group.test.mjs tests/history.test.mjs tests/ai.test.mjs tests/agent.test.mjs tests/announce.test.mjs tests/chat-notify.test.mjs tests/dm.test.mjs tests/privacy.test.mjs",
+    "test": "node --test tests/group.test.mjs tests/history.test.mjs tests/ai.test.mjs tests/agent.test.mjs tests/announce.test.mjs tests/chat-notify.test.mjs tests/dm.test.mjs tests/privacy.test.mjs tests/note-blocks.test.mjs",
     "group-server": "node server/group-server.mjs",
     "relay:setup": "node relay/setup.mjs",
     "android:setup": "node tools/setup-android.mjs",

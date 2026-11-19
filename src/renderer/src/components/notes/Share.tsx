@@ -25,6 +25,7 @@ import {
 } from '../../lib/share'
 import { openLive, releaseLive, type Caller, type LiveDoc } from '../../lib/live'
 import { fileSrc, setRemoteFiles, type RemoteFiles } from './attachment'
+import { onBlockNotice } from './blockActions'
 import { NOTE_COVERS } from './covers'
 import { personColor } from '../../lib/people'
 import { Welcome } from '../account'
@@ -451,6 +452,7 @@ export function SharedList({
 /** A note someone shared with you, in the Notes pane: live, editable for Editors. */
 export function SharedPane({ pick, who, onCopied, onRemoved, onBack }: { pick: SharedPick; who: string; onCopied: (noteId: string) => void; onRemoved: () => void; onBack?: () => void }) {
   const toast = useToast()
+  useEffect(() => onBlockNotice((m, undo) => toast(m, undo ? { label: 'Undo', run: undo } : undefined)), [toast])
   const [open, setOpen] = useState<{ title: string; body: SharedBody; from: Received['from']; docId: string } | null>(null)
   const [error, setError] = useState('')
   const [can, setCan] = useState<LiveDoc['can']>(null)

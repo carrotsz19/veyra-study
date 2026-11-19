@@ -1,4 +1,5 @@
 import { Node, mergeAttributes } from '@tiptap/core'
+import { BLK_SVG, createActionBtn, createDragHandle, deleteBlock, moveBlockBy } from './blockActions'
 
 /**
  * Handwriting and sketches: a drawing block in a note. Strokes are kept in
@@ -89,7 +90,7 @@ export const Drawing = Node.create({
   name: 'drawing',
   group: 'block',
   atom: true,
-  draggable: true,
+  draggable: false,
   selectable: true,
   addAttributes() {
     return {
@@ -132,9 +133,10 @@ export const Drawing = Node.create({
       const grip = dom.querySelector('.drw-grip') as HTMLDivElement
       const ctx = canvas.getContext('2d')!
       const editable = () => editor.isEditable
+      const posOf = () => (typeof getPos === 'function' ? getPos() : undefined)
 
       const save = () => {
-        const pos = typeof getPos === 'function' ? getPos() : undefined
+        const pos = posOf()
         if (pos === undefined) return
         editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, strokes, height }))
       }
@@ -158,6 +160,13 @@ export const Drawing = Node.create({
       }
 
       // ----- toolbar -----
+      const drag = createDragHandle(editor, posOf, dom, '✏️ Drawing')
+      bar.append(
+        drag.el,
+        createActionBtn('blk-up', 'Move drawing up', BLK_SVG.up, () => void moveBlockBy(editor, posOf, -1)),
+        createActionBtn('blk-down', 'Move drawing down', BLK_SVG.down, () => void moveBlockBy(editor, posOf, 1)),
+        Object.assign(document.createElement('span'), { className: 'drw-sep' })
+      )
       const btn = (label: string, html: string, on: () => void, cls = '') => {
         const b = document.createElement('button')
         b.type = 'button'
@@ -185,7 +194,7 @@ export const Drawing = Node.create({
       bar.append(Object.assign(document.createElement('span'), { className: 'drw-sep' }))
       const sizeBtns = SIZES.map((z) => btn(`Size ${z}`, `<b style="width:${z + 3}px;height:${z + 3}px"></b>`, () => (size = z), 'drw-size'))
       bar.append(Object.assign(document.createElement('span'), { className: 'drw-grow' }))
-      btn('Undo', '↶', () => {
+      btn('Undo stroke', '↶', () => {
         const prev = undo.pop()
         if (prev) {
           strokes = prev
@@ -193,13 +202,17 @@ export const Drawing = Node.create({
           save()
         }
       })
-      btn('Clear drawing', '🗑️', () => {
+      btn('Clear strokes', BLK_SVG.clear, () => {
         if (!strokes.length) return
         undo.push(strokes)
         strokes = []
         render()
         save()
       })
+      bar.append(
+        Object.assign(document.createElement('span'), { className: 'drw-sep' }),
+        createActionBtn('blk-del', 'Delete drawing', BLK_SVG.trash, () => void deleteBlock(editor, posOf, 'Drawing'))
+      )
       const paintBar = () => {
         for (const [k, b] of Object.entries(toolBtns)) b.setAttribute('aria-pressed', String(tool === k))
         colorBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(color === COLORS[i] && tool !== 'erase')))
@@ -313,6 +326,7 @@ export const Drawing = Node.create({
         destroy: () => {
           ro.disconnect()
           themeWatch.disconnect()
+          drag.destroy()
         }
       }
     }

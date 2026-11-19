@@ -12,6 +12,7 @@ import Typography from '@tiptap/extension-typography'
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import { AttachmentDrop, AttachmentNode, attachFiles, canAttach } from './attachment'
+import { BlockItemControls } from './blockActions'
 import { startRecording } from '../../data/voice'
 import { Drawing } from './drawing'
 
@@ -209,6 +210,7 @@ export function noteExtensions(placeholder: string, slash = true, attach = true,
   return [
     AttachmentNode.configure({ enabled: attach }),
     Drawing,
+    BlockItemControls,
     ...(attach ? [AttachmentDrop] : []),
     // Editing together: Yjs keeps the history (the editor's own undo would undo other people's typing).
     StarterKit.configure({ link: { openOnClick: false, autolink: true }, ...(collab ? { undoRedo: false as const } : {}) }),

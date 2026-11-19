@@ -4,6 +4,7 @@ import type { EditorView } from '@tiptap/pm/view'
 import type { Attachment as FileInfo } from '@shared/types'
 import { cancelTranscription, transcribeInto, watchTranscription } from '../../data/voice'
 import { onAndroid } from '../../lib/phone'
+import { BLK_SVG, createActionBtn, createDragHandle, createMoveDeleteControls } from './blockActions'
 
 const files = window.veyra.files
 
@@ -11,10 +12,7 @@ const files = window.veyra.files
 const icon16 = (body: string) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`
 const SVG = {
   play: icon16('<polygon points="6 3 20 12 6 21 6 3" fill="currentColor"/>'),
-  pause: icon16('<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>'),
-  more: icon16('<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>'),
-  download: icon16('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>'),
-  trash: icon16('<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>')
+  pause: icon16('<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>')
 }
 
 /**
@@ -169,7 +167,7 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
   name: 'attachment',
   group: 'block',
   atom: true,
-  draggable: true,
+  draggable: false,
   selectable: true,
   addOptions: () => ({ enabled: true }),
   addAttributes() {
@@ -208,26 +206,47 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
       const dom = document.createElement('div')
       dom.className = 'att'
       dom.contentEditable = 'false'
+      const posOf = () => (typeof getPos === 'function' ? getPos() : undefined)
+      const shortName = name.length > 34 ? `${name.slice(0, 32)}…` : name
+      let unwatch: (() => void) | null = null
+      let dragCleanup: (() => void) | null = null
       // A shared note's file: a copy is saved where you choose (there's no file on this device to open).
       const open = () => (isRemoteFile(id) ? download(id, name, mime) : files.open(id)).catch((e: unknown) => report(clean(e, 'Couldn’t open it.')))
       const missing = () => {
+        dragCleanup?.()
+        dragCleanup = null
         dom.className = 'att att-missing'
         dom.textContent = ''
+        const drag = createDragHandle(editor, posOf, dom, `📎 ${shortName}`)
+        dragCleanup = drag.destroy
         const t = document.createElement('span')
+        t.className = 'att-missing-text'
         t.textContent = `📎 ${name} isn’t on this computer`
-        dom.append(t)
+        const controls = createMoveDeleteControls({ editor, getPos: posOf, label: 'Attachment' })
+        dom.append(drag.el, t, controls)
       }
-      let unwatch: (() => void) | null = null
-      let menuCleanup: (() => void) | null = null
       if (/^audio\//.test(mime)) {
         // A voice recording: a player, and Transcribe (offline, on this computer).
         dom.classList.add('att-audio')
-        // Veyra's own player (the browser's has an unstyled menu): play, time bar, speed, and ••• with Download and Delete.
-        dom.innerHTML = `<div class="att-audio-head"><span class="att-icon">🎙️</span><span class="att-text"><b></b><small></small></span><button type="button" class="att-open att-transcribe">Transcribe</button><button type="button" class="att-open att-cancel" hidden>Cancel</button><span class="att-more-wrap"><button type="button" class="att-more" aria-label="More for this recording" aria-haspopup="menu" aria-expanded="false">${SVG.more}</button><div class="att-menu" role="menu" hidden><button type="button" role="menuitem" class="att-menu-row att-dl">${SVG.download}<span>Download</span></button><button type="button" role="menuitem" class="att-menu-row danger att-del">${SVG.trash}<span>Delete recording</span></button></div></span></div><div class="att-player"><button type="button" class="att-play" aria-label="Play">${SVG.play}</button><span class="att-time num">0:00</span><input type="range" class="att-seek" min="0" max="1000" value="0" step="1" aria-label="Position in the recording" /><span class="att-dur num">0:00</span><button type="button" class="att-speed" aria-label="Playback speed" title="Playback speed">1×</button></div><audio preload="metadata"></audio>`
+        dom.innerHTML = `<div class="att-audio-head"><span class="att-icon">🎙️</span><span class="att-text"><b></b><small></small></span><button type="button" class="att-open att-transcribe">Transcribe</button><button type="button" class="att-open att-cancel" hidden>Cancel</button></div><div class="att-player"><button type="button" class="att-play" aria-label="Play">${SVG.play}</button><span class="att-time num">0:00</span><input type="range" class="att-seek" min="0" max="1000" value="0" step="1" aria-label="Position in the recording" /><span class="att-dur num">0:00</span><button type="button" class="att-speed" aria-label="Playback speed" title="Playback speed">1×</button></div><audio preload="metadata"></audio>`
+        const head = dom.querySelector('.att-audio-head') as HTMLDivElement
         dom.querySelector('b')!.textContent = name
         const small = dom.querySelector('small')!
         small.textContent = fileSize(size)
         const audio = dom.querySelector('audio')!
+        const drag = createDragHandle(editor, posOf, dom, `🎙️ ${shortName}`)
+        dragCleanup = drag.destroy
+        head.prepend(drag.el)
+        const dlBtn = createActionBtn('blk-download', 'Download recording', BLK_SVG.download, () => {
+          void download(id, name, mime).catch((e: unknown) => report(clean(e, 'Couldn’t download it.')))
+        })
+        const controls = createMoveDeleteControls({
+          editor,
+          getPos: posOf,
+          label: 'Recording',
+          onBeforeDelete: () => audio.pause()
+        })
+        head.append(dlBtn, controls)
         showFile(audio, id, mime, missing)
         audio.addEventListener('error', missing)
         const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`
@@ -270,41 +289,6 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
           audio.playbackRate = next
           speedBtn.textContent = `${next}×`
         })
-        // ••• menu
-        const moreBtn = dom.querySelector('.att-more') as HTMLButtonElement
-        const menu = dom.querySelector('.att-menu') as HTMLDivElement
-        const away = (e: MouseEvent) => !(e.target as HTMLElement).closest?.('.att-more-wrap') && setMenu(false)
-        const esc = (e: KeyboardEvent) => e.key === 'Escape' && setMenu(false)
-        const setMenu = (on: boolean) => {
-          menu.hidden = !on
-          moreBtn.setAttribute('aria-expanded', String(on))
-          if (on) {
-            document.addEventListener('mousedown', away)
-            document.addEventListener('keydown', esc)
-          } else {
-            document.removeEventListener('mousedown', away)
-            document.removeEventListener('keydown', esc)
-          }
-        }
-        menuCleanup = () => setMenu(false)
-        moreBtn.addEventListener('click', () => setMenu(menu.hidden))
-        dom.querySelector('.att-dl')!.addEventListener('click', () => {
-          setMenu(false)
-          void download(id, name, mime).catch((e: unknown) => report(clean(e, 'Couldn’t download it.')))
-        })
-        dom.querySelector('.att-del')!.addEventListener('click', () => {
-          setMenu(false)
-          audio.pause()
-          const pos = typeof getPos === 'function' ? getPos() : undefined
-          if (typeof pos !== 'number') return
-          editor.chain().focus().command(({ tr }) => {
-            tr.delete(pos, pos + node.nodeSize)
-            return true
-          }).run()
-          report('Recording deleted from the note. Press Ctrl+Z to bring it back.')
-        })
-        // Read-only notes (or no files here) can't change: no Delete.
-        ;(dom.querySelector('.att-del') as HTMLButtonElement).hidden = !editor.isEditable
         const showLength = () => {
           if (Number.isFinite(audio.duration)) {
             small.textContent = `${mmss(audio.duration)} · ${fileSize(size)}`
@@ -332,7 +316,7 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
         btn.addEventListener('click', (e) => {
           e.preventDefault()
           e.stopPropagation()
-          void transcribeInto(editor, () => (typeof getPos === 'function' ? getPos() : undefined), { id, name, mime, size })
+          void transcribeInto(editor, posOf, { id, name, mime, size })
         })
         cancel.addEventListener('click', (e) => {
           e.preventDefault()
@@ -355,15 +339,29 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
         img.title = `${name}. Double-click to open.`
         img.addEventListener('dblclick', open)
         img.addEventListener('error', missing)
-        dom.append(img)
+
+        const bar = document.createElement('div')
+        bar.className = 'blk-float'
+        const drag = createDragHandle(editor, posOf, dom, `🖼️ ${shortName}`)
+        dragCleanup = drag.destroy
+        const openBtn = createActionBtn('blk-open', 'Open image', BLK_SVG.open, () => void open())
+        const controls = createMoveDeleteControls({ editor, getPos: posOf, label: 'Image' })
+        bar.append(drag.el, openBtn, controls)
+        dom.append(img, bar)
       } else {
+        const pdf = isPdf(mime, name)
         dom.classList.add('att-file')
-        if (isPdf(mime, name)) dom.classList.add('att-pdf')
+        if (pdf) dom.classList.add('att-pdf')
         dom.title = 'Double-click to open'
         dom.innerHTML = `<span class="att-icon"></span><span class="att-text"><b></b><small></small></span><button type="button" class="att-open">Open</button>`
         dom.querySelector('.att-icon')!.textContent = icon(mime, name)
         dom.querySelector('b')!.textContent = name
         dom.querySelector('small')!.textContent = `${fileSize(size)} · ${(name.split('.').pop() || '').toUpperCase()}`
+        const drag = createDragHandle(editor, posOf, dom, `${icon(mime, name)} ${shortName}`)
+        dragCleanup = drag.destroy
+        dom.prepend(drag.el)
+        const controls = createMoveDeleteControls({ editor, getPos: posOf, label: pdf ? 'PDF' : 'File' })
+        dom.append(controls)
         dom.querySelector('.att-open')!.addEventListener('click', (e) => {
           e.preventDefault()
           e.stopPropagation()
@@ -375,10 +373,12 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
         dom,
         ignoreMutation: () => true,
         // Clicks on the player and buttons are theirs, not the editor's.
-        stopEvent: (e) => e.type === 'dblclick' || !!(e.target as HTMLElement)?.closest?.('.att-open, audio, .att-player, .att-more-wrap'),
+        stopEvent: (e) =>
+          e.type === 'dblclick' ||
+          !!(e.target as HTMLElement)?.closest?.('.att-open, audio, .att-player, .blk-controls, .blk-float, .blk-btn'),
         destroy: () => {
           unwatch?.()
-          menuCleanup?.()
+          dragCleanup?.()
         }
       }
     }
