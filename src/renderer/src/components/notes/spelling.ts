@@ -225,6 +225,8 @@ export const Spelling = Extension.create({
                 view.state.tr
                   .setMeta(key, misspelled(view.state.doc, skip))
                   .setMeta('addToHistory', false)
+                  .setMeta('skipTrailingNode', true)
+                  .setMeta('preventUpdate', true)
               )
             }, Math.max(0, wait))
           }

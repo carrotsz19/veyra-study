@@ -14,6 +14,7 @@ import { useToast } from '../ui'
 import { docText, noteExtensions, wordCount } from './extensions'
 import { collectPdfs, onAttachError } from './attachment'
 import { onBlockNotice } from './blockActions'
+import { isSameNoteDoc, shouldSaveEditorUpdate } from './noteDirty'
 import { onVoiceMessage } from '../../data/voice'
 import { RecorderBar } from './Voice'
 import { cleanError, saveNoteToDocs } from '../../data/drive'
@@ -246,11 +247,14 @@ export function Area({
       extensions: [...noteExtensions(useSlash ? `${placeholder} Type / for blocks.` : placeholder, useSlash, attach, collab), ...(ownSpelling ? [Spelling] : [])],
       content: collab ? undefined : ((content as object) ?? ''),
       editorProps: { attributes: { class: `tiptap ${className ?? ''}`, spellcheck: s.spellcheck && !ownSpelling ? 'true' : 'false' } },
-      onUpdate: ({ editor: e }) => onChange(e.getJSON(), e.getText()),
+      onUpdate: ({ editor: e, transaction }) => {
+        if (!shouldSaveEditorUpdate(transaction)) return
+        onChange(e.getJSON(), e.getText())
+      },
       onFocus: ({ editor: e }) => onActive?.(e),
       onCreate: ({ editor: e }) => {
         // The first time a note is shared, its text goes into the live document (only once, from the owner).
-        if (collab && live?.seed && live.doc.can !== 'view' && live.doc.isEmpty(live.field)) e.commands.setContent(live.seed as object)
+        if (collab && live?.seed && live.doc.can !== 'view' && live.doc.isEmpty(live.field)) e.commands.setContent(live.seed as object, { emitUpdate: false })
         onReady?.(e)
       }
     },
@@ -712,6 +716,7 @@ export function NoteEditor({
   }, [note.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const onArea = (field: 'content' | 'cues' | 'summary') => (json: unknown, text: string) => {
+    if (isSameNoteDoc(latest.current[field], json)) return
     texts.current[field] = text
     const all = [texts.current.content, texts.current.cues, texts.current.summary].filter(Boolean).join(' · ')
     setWords(wordCount(all.replace(/·/g, ' ')))
@@ -729,7 +734,7 @@ export function NoteEditor({
       const { from, to } = ed.state.selection
       setAiJob({ task, source: ed.state.doc.textBetween(from, to, '\n'), editor: ed, from, to })
     } else {
-      flush()
+      if (timer.current) flush()
       setAiJob({ task, source: noteToMarkdown(latest.current).split('\n').slice(1).join('\n') })
     }
   }
@@ -816,7 +821,7 @@ export function NoteEditor({
     await db.put('note', was, note.id)
   }
   const duplicate = async () => {
-    flush()
+    if (timer.current) flush()
     const copy = await duplicateNote(latest.current)
     setMenu(null)
     toast('Note duplicated')
@@ -947,7 +952,7 @@ export function NoteEditor({
                   <MoreHorizontal size={18} />
                 </button>
                 {menu === 'page' && (
-                  <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportMd} onSaveDocs={saveDocs} onHistory={() => (setMenu(null), setHistory(true))} onShare={signedIn ? () => (setMenu(null), flush(), setSharing(true)) : undefined} onClose={() => setMenu(null)} />
+                  <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportMd} onSaveDocs={saveDocs} onHistory={() => (setMenu(null), setHistory(true))} onShare={signedIn ? () => (setMenu(null), timer.current && flush(), setSharing(true)) : undefined} onClose={() => setMenu(null)} />
                 )}
                 {sharing && (
                   <ShareDialog noteId={note.id} note={() => latest.current} onClose={() => setSharing(false)} />

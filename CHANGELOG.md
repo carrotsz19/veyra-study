@@ -26,6 +26,7 @@ picked automatically. They come after the older 1.0.x numbers.
 - **Zen-style resizable sidebar:** drag the right edge of the desktop sidebar to resize it smoothly (remembered between sessions), pull it narrow to snap cleanly into icons-only mode, drag out from icons-only mode to expand it back, or double-click the edge to reset to the default width.
 - **Smarter, less-strict spellcheck with click-to-suggest:** spellcheck now recognizes names, honorifics (`Dr.`, `Prof.`, etc.), possessives, mixed-case brand/tech words, and hyphenated prefixes without flagging them. Clicking or moving your cursor onto a red-underlined word keeps the underline visible and automatically opens an inline suggestions popover with one-click fixes, **Add to dictionary**, and **Ignore**.
 - **Reliable sidebar selection animations:** unified the sliding highlight pill across main navigation, subjects, and nested/folded subject folders so switching between any sidebar items glides smoothly without being cut short by layout resizes or covered by hover highlights.
+- **Opening old notes keeps their original edited date:** fixed a bug where simply opening or clicking into an older note (especially one ending in a heading, list, table, callout, drawing, or attachment) triggered an automatic background save and jumped it to **Today**.
 
 ## 26.11.1
 
