@@ -5,14 +5,14 @@ import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/r
 import { BubbleMenu } from '@tiptap/react/menus'
 import { formatDistanceToNowStrict } from 'date-fns'
 import {
-  Archive, ArchiveRestore, Bold, Code, Copy, Download, FileUp, Hash, History as HistoryIcon, ImagePlus, Italic, Share2, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, Pin, PinOff,
+  Archive, ArchiveRestore, Bold, ChevronRight, Code, Copy, Download, FileUp, Hash, History as HistoryIcon, ImagePlus, Italic, Share2, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, PanelLeftOpen, Paperclip, Pin, PinOff,
   Sparkles, Strikethrough, Trash2, Underline
 } from 'lucide-react'
 import type { Note, NoteFont, NoteTemplate, Rec } from '@shared/types'
 import { db, onExternalChange, useRecords } from '../../data/store'
 import { useToast } from '../ui'
 import { docText, noteExtensions, wordCount } from './extensions'
-import { onAttachError } from './attachment'
+import { collectPdfs, onAttachError } from './attachment'
 import { onVoiceMessage } from '../../data/voice'
 import { RecorderBar } from './Voice'
 import { cleanError, saveNoteToDocs } from '../../data/drive'
@@ -498,6 +498,42 @@ export async function exportNotes(notes: Note[]): Promise<number> {
   return r.saved
 }
 
+const PDFS_OPEN_KEY = 'veyra.note.pdfsOpen'
+const AGENT_WIDTH_KEY = 'veyra.agentWidth'
+const DEFAULT_AGENT_WIDTH = 380
+
+function readPdfOpen(noteId: string): boolean {
+  try {
+    const map = JSON.parse(localStorage.getItem(PDFS_OPEN_KEY) ?? '{}') as Record<string, boolean>
+    return map[noteId] === true
+  } catch {
+    return false
+  }
+}
+
+function writePdfOpen(noteId: string, open: boolean): void {
+  try {
+    const map = JSON.parse(localStorage.getItem(PDFS_OPEN_KEY) ?? '{}') as Record<string, boolean>
+    map[noteId] = open
+    const keys = Object.keys(map)
+    if (keys.length > 200) {
+      for (const k of keys.slice(0, keys.length - 200)) delete map[k]
+    }
+    localStorage.setItem(PDFS_OPEN_KEY, JSON.stringify(map))
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function readAgentWidth(): number {
+  try {
+    const n = Number(localStorage.getItem(AGENT_WIDTH_KEY))
+    return Number.isFinite(n) ? Math.max(260, Math.min(560, Math.round(n))) : DEFAULT_AGENT_WIDTH
+  } catch {
+    return DEFAULT_AGENT_WIDTH
+  }
+}
+
 /** Edits one note; saves shortly after you stop typing. Remount per note (key={note.id}). */
 export function NoteEditor({
   note,
@@ -505,6 +541,10 @@ export function NoteEditor({
   onOpen,
   focusMode,
   onToggleFocus,
+  listCollapsed,
+  onToggleList,
+  onAiOpenChange,
+  inSubject,
   onReplaced
 }: {
   note: Rec<'note'>
@@ -512,6 +552,10 @@ export function NoteEditor({
   onOpen?: (id: string) => void
   focusMode?: boolean
   onToggleFocus?: () => void
+  listCollapsed?: boolean
+  onToggleList?: () => void
+  onAiOpenChange?: (open: boolean) => void
+  inSubject?: boolean
   /** The note's text was replaced (a restored version): show it fresh. */
   onReplaced?: () => void
 }) {
@@ -529,6 +573,23 @@ export function NoteEditor({
   const [savedAt, setSavedAt] = useState(note.updatedAt)
   const [active, setActive] = useState<Editor | null>(null)
   const mainEditor = useRef<Editor | null>(null)
+  const pageRef = useRef<HTMLDivElement>(null)
+  // PDF attachments start collapsed per note so they don't push note content down.
+  const [pdfsOpen, setPdfsOpenState] = useState<boolean>(() => readPdfOpen(note.id))
+  const setPdfsOpen = (open: boolean) => {
+    setPdfsOpenState(open)
+    writePdfOpen(note.id, open)
+  }
+  const [agentWidth, setAgentWidth] = useState<number>(readAgentWidth)
+  const saveAgentWidth = (w: number) => {
+    const clamped = Math.max(260, Math.min(560, Math.round(w)))
+    setAgentWidth(clamped)
+    try {
+      localStorage.setItem(AGENT_WIDTH_KEY, String(clamped))
+    } catch {
+      /* storage unavailable */
+    }
+  }
   // On the phone and the website, AI tools are there once Veyra AI is on (Settings → AI).
   const aiCfg = useAiState()
   // Opened from another note's Past chats: start with the Assistant showing.
@@ -547,6 +608,16 @@ export function NoteEditor({
     }
   }, [note.id])
   const [aiJob, setAiJob] = useState<{ task: AiTask; source: string; editor?: Editor; from?: number; to?: number } | null>(null)
+  const aiOpen = !!(aiJob || agentOpen)
+  useEffect(() => {
+    onAiOpenChange?.(aiOpen)
+  }, [aiOpen, onAiOpenChange])
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('veyra:assistant-open', { detail: { open: aiOpen, inSubject: !!inSubject } }))
+    return () => {
+      window.dispatchEvent(new CustomEvent('veyra:assistant-open', { detail: { open: false, inSubject: !!inSubject } }))
+    }
+  }, [aiOpen, inSubject])
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const { s: settings } = useSettings()
 
@@ -769,159 +840,244 @@ export function NoteEditor({
   const template = data.template ?? 'page'
   const subject = subjects.find((s) => s.id === data.subjectId)
   const showBar = settings.noteToolbar !== 'slash'
+  const pdfs = collectPdfs(data.content, data.cues, data.summary)
+  const prevPdfCount = useRef(pdfs.length)
+  useEffect(() => {
+    if (pdfs.length > prevPdfCount.current && !pdfsOpen) {
+      toast('PDF attached (collapsed under Attachments)', { label: 'Show', run: () => setPdfsOpen(true) })
+    }
+    prevPdfCount.current = pdfs.length
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfs.length])
+  // Guard against silently deleting or selecting a collapsed PDF attachment.
+  useEffect(() => {
+    const el = pageRef.current
+    if (!el) return
+    const onReveal = (e: Event) => {
+      const reason = (e as CustomEvent<{ reason?: string }>).detail?.reason
+      setPdfsOpen(true)
+      if (reason === 'delete') toast('Showing hidden PDFs so you don’t delete one by accident.')
+    }
+    el.addEventListener('veyra:reveal-pdfs', onReveal)
+    return () => el.removeEventListener('veyra:reveal-pdfs', onReveal)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note.id, toast])
+
+  const startResizeAi = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const el = pageRef.current
+    if (!el) return
+    let latestW = agentWidth
+    document.body.classList.add('resizing-pane')
+    const move = (ev: PointerEvent) => {
+      const rect = el.getBoundingClientRect()
+      const maxW = Math.max(260, Math.min(560, Math.floor(rect.width * 0.55)))
+      latestW = Math.max(260, Math.min(maxW, Math.round(rect.right - ev.clientX)))
+      setAgentWidth(latestW)
+    }
+    const up = () => {
+      document.body.classList.remove('resizing-pane')
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      saveAgentWidth(latestW)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+  }
 
   return (
     <NoteAiCtx.Provider value={onAndroid() && aiCfg?.provider !== 'veyra' ? null : askAi}>
     <NoteAgentCtx.Provider value={() => (setAiJob(null), setAgentOpen(true))}>
     <div
-      className={`note-page font-${data.font ?? 'sans'} layout-${template} width-${settings.noteWidth} ${aiJob || agentOpen ? 'with-ai' : ''} ${agentOpen ? 'with-agent' : ''}`}
-      style={{ ['--note-base' as string]: `${settings.noteSize}px` }}
+      ref={pageRef}
+      className={`note-page font-${data.font ?? 'sans'} layout-${template} width-${settings.noteWidth} ${aiOpen ? 'with-ai' : ''} ${agentOpen && !aiJob ? 'with-agent' : ''} ${pdfs.length > 0 && !pdfsOpen ? 'pdfs-collapsed' : ''}`}
+      style={{ ['--note-base' as string]: `${settings.noteSize}px`, ['--ai-w' as string]: `${agentWidth}px` }}
     >
-      {showBar && <NoteToolbar editor={active} />}
-      <div className="note-scroll">
-        {data.archived && (
-          <div className="note-banner">
-            <Archive size={14} /> This note is archived, so it’s hidden from your notes list.
-            <button className="linkbtn" onClick={() => update({ archived: false }, true)}>
-              Unarchive
-            </button>
-          </div>
-        )}
-        {isImageCover(data.cover) ? (
-          <div className="note-cover note-cover-img">
-            <CoverPicture cover={data.cover} />
-          </div>
-        ) : (
-          data.cover && NOTE_COVERS[data.cover] && <div className="note-cover" style={{ background: NOTE_COVERS[data.cover] }} />
-        )}
-        <div className={`note-sheet ${data.cover ? 'has-cover' : ''}`}>
-          <div className="note-actions">
-            {!data.icon && (
-              <button className="ghost-chip" onClick={() => setMenu('icon')}>
-                ☺ Add icon
+      <div className="note-page-main">
+        {showBar && <NoteToolbar editor={active} />}
+        <div className="note-scroll">
+          {data.archived && (
+            <div className="note-banner">
+              <Archive size={14} /> This note is archived, so it’s hidden from your notes list.
+              <button className="linkbtn" onClick={() => update({ archived: false }, true)}>
+                Unarchive
               </button>
-            )}
-            {!data.cover && (
-              <button className="ghost-chip" onClick={() => update({ cover: 'sand' }, true)}>
-                ▭ Add cover
-              </button>
-            )}
-            <span className="grow" />
-            <span className="save-state xs tert" aria-live="polite">
-              Edited {formatDistanceToNowStrict(savedAt, { addSuffix: true })}
-            </span>
-            {onToggleFocus && (
-              <button className="iconbtn plain" aria-label={focusMode ? 'Leave focus mode' : 'Focus mode'} title={focusMode ? 'Leave focus mode (Esc)' : 'Focus mode: hide everything but the page'} onClick={onToggleFocus}>
-                {focusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-              </button>
-            )}
-            <span className="anchor">
-              <button className="iconbtn plain" aria-label="Page options" aria-expanded={menu === 'page'} onClick={() => setMenu(menu === 'page' ? null : 'page')}>
-                <MoreHorizontal size={18} />
-              </button>
-              {menu === 'page' && (
-                <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportMd} onSaveDocs={saveDocs} onHistory={() => (setMenu(null), setHistory(true))} onShare={signedIn ? () => (setMenu(null), flush(), setSharing(true)) : undefined} onClose={() => setMenu(null)} />
-              )}
-              {sharing && (
-                <ShareDialog noteId={note.id} note={() => latest.current} onClose={() => setSharing(false)} />
-              )}
-              {history && (
-                <NoteHistory noteId={note.id} currentWords={words} onRestore={(v) => void restore(v)} onClose={() => setHistory(false)} />
-              )}
-            </span>
-          </div>
-
-          {data.icon && (
-            <span className="anchor">
-              <button className="note-icon" aria-label="Change icon" onClick={() => setMenu('icon')}>
-                {data.icon}
-              </button>
-            </span>
+            </div>
           )}
-          {menu === 'icon' && (
-            <span className="anchor">
-              <IconPicker
-                value={data.icon}
-                onPick={(icon) => {
-                  update({ icon }, true)
-                  setMenu(null)
-                }}
-                onClose={() => setMenu(null)}
-              />
-            </span>
-          )}
-
-          <textarea
-            ref={titleRef}
-            className="note-title"
-            rows={1}
-            value={data.title}
-            placeholder="Untitled"
-            aria-label="Note title"
-            onChange={(e) => update({ title: e.target.value.replace(/\n/g, '') })}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                ;(document.querySelector('.note-main .tiptap') as HTMLElement | null)?.focus()
-              }
-            }}
-          />
-
-          <div className="note-meta">
-            <span className="subject-chip" style={subject ? { ['--chip' as string]: subject.data.color } : undefined}>
-              <span className="dot" />
-              <Select
-                className="quiet subject-sel"
-                label="Subject"
-                value={data.subjectId ?? ''}
-                onChange={(v) => update({ subjectId: v || null }, true)}
-                options={[
-                  { value: '', label: 'No subject' },
-                  ...subjects.filter((s) => !s.data.archived || s.id === data.subjectId).map((s) => ({ value: s.id, label: s.data.name, dot: s.data.color }))
-                ]}
-              />
-            </span>
-            <Tags tags={data.tags ?? []} onChange={(tags) => update({ tags }, true)} />
-            {settings.showWordCount && (
-              <>
-                <span className="tert">·</span>
-                <span className="tert num">
-                  {words} {words === 1 ? 'word' : 'words'}
-                </span>
-                {words > 0 && (
-                  <>
-                    <span className="tert">·</span>
-                    <span className="tert">{Math.max(1, Math.round(words / 200))} min read</span>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-
-          {template === 'cornell' ? (
-            <div className="cornell">
-              <div className="cornell-cues">
-                <div className="cornell-label">Cues &amp; questions</div>
-                <Area content={data.cues} placeholder="Key words, questions…" slash className="cues" onChange={onArea('cues')} onActive={setActive} live={liveArea('cues')} />
-              </div>
-              <div className="cornell-notes note-main">
-                <div className="cornell-label">Notes</div>
-                <Area content={data.content} placeholder="Take notes during the lecture." onChange={onArea('content')} onActive={setActive} onReady={mainActive} live={liveArea('content')} />
-              </div>
-              <div className="cornell-summary">
-                <div className="cornell-label">Summary</div>
-                <Area content={data.summary} placeholder="Sum up the page in a few sentences, in your own words." slash onChange={onArea('summary')} onActive={setActive} live={liveArea('summary')} />
-              </div>
+          {isImageCover(data.cover) ? (
+            <div className="note-cover note-cover-img">
+              <CoverPicture cover={data.cover} />
             </div>
           ) : (
-            <div className="note-main">
-              <Area content={data.content} placeholder="Start writing." onChange={onArea('content')} onActive={setActive} onReady={mainActive} live={liveArea('content')} />
-            </div>
+            data.cover && NOTE_COVERS[data.cover] && <div className="note-cover" style={{ background: NOTE_COVERS[data.cover] }} />
           )}
+          <div className={`note-sheet ${data.cover ? 'has-cover' : ''}`}>
+            <div className="note-actions">
+              {listCollapsed && !focusMode && onToggleList && (
+                <button className="note-list-toggle" onClick={onToggleList} title="Show notes list" aria-label="Show notes list">
+                  <PanelLeftOpen size={15} /> Notes
+                </button>
+              )}
+              {!data.icon && (
+                <button className="ghost-chip" onClick={() => setMenu('icon')}>
+                  ☺ Add icon
+                </button>
+              )}
+              {!data.cover && (
+                <button className="ghost-chip" onClick={() => update({ cover: 'sand' }, true)}>
+                  ▭ Add cover
+                </button>
+              )}
+              <span className="grow" />
+              <span className="save-state xs tert" aria-live="polite">
+                Edited {formatDistanceToNowStrict(savedAt, { addSuffix: true })}
+              </span>
+              {onToggleFocus && (
+                <button className="iconbtn plain" aria-label={focusMode ? 'Leave focus mode' : 'Focus mode'} title={focusMode ? 'Leave focus mode (Esc)' : 'Focus mode: hide everything but the page'} onClick={onToggleFocus}>
+                  {focusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                </button>
+              )}
+              <span className="anchor">
+                <button className="iconbtn plain" aria-label="Page options" aria-expanded={menu === 'page'} onClick={() => setMenu(menu === 'page' ? null : 'page')}>
+                  <MoreHorizontal size={18} />
+                </button>
+                {menu === 'page' && (
+                  <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportMd} onSaveDocs={saveDocs} onHistory={() => (setMenu(null), setHistory(true))} onShare={signedIn ? () => (setMenu(null), flush(), setSharing(true)) : undefined} onClose={() => setMenu(null)} />
+                )}
+                {sharing && (
+                  <ShareDialog noteId={note.id} note={() => latest.current} onClose={() => setSharing(false)} />
+                )}
+                {history && (
+                  <NoteHistory noteId={note.id} currentWords={words} onRestore={(v) => void restore(v)} onClose={() => setHistory(false)} />
+                )}
+              </span>
+            </div>
+
+            {data.icon && (
+              <span className="anchor">
+                <button className="note-icon" aria-label="Change icon" onClick={() => setMenu('icon')}>
+                  {data.icon}
+                </button>
+              </span>
+            )}
+            {menu === 'icon' && (
+              <span className="anchor">
+                <IconPicker
+                  value={data.icon}
+                  onPick={(icon) => {
+                    update({ icon }, true)
+                    setMenu(null)
+                  }}
+                  onClose={() => setMenu(null)}
+                />
+              </span>
+            )}
+
+            <textarea
+              ref={titleRef}
+              className="note-title"
+              rows={1}
+              value={data.title}
+              placeholder="Untitled"
+              aria-label="Note title"
+              onChange={(e) => update({ title: e.target.value.replace(/\n/g, '') })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  ;(document.querySelector('.note-main .tiptap') as HTMLElement | null)?.focus()
+                }
+              }}
+            />
+
+            <div className="note-meta">
+              <span className="subject-chip" style={subject ? { ['--chip' as string]: subject.data.color } : undefined}>
+                <span className="dot" />
+                <Select
+                  className="quiet subject-sel"
+                  label="Subject"
+                  value={data.subjectId ?? ''}
+                  onChange={(v) => update({ subjectId: v || null }, true)}
+                  options={[
+                    { value: '', label: 'No subject' },
+                    ...subjects.filter((s) => !s.data.archived || s.id === data.subjectId).map((s) => ({ value: s.id, label: s.data.name, dot: s.data.color }))
+                  ]}
+                />
+              </span>
+              <Tags tags={data.tags ?? []} onChange={(tags) => update({ tags }, true)} />
+              {settings.showWordCount && (
+                <>
+                  <span className="tert">·</span>
+                  <span className="tert num">
+                    {words} {words === 1 ? 'word' : 'words'}
+                  </span>
+                  {words > 0 && (
+                    <>
+                      <span className="tert">·</span>
+                      <span className="tert">{Math.max(1, Math.round(words / 200))} min read</span>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+
+            {pdfs.length > 0 && (
+              <div className={`note-pdfs ${pdfsOpen ? 'open' : ''}`}>
+                <button
+                  type="button"
+                  className="note-pdfs-toggle"
+                  aria-expanded={pdfsOpen}
+                  onClick={() => setPdfsOpen(!pdfsOpen)}
+                >
+                  <ChevronRight size={14} className="note-pdfs-chev" />
+                  <Paperclip size={14} />
+                  <b>Attachments ({pdfs.length})</b>
+                  <span className="note-pdfs-names trunc">
+                    {pdfs.length === 1 ? pdfs[0].name : `${pdfs.length} PDFs`}
+                  </span>
+                  <span className="note-pdfs-action">{pdfsOpen ? 'Hide' : 'Show'}</span>
+                </button>
+              </div>
+            )}
+
+            {template === 'cornell' ? (
+              <div className="cornell">
+                <div className="cornell-cues">
+                  <div className="cornell-label">Cues &amp; questions</div>
+                  <Area content={data.cues} placeholder="Key words, questions…" slash className="cues" onChange={onArea('cues')} onActive={setActive} live={liveArea('cues')} />
+                </div>
+                <div className="cornell-notes note-main">
+                  <div className="cornell-label">Notes</div>
+                  <Area content={data.content} placeholder="Take notes during the lecture." onChange={onArea('content')} onActive={setActive} onReady={mainActive} live={liveArea('content')} />
+                </div>
+                <div className="cornell-summary">
+                  <div className="cornell-label">Summary</div>
+                  <Area content={data.summary} placeholder="Sum up the page in a few sentences, in your own words." slash onChange={onArea('summary')} onActive={setActive} live={liveArea('summary')} />
+                </div>
+              </div>
+            ) : (
+              <div className="note-main">
+                <Area content={data.content} placeholder="Start writing." onChange={onArea('content')} onActive={setActive} onReady={mainActive} live={liveArea('content')} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
       <SlashMenu />
       <RecorderBar />
+      {aiOpen && (
+        <div
+          className="pane-resizer pane-resizer-ai"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize assistant panel"
+          title="Drag to resize · Double-click to reset"
+          onPointerDown={startResizeAi}
+          onDoubleClick={() => saveAgentWidth(DEFAULT_AGENT_WIDTH)}
+        />
+      )}
       {aiJob && <AiPanel key={aiJob.task + aiJob.source.length} task={aiJob.task} source={aiJob.source} title={data.title} onInsert={insertAi} onClose={() => setAiJob(null)} />}
       {agentOpen && !aiJob && (
         <AgentPanel

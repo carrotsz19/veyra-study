@@ -66,6 +66,8 @@ export interface AppSettings {
   morningTime: string
   remindEvening: boolean
   eveningTime: string
+  /** Desktop notifications for incoming direct messages and group chat when Veyra is unfocused or minimized. */
+  chatNotify: boolean
   /** Closing the window keeps Veyra in the tray (so reminders still come). */
   keepInTray: boolean
   startWithWindows: boolean
@@ -194,6 +196,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   morningTime: '08:00',
   remindEvening: true,
   eveningTime: '19:00',
+  chatNotify: false,
   keepInTray: true,
   startWithWindows: false,
   voiceModel: 'base',

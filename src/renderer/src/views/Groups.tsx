@@ -74,14 +74,18 @@ export function Groups() {
   const phone = usePhone()
   const [phoneOpen, setPhoneOpen] = useState(false)
 
-  // The call dock's "open the voice room" while Group work is already showing another group.
+  // The call dock's "open the voice room" or a clicked DM/chat notification while Group work is already showing another group.
   useEffect(() => {
     const open = (e: Event) => {
       setOpenId((e as CustomEvent<string>).detail)
       if (phone) setPhoneOpen(true)
     }
     window.addEventListener('veyra:open-voice', open)
-    return () => window.removeEventListener('veyra:open-voice', open)
+    window.addEventListener('veyra:open-chat', open)
+    return () => {
+      window.removeEventListener('veyra:open-voice', open)
+      window.removeEventListener('veyra:open-chat', open)
+    }
   }, [phone])
   useEffect(() => {
     try {
@@ -315,11 +319,16 @@ function GroupPanel({ group, me, onChanged, onGone, onBack }: { group: Group; me
       /* storage unavailable */
     }
   }, [tab])
-  // The call dock's "open the voice room".
+  // The call dock's "open the voice room" or a clicked DM/chat notification.
   useEffect(() => {
-    const open = (e: Event) => (e as CustomEvent<string>).detail === group.id && setTab('voice')
-    window.addEventListener('veyra:open-voice', open)
-    return () => window.removeEventListener('veyra:open-voice', open)
+    const openVoice = (e: Event) => (e as CustomEvent<string>).detail === group.id && setTab('voice')
+    const openChat = (e: Event) => (e as CustomEvent<string>).detail === group.id && setTab('chat')
+    window.addEventListener('veyra:open-voice', openVoice)
+    window.addEventListener('veyra:open-chat', openChat)
+    return () => {
+      window.removeEventListener('veyra:open-voice', openVoice)
+      window.removeEventListener('veyra:open-chat', openChat)
+    }
   }, [group.id])
   const items = useGroupItems(group.id)
   const openTasks = items.list('task').filter((t) => !t.data.done).length

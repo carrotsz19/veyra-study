@@ -45,7 +45,7 @@ export const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: s
   { id: 'sidebar', label: 'Sidebar', icon: LayoutPanelLeft, hint: 'What the sidebar shows, and in what order', keys: ['nav', 'showCounts', 'showSubjectsInSidebar', 'showTimerCard'] },
   { id: 'subjects', label: 'Subjects', icon: Shapes, hint: 'Order, colours, archived and deleted subjects' },
   { id: 'today', label: 'Today', icon: Home, hint: 'Your Today page’s widgets', keys: ['todayLayout', 'upcomingCount'] },
-  { id: 'tasks', label: 'Tasks', icon: ListTodo, hint: 'Defaults for new tasks, how lists sort, and reminders', keys: ['defaultPriority', 'defaultDue', 'taskSort', 'showDoneInLists', 'highlightOverdue', 'remindersOn', 'remindMorning', 'morningTime', 'remindEvening', 'eveningTime', 'keepInTray', 'startWithWindows'] },
+  { id: 'tasks', label: 'Tasks', icon: ListTodo, hint: 'Defaults for new tasks, reminders, and message notifications', keys: ['defaultPriority', 'defaultDue', 'taskSort', 'showDoneInLists', 'highlightOverdue', 'remindersOn', 'remindMorning', 'morningTime', 'remindEvening', 'eveningTime', 'chatNotify', 'keepInTray', 'startWithWindows'] },
   { id: 'notes', label: 'Notes', icon: NotebookPen, hint: 'How new notes start, how pages look, and voice recordings', keys: ['voiceAutoTranscribe', 'voiceMic', 'voiceUseSubtitleMaker', 'voiceModel', 'voiceLanguage', 'noteTemplate', 'noteFont', 'noteCover', 'noteWidth', 'noteSize', 'spellcheck', 'showWordCount', 'noteToolbar', 'noteBubble', 'noteSort'] },
   { id: 'timer', label: 'Focus timer', icon: Timer, hint: 'Lengths, long breaks, sounds and your daily goal', keys: ['focusMin', 'breakMin', 'longBreakMin', 'longBreakEvery', 'autoStartBreaks', 'autoStartFocus', 'sound', 'volume', 'notify', 'dailyGoalMin'] },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays, hint: 'What appears on the calendar', keys: ['calendarShowTasks', 'calendarShowDone', 'calendarShowEvents'] },
@@ -474,6 +474,100 @@ function Today() {
   )
 }
 
+function ChatNotifyGroup() {
+  const { s, set } = useSettings()
+  const toast = useToast()
+  const [desktopSupported, setDesktopSupported] = useState<boolean | null>(null)
+  const [perm, setPerm] = useState<NotificationPermission | 'unsupported'>(() =>
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
+  )
+
+  useEffect(() => {
+    let live = true
+    window.veyra.app.notifyCheck?.().then((r) => live && setDesktopSupported(r.supported), () => live && setDesktopSupported(false))
+    return () => {
+      live = false
+    }
+  }, [])
+
+  const onToggle = async (next: boolean) => {
+    if (!next) {
+      set({ chatNotify: false })
+      return
+    }
+    if (window.veyra.app.notifyCheck) {
+      const { supported } = await window.veyra.app.notifyCheck()
+      setDesktopSupported(supported)
+      if (!supported) {
+        toast('Desktop notifications aren’t supported on this system.')
+        return
+      }
+      set({ chatNotify: true })
+      return
+    }
+    if (typeof Notification === 'undefined') {
+      setPerm('unsupported')
+      toast('Desktop notifications aren’t supported in this browser.')
+      return
+    }
+    let current: NotificationPermission = Notification.permission
+    if (current === 'default') {
+      try {
+        current = await Notification.requestPermission()
+      } catch {
+        current = 'denied'
+      }
+    }
+    setPerm(current)
+    if (current !== 'granted') {
+      set({ chatNotify: false })
+      toast('Notifications are blocked. Allow them in your browser or system settings, then try again.')
+      return
+    }
+    set({ chatNotify: true })
+  }
+
+  const sendTest = async () => {
+    if (window.veyra.app.notifyTest) {
+      const r = await window.veyra.app.notifyTest('Veyra Study', 'Direct message desktop notifications are working.')
+      if (!r.shown) toast('Couldn’t show a desktop notification. Check Windows notification settings.')
+      return
+    }
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      new Notification('Veyra Study', { body: 'Direct message desktop notifications are working.' })
+    } else {
+      toast('Allow notifications first before sending a test.')
+    }
+  }
+
+  const blocked = !window.veyra.app.notifyCheck && perm === 'denied'
+  const unsupported = (window.veyra.app.notifyCheck && desktopSupported === false) || (!window.veyra.app.notifyCheck && perm === 'unsupported')
+  const footer = blocked
+    ? 'Notifications are blocked by your browser or system settings. Allow notifications for Veyra Study there, then turn this on again.'
+    : unsupported
+      ? 'This device or browser does not support native desktop notifications.'
+      : 'Notifications only appear when Veyra Study is unfocused, minimized, or running in the tray.'
+
+  return (
+    <Group title="Direct messages & group chat" footer={footer}>
+      <Row
+        label="Desktop notifications for messages"
+        hint="Show a native desktop notification when you receive a new direct message or group chat message while away from Veyra."
+        keywords="dm direct message chat group notification alert desktop popup"
+      >
+        <Toggle label="Desktop notifications for messages" on={s.chatNotify} onChange={(v) => void onToggle(v)} />
+      </Row>
+      {s.chatNotify && !unsupported && !blocked && (
+        <Row label="Test notification" hint="Send a sample desktop notification to confirm system delivery works." keywords="dm message test notification">
+          <button className="btn sec sm" onClick={() => void sendTest()}>
+            Send test
+          </button>
+        </Row>
+      )}
+    </Group>
+  )
+}
+
 function Tasks() {
   const { s, set } = useSettings()
   return (
@@ -528,6 +622,7 @@ function Tasks() {
           </>
         )}
       </Group>
+      {!onAndroid() && <ChatNotifyGroup />}
     </>
   )
 }

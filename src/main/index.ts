@@ -1,14 +1,15 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, Tray } from 'electron'
 import iconPath from '../../resources/icon.png?asset'
 import trayPath from '../../resources/tray@2x.png?asset'
 import devBadgePath from '../../resources/dev-badge.png?asset'
 import { Reminders } from './reminders'
 import { checkNow, downloadNow, installNow, installReady, keepUpToDate, lookForUpdate, takeHiddenFlag, updateAtStart, updateState } from './updater'
 import { withDefaults } from '../shared/settings'
+import { ChatNotifier, type ChatNotice } from '../shared/chat-notify'
 import { APP_NAME, IS_DEV } from '../shared/channel'
 import { release } from 'node:os'
 import { dirname, join } from 'node:path'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import type { Rec } from '../shared/types'
 import { Store } from './db'
 import { Accounts, ApiError, accountDir } from './account'
@@ -27,7 +28,7 @@ import { setupMenus, setupTextMenu } from './popup'
 // Dev checks: VEYRA_FAKE_MIC=1 records a test tone instead of the real microphone.
 if (process.env['VEYRA_FAKE_MIC']) app.commandLine.appendSwitch('use-fake-device-for-media-stream')
 // Dev checks: run on a separate profile (sign-in, settings and data).
-// Otherwise always %APPDATA%eyra-study: the installed app is named "Veyra Study", and its data
+// Otherwise always %APPDATA% eyra-study: the installed app is named "Veyra Study", and its data
 // must stay where the app has always kept it.
 // Veyra Study Dev (and running the code with npm run dev) keeps its data apart from the real app's.
 const devData = IS_DEV || !app.isPackaged
@@ -70,6 +71,24 @@ function showWindow(screen?: string): void {
   void lookForUpdate()
 }
 
+function openChat(groupId: string): void {
+  showWindow()
+  const w = mainWin
+  if (!w || w.isDestroyed()) return
+  const send = () => !w.isDestroyed() && w.webContents.send('app:openChat', groupId)
+  if (w.webContents.isLoading()) w.webContents.once('did-finish-load', send)
+  else send()
+}
+
+function showChatNotification(notice: ChatNotice): void {
+  const log = process.env['VEYRA_NOTIFY_LOG']
+  if (log) return appendFileSync(log, JSON.stringify(notice) + '\n')
+  if (!Notification.isSupported()) return
+  const n = new Notification({ title: notice.title, body: notice.body, silent: false })
+  n.on('click', () => openChat(notice.groupId))
+  n.show()
+}
+
 // Attachments are shown through veyra-file:// (registered before the app is ready).
 registerFileScheme()
 
@@ -79,6 +98,7 @@ let google: GoogleCalendar | null = null
 let feeds: IcalFeeds | null = null
 let ai: AiService | null = null
 let group: GroupClient | null = null
+let chatNotifier: ChatNotifier | null = null
 let drive: GoogleDrive | null = null
 let sync: Sync | null = null
 const localAi = new LocalAi()
@@ -106,7 +126,18 @@ function openGoogle(): void {
   google.onChange = calendarChanged
   feeds.onChange = calendarChanged
   drive = new GoogleDrive(folder ? join(accountDir(folder), 'drive.bin') : join(app.getPath('userData'), 'drive-local.bin'), files)
-  group = new GroupClient(folder ? join(accountDir(folder), 'group.bin') : join(app.getPath('userData'), 'group-local.bin'), () => accounts.credentials())
+  group = new GroupClient(
+    folder ? join(accountDir(folder), 'group.bin') : join(app.getPath('userData'), 'group-local.bin'),
+    () => accounts.credentials(),
+    (channel, payload) => chatNotifier?.onEvent(channel, payload)
+  )
+  chatNotifier = new ChatNotifier({
+    call: async <T,>(method: 'GET', path: string) => (await group!.call(method, path)) as T,
+    meId: () => group?.getStatus().me?.username ?? null,
+    enabled: () => appSettings().chatNotify,
+    isWindowActive: () => !!mainWin && !mainWin.isDestroyed() && mainWin.isVisible() && !mainWin.isMinimized() && mainWin.isFocused(),
+    notify: showChatNotification
+  })
   // Connect in the background so Group work is ready when it's opened.
   if (folder) void group.connect()
   // Your own data on every computer you sign in to (only with a Veyra account).
@@ -129,6 +160,8 @@ function openStore(path: string): void {
   ai = null
   sync?.dispose()
   sync = null
+  chatNotifier?.dispose()
+  chatNotifier = null
   group?.dispose()
   group = null
   drive?.dispose()
@@ -418,6 +451,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('db:put', (_e, kind, data, id) => {
     const rec = db().put(kind, data, id)
     if (kind === 'task' || kind === 'subject') google?.schedulePush()
+    if (kind === 'settings') chatNotifier?.onSettingsChanged()
     sync?.schedule()
     return rec
   })
@@ -566,6 +600,21 @@ app.whenReady().then(async () => {
   ipcMain.handle('update:download', () => downloadNow())
   ipcMain.handle('update:install', () => installNow())
   ipcMain.handle('app:version', () => app.getVersion())
+  ipcMain.handle('app:notifyCheck', () => ({ supported: Notification.isSupported() }))
+  ipcMain.handle('app:notifyTest', (_e, title?: string, body?: string) => {
+    const t = String(title ?? APP_NAME).slice(0, 100)
+    const b = String(body ?? 'Direct message desktop notifications are enabled.').slice(0, 200)
+    const log = process.env['VEYRA_NOTIFY_LOG']
+    if (log) {
+      appendFileSync(log, JSON.stringify({ test: true, title: t, body: b }) + '\n')
+      return { shown: true }
+    }
+    if (!Notification.isSupported()) return { shown: false }
+    const n = new Notification({ title: t, body: b, silent: false })
+    n.on('click', () => showWindow('groups'))
+    n.show()
+    return { shown: true }
+  })
   ipcMain.handle('data:openFolder', () => shell.openPath(dirname(db().path)))
   ipcMain.handle('data:export', async () => {
     const records = db().changesSince(0).filter((r) => !r.deletedAt)

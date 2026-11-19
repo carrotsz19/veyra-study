@@ -88,6 +88,14 @@ const appApi = {
     const h = (_: unknown, screen: string) => cb(screen)
     ipcRenderer.on('app:nav', h)
     return () => void ipcRenderer.removeListener('app:nav', h)
+  },
+  /** Desktop notification support check, test notification, and click-to-open chat handler. */
+  notifyCheck: () => ipcRenderer.invoke('app:notifyCheck') as Promise<{ supported: boolean }>,
+  notifyTest: (title?: string, body?: string) => ipcRenderer.invoke('app:notifyTest', title, body) as Promise<{ shown: boolean }>,
+  onOpenChat: (cb: (groupId: string) => void) => {
+    const h = (_: unknown, groupId: string) => cb(groupId)
+    ipcRenderer.on('app:openChat', h)
+    return () => void ipcRenderer.removeListener('app:openChat', h)
   }
 }
 

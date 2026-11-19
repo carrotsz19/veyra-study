@@ -127,11 +127,14 @@
   html .np-appbar { display: flex; align-items: center; min-height: 48px; padding: 0 8px; flex-shrink: 0; }
   html .np-appbar .phone-back { padding: 8px 6px; margin: 0; font-size: 16px; }
   html .note-page { display: flex; flex-direction: column; }
+  html .note-page-main { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
   html .note-page .note-scroll { order: 1; }
   html .notes-layout .note-toolbar {
     order: 2; position: static; border-bottom: 0; border-top: 1px solid var(--line); justify-content: flex-start;
+    flex-wrap: nowrap; overflow-x: auto;
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: var(--panel); min-height: 52px;
   }
+  html .pane-resizer, html .note-list-toggle { display: none; }
   html .note-toolbar .tb-btn { height: 38px; min-width: 38px; }
   html .notes-layout .note-toolbar .tb-undo { display: contents; }
   html .note-toolbar .tb-menu { position: static; }
@@ -268,7 +271,7 @@ html.dark.pure-black {
 @media (max-width: 720px), (max-height: 540px) and (pointer: coarse) {
   html .note-page.with-ai .note-scroll { margin-right: 0; }
   html .ai-panel {
-    position: fixed; inset: 0; width: auto; z-index: 130; border-left: 0;
+    position: fixed; inset: 0; width: auto; max-width: none; min-width: 0; z-index: 130; border-left: 0;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     animation: aiUp var(--spring-spatial-ms) var(--spring-spatial);
   }

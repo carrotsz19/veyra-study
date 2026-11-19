@@ -1,5 +1,5 @@
 import { Extension, Node, mergeAttributes, type Editor } from '@tiptap/core'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { NodeSelection, Plugin, PluginKey, type EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Attachment as FileInfo } from '@shared/types'
 import { cancelTranscription, transcribeInto, watchTranscription } from '../../data/voice'
@@ -77,6 +77,27 @@ async function download(id: string, name: string, mime = ''): Promise<void> {
 
 export const fileUrl = (id: string) => files.url?.(id) || `veyra-file://f/${encodeURIComponent(id)}`
 export const isImage = (mime: string) => /^image\/(png|jpe?g|gif|webp|svg\+xml|bmp|avif)$/.test(mime)
+export const isPdf = (mime: string, name = '') => mime === 'application/pdf' || /\.pdf$/i.test(name)
+
+/** Collects all PDF attachments inside one or more TipTap JSON documents without mutating them. */
+export function collectPdfs(...docs: unknown[]): FileInfo[] {
+  const out: FileInfo[] = []
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== 'object') return
+    const n = node as { type?: string; attrs?: Partial<FileInfo>; content?: unknown[] }
+    if (n.type === 'attachment' && n.attrs) {
+      const mime = String(n.attrs.mime ?? '')
+      const name = String(n.attrs.name ?? 'File')
+      if (isPdf(mime, name)) {
+        out.push({ id: String(n.attrs.id ?? ''), name, mime: mime || 'application/pdf', size: Number(n.attrs.size ?? 0) })
+      }
+    }
+    if (Array.isArray(n.content)) for (const child of n.content) walk(child)
+  }
+  for (const d of docs) walk(d)
+  return out
+}
+
 export function fileSize(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
@@ -337,6 +358,7 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
         dom.append(img)
       } else {
         dom.classList.add('att-file')
+        if (isPdf(mime, name)) dom.classList.add('att-pdf')
         dom.title = 'Double-click to open'
         dom.innerHTML = `<span class="att-icon"></span><span class="att-text"><b></b><small></small></span><button type="button" class="att-open">Open</button>`
         dom.querySelector('.att-icon')!.textContent = icon(mime, name)
@@ -360,6 +382,66 @@ export const AttachmentNode = Node.create<{ enabled: boolean }>({
         }
       }
     }
+  },
+  addProseMirrorPlugins() {
+    const isPdfNode = (n: { type: { name: string }; attrs?: Record<string, unknown> } | null | undefined) =>
+      !!n && n.type.name === 'attachment' && isPdf(String(n.attrs?.mime ?? ''), String(n.attrs?.name ?? ''))
+    const touchesPdf = (state: EditorState, dir: 'back' | 'forward'): boolean => {
+      const { selection, doc } = state
+      if (selection instanceof NodeSelection) return isPdfNode(selection.node)
+      if (!selection.empty) {
+        let hit = false
+        doc.nodesBetween(selection.from, selection.to, (n) => {
+          if (isPdfNode(n)) hit = true
+        })
+        return hit
+      }
+      const $pos = selection.$from
+      if (dir === 'back') {
+        for (let d = $pos.depth; d >= 0; d--) {
+          if ($pos.parentOffset !== 0 && d === $pos.depth) return false
+          if (d < $pos.depth && $pos.index(d) === 0) continue
+          const before = d === $pos.depth ? $pos.nodeBefore : $pos.node(d).maybeChild($pos.index(d) - 1)
+          if (isPdfNode(before)) return true
+          if (before) return false
+        }
+      } else {
+        for (let d = $pos.depth; d >= 0; d--) {
+          if ($pos.parentOffset !== $pos.parent.content.size && d === $pos.depth) return false
+          if (d < $pos.depth && $pos.index(d) >= $pos.node(d).childCount - 1) continue
+          const after = d === $pos.depth ? $pos.nodeAfter : $pos.node(d).maybeChild($pos.index(d) + 1)
+          if (isPdfNode(after)) return true
+          if (after) return false
+        }
+      }
+      return false
+    }
+    const reveal = (view: EditorView, reason: 'delete' | 'select') => {
+      view.dom.dispatchEvent(new CustomEvent('veyra:reveal-pdfs', { bubbles: true, detail: { reason } }))
+    }
+    return [
+      new Plugin({
+        key: new PluginKey('pdfCollapseGuard'),
+        props: {
+          handleKeyDown: (view, event) => {
+            if (!view.dom.closest('.pdfs-collapsed')) return false
+            if (event.key !== 'Backspace' && event.key !== 'Delete') return false
+            if (!touchesPdf(view.state, event.key === 'Backspace' ? 'back' : 'forward')) return false
+            event.preventDefault()
+            reveal(view, 'delete')
+            return true
+          }
+        },
+        view: () => ({
+          update: (view) => {
+            if (!view.dom.closest('.pdfs-collapsed')) return
+            if (view.state.selection instanceof NodeSelection && isPdfNode(view.state.selection.node)) {
+              reveal(view, 'select')
+            }
+          }
+        })
+      })
+    ]
   }
 })
 

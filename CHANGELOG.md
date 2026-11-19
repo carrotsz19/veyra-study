@@ -15,6 +15,9 @@ picked automatically. They come after the older 1.0.x numbers.
 - **AI chats sync between your devices, end-to-end encrypted:** your chats with the Assistant are now on your computer and your phone alike. They're encrypted on your device with a key only your password opens, so nobody else can read them, not even the server's owner. It switches on when you sign in; see Settings → Account → AI chats sync. Each account on a shared computer now keeps its own chats.
 - **Tables from the Assistant:** answers with tables show as real tables, and stay tables when you add them to a note.
 - **The Assistant finishes long tasks:** when a task runs out of steps or room, the Assistant now wraps up with the best answer from what it found, instead of stopping partway. A task you close the app on stops by itself, so it doesn't use up your Veyra AI limit.
+- **Hideable PDFs in notes:** PDFs attached to a note are now tucked behind an **Attachments (N)** toggle above the note so they don't push your writing down the page. Open or hide them anytime (remembered per note) without changing the note or risking accidental deletion while hidden.
+- **More room when writing with the Assistant inside a subject:** opening the Assistant inside a subject now neatly folds the notes list, top stat cards, and sidebar out of the way, and places the Assistant beside the note instead of overlapping the toolbar. Drag the edges to resize the notes list or Assistant, toggle the stat cards or notes list anytime, or use Focus mode inside a subject.
+- **Desktop notifications for new messages:** switch on **New chat messages** in Settings → Tasks to get desktop alerts for incoming direct messages and group messages when Veyra Study is in the background or minimized. Clicking a notification opens that chat directly, and a **Send test** button lets you check that notifications work on your computer.
 
 ## 26.11.1
 

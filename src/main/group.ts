@@ -12,8 +12,9 @@ export const RELAY_URL = (process.env['VEYRA_RELAY'] || DEFAULT_RELAY).replace(/
 
 export class GroupClient extends GroupCore {
   private listeners = new Set<WebContents>()
+  private onEvent?: (channel: 'group:status' | 'group:changed', payload: unknown) => void
 
-  constructor(file: string, credentials: () => Credentials) {
+  constructor(file: string, credentials: () => Credentials, onEvent?: (channel: 'group:status' | 'group:changed', payload: unknown) => void) {
     let self: GroupClient | null = null
     super({
       relay: RELAY_URL,
@@ -31,9 +32,11 @@ export class GroupClient extends GroupCore {
       credentials,
       emit: (channel, payload) => {
         for (const wc of self?.listeners ?? []) if (!wc.isDestroyed()) wc.send(channel, payload)
+        if (channel === 'group:status' || channel === 'group:changed') self?.onEvent?.(channel, payload)
       }
     })
     self = this
+    this.onEvent = onEvent
   }
 
   watch(wc: WebContents) {

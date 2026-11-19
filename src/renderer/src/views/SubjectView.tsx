@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { startOfWeek } from 'date-fns'
-import { ListTodo, Pencil, Play, Plus } from 'lucide-react'
+import { ChevronDown, ChevronUp, ListTodo, Pencil, Play, Plus } from 'lucide-react'
 import { db, useRecords } from '../data/store'
 import { duration, isOverdue } from '../lib/dates'
 import { progress } from '../lib/subjects'
@@ -23,6 +23,27 @@ export function SubjectView({ id }: { id: string }) {
   const [showDone, setShowDone] = useState(settings.showDoneInLists)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [statsCollapsed, setStatsCollapsed] = useState(false)
+  const statsCollapsedRef = useRef(false)
+  statsCollapsedRef.current = statsCollapsed
+  const autoCollapsedStats = useRef(false)
+
+  const toggleStats = () => {
+    autoCollapsedStats.current = false
+    setStatsCollapsed((v) => !v)
+  }
+
+  const handleAiOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      if (!statsCollapsedRef.current) {
+        setStatsCollapsed(true)
+        autoCollapsedStats.current = true
+      }
+    } else if (autoCollapsedStats.current) {
+      setStatsCollapsed(false)
+      autoCollapsedStats.current = false
+    }
+  }, [])
 
   const subject = subjects.find((s) => s.id === id)
   if (!subject) return null
@@ -37,16 +58,16 @@ export function SubjectView({ id }: { id: string }) {
   const shownTasks = mine.filter((t) => showDone || !t.data.done)
 
   return (
-    <div className="inner view" key={id}>
+    <div className={`inner view ${tab === 'notes' ? 'subject-notes-wide' : ''}`} key={id}>
       {subject.data.archived && (
-        <div className="banner row" style={{ justifyContent: 'space-between' }}>
+        <div className="banner row subject-chrome" style={{ justifyContent: 'space-between' }}>
           <span>This subject is archived, so it’s hidden from the sidebar and Today.</span>
           <button className="btn sm" onClick={() => db.put('subject', { ...subject.data, archived: false }, subject.id)}>
             Unarchive
           </button>
         </div>
       )}
-      <div className="topbar">
+      <div className="topbar subject-chrome">
         <div className="row" style={{ gap: 12 }}>
           <span style={{ width: 14, height: 14, borderRadius: 9, background: subject.data.color }} />
           <h1>{subject.data.name}</h1>
@@ -70,33 +91,35 @@ export function SubjectView({ id }: { id: string }) {
         </div>
       </div>
 
-      <div className="grid g4" style={{ marginBottom: 18 }}>
-        <div className="card stat">
-          <h2>Progress</h2>
-          <b>{p.pct}%</b>
-          <div style={{ marginTop: 8 }}>
-            <Bar pct={p.pct} color={subject.data.color} />
+      {!statsCollapsed && (
+        <div className="grid g4 subject-chrome" style={{ marginBottom: 18 }}>
+          <div className="card stat">
+            <h2>Progress</h2>
+            <b>{p.pct}%</b>
+            <div style={{ marginTop: 8 }}>
+              <Bar pct={p.pct} color={subject.data.color} />
+            </div>
+          </div>
+          <div className="card stat">
+            <h2>Tasks done</h2>
+            <b>
+              {p.done}
+              <span className="dim" style={{ fontSize: 16 }}>/{p.total}</span>
+            </b>
+          </div>
+          <div className="card stat">
+            <h2>This week</h2>
+            <b>{duration(week)}</b>
+            <div className="xs dim">{duration(allTime)} all time</div>
+          </div>
+          <div className="card stat">
+            <h2>Overdue</h2>
+            <b style={overdue ? { color: 'var(--bad)' } : undefined}>{overdue}</b>
           </div>
         </div>
-        <div className="card stat">
-          <h2>Tasks done</h2>
-          <b>
-            {p.done}
-            <span className="dim" style={{ fontSize: 16 }}>/{p.total}</span>
-          </b>
-        </div>
-        <div className="card stat">
-          <h2>This week</h2>
-          <b>{duration(week)}</b>
-          <div className="xs dim">{duration(allTime)} all time</div>
-        </div>
-        <div className="card stat">
-          <h2>Overdue</h2>
-          <b style={overdue ? { color: 'var(--bad)' } : undefined}>{overdue}</b>
-        </div>
-      </div>
+      )}
 
-      <div className="between" style={{ marginBottom: 12 }}>
+      <div className="between subject-chrome" style={{ marginBottom: 12 }}>
         <Seg
           value={tab}
           onChange={setTab}
@@ -105,10 +128,15 @@ export function SubjectView({ id }: { id: string }) {
             ['notes', 'Notes']
           ]}
         />
-        {tab === 'tasks' && (
+        {tab === 'tasks' ? (
           <label className="row sm dim" style={{ cursor: 'pointer' }}>
             <input type="checkbox" style={{ width: 'auto' }} checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Show finished
           </label>
+        ) : (
+          <button className="btn ghost sm" onClick={toggleStats} aria-expanded={!statsCollapsed} title={statsCollapsed ? 'Show subject summary cards' : 'Hide subject summary cards'}>
+            {statsCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            {statsCollapsed ? 'Show stats' : 'Hide stats'}
+          </button>
         )}
       </div>
 
@@ -130,7 +158,7 @@ export function SubjectView({ id }: { id: string }) {
           </div>
         )
       ) : (
-        <Notes subjectFilter={id} />
+        <Notes subjectFilter={id} onAiOpenChange={handleAiOpenChange} layoutRev={Number(statsCollapsed)} />
       )}
 
       {adding && <TaskDialog defaults={{ subjectId: id }} onClose={() => setAdding(false)} />}

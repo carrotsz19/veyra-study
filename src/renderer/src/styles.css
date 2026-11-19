@@ -176,6 +176,9 @@ aside.side {
 .sidecard.live { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 main.main { overflow-y: auto; padding: calc(26px * var(--dens)) calc(30px * var(--dens)) 60px; }
 .inner { max-width: 1080px; margin: 0 auto; }
+.inner.subject-notes-wide { max-width: none; }
+body.focus-mode .subject-chrome { display: none; }
+body.resizing-pane, body.resizing-pane * { cursor: col-resize !important; user-select: none !important; }
 .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: calc(22px * var(--dens)); }
 .topbar p { margin: 4px 0 0; }
 

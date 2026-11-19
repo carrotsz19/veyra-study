@@ -322,11 +322,15 @@ body.focus-mode aside.side { display: none; }
 body.focus-mode .shell { grid-template-columns: 1fr; }
 
 /* ---------- AI ---------- */
-.note-page { position: relative; }
-.note-page.with-ai .note-scroll { margin-right: 340px; }
+.note-page { position: relative; flex-direction: row; }
+.note-page-main {
+  flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column;
+  container-type: inline-size;
+}
 .ai-panel {
-  position: absolute; top: 0; right: 0; bottom: 0; width: 340px; display: flex; flex-direction: column; z-index: 6;
+  flex: 0 0 auto; width: var(--ai-w, 340px); max-width: 55%; display: flex; flex-direction: column; z-index: 6;
   background: var(--panel); border-left: 1px solid var(--line); animation: aiIn var(--spring-spatial-ms) var(--spring-spatial);
+  min-width: 260px; min-height: 0;
 }
 @keyframes aiIn { from { transform: translateX(24px); opacity: 0; } }
 .ai-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 10px 16px; border-bottom: 1px solid var(--line); }
@@ -462,15 +466,50 @@ body.focus-mode .shell { grid-template-columns: 1fr; }
 ===================================================================== */
 main.main.main-notes { padding: 0; overflow: hidden; }
 .notes-full { height: 100%; }
-.notes-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); height: 100%; min-height: 0; }
-.notes-page.focus .notes-layout { grid-template-columns: minmax(0, 1fr); }
+.notes-layout { display: grid; grid-template-columns: var(--list-w, 320px) 6px minmax(0, 1fr); height: 100%; min-height: 0; }
+.notes-page.focus .notes-layout, .notes-layout.list-collapsed { grid-template-columns: minmax(0, 1fr); }
 .notes-embed .notes-layout {
   height: var(--embed-h, 680px); border-radius: var(--r-card); overflow: hidden; box-shadow: var(--elev-1);
   background: color-mix(in srgb, var(--panel-2) 40%, var(--bg));
 }
+.pane-resizer {
+  width: 6px; cursor: col-resize; position: relative; flex: 0 0 auto; z-index: 8;
+  background: transparent; touch-action: none;
+}
+.pane-resizer::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px; border-radius: 2px;
+  background: transparent; transition: background-color 0.15s var(--ease-standard);
+}
+.pane-resizer:hover::after, body.resizing-pane .pane-resizer:active::after { background: var(--accent); }
+.pane-resizer-list { margin-left: -3px; margin-right: -3px; }
+.pane-resizer-ai { margin-left: -3px; margin-right: -3px; }
+
+/* Always-visible button to restore the collapsed notes list */
+.note-list-toggle {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2);
+  color: var(--ink); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.note-list-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Collapsible PDF attachments bar inside a note */
+.note-pdfs { margin: 0 0 14px; }
+.note-pdfs-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 7px 11px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel-2); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.note-pdfs-toggle:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--fill-tertiary); }
+.note-pdfs-toggle b { font-weight: 650; flex-shrink: 0; }
+.note-pdfs-chev { color: var(--dim); flex-shrink: 0; transition: transform 0.16s var(--ease-out, ease); }
+.note-pdfs.open .note-pdfs-chev { transform: rotate(90deg); }
+.note-pdfs-names { flex: 1; min-width: 0; color: var(--dim); font-size: 12.5px; }
+.note-pdfs-action { font-size: 12px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
+.note-page.pdfs-collapsed .tiptap .att-pdf { display: none !important; }
 
 /* the list */
-.notes-list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+.notes-list { display: flex; flex-direction: column; min-height: 0; min-width: 0; border-right: 1px solid var(--line); }
 .np-head { padding: calc(22px * var(--dens)) 14px 6px; display: flex; flex-direction: column; gap: 10px; }
 .notes-embed .np-head { padding-top: 14px; }
 .np-titlebar { display: flex; align-items: center; gap: 4px; padding: 0 2px; }
@@ -542,10 +581,9 @@ main.main.main-notes { padding: 0; overflow: hidden; }
 .notes-layout .note-page { flex: 1; border-radius: 0; box-shadow: none; background: transparent; min-height: 0; }
 .note-pane.note-empty, .note-pane.bulk-panel { align-items: center; justify-content: center; }
 .notes-layout .note-toolbar {
-  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; justify-content: safe center;
+  flex-wrap: wrap; overflow: visible; justify-content: flex-start;
   background: transparent; border-bottom: 1px solid var(--line); padding: 6px 12px;
 }
-.notes-layout .note-toolbar::-webkit-scrollbar { display: none; }
 .note-toolbar .tb-btn.wide { gap: 3px; }
 .notes-layout .note-sheet { padding-top: 26px; }
 .notes-layout .note-sheet.has-cover { padding-top: 14px; }
@@ -559,6 +597,8 @@ main.main.main-notes { padding: 0; overflow: hidden; }
 .tb-undo { display: contents; }
 .notes-layout .note-pane { container-type: inline-size; }
 @container (max-width: 820px) { .notes-layout .note-toolbar .tb-undo { display: none; } }
+@container (max-width: 680px) { .notes-layout .note-sheet { padding-left: 24px; padding-right: 24px; } }
+@container (max-width: 480px) { .notes-layout .note-sheet { padding-left: 16px; padding-right: 16px; } }
 
 /* search hits and the trash */
 .np-row mark, .pal mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
@@ -753,8 +793,7 @@ a.np-row { text-decoration: none; color: inherit; }
 main.main:has(> * > .notes-embed) { padding-bottom: 20px; }
 
 /* ---------- the Assistant (Veyra AI agent) ---------- */
-.note-page.with-agent .note-scroll { margin-right: 400px; }
-.agent-panel { width: 400px; }
+.agent-panel { width: var(--ai-w, 380px); }
 .agent-panel .ai-head > b { flex: 1 0 auto; }
 .agent-model { flex: 0 1 auto; min-width: 0; max-width: 160px; font-size: 12.5px; }
 .agent-model > button { max-width: 100%; min-width: 0; overflow: hidden; }

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Archive, ArchiveRestore, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, FileText, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, HardDrive, MoreHorizontal, NotebookPen, Pencil, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, Users, X, SlidersHorizontal } from 'lucide-react'
+  Archive, ArchiveRestore, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, FileText, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, HardDrive, MoreHorizontal, NotebookPen, PanelLeftClose, Pencil, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, Users, X, SlidersHorizontal } from 'lucide-react'
 import { childrenOf, deleteFolder, drag, folderPath, moveFolder, newFolder, parentOf, renameFolder, useFolders, withDescendants } from '../lib/folders'
 import { FolderNameDialog, FolderPickDialog } from '../components/FolderDialogs'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
@@ -19,6 +19,18 @@ import { onAndroid, usePhone } from '../lib/phone'
 import { transition } from '../lib/motion'
 import { cleanError, importFromDrive, useDrive } from '../data/drive'
 import { TRASH_DAYS, daysLeft, deleteForever, emptyOldTrash, restoreNotes, scoreNote, searchTerms, snippet, trashNotes } from '../lib/notes'
+
+const LIST_WIDTH_KEY = 'veyra.notes.listWidth'
+const DEFAULT_LIST_WIDTH = 320
+
+function readListWidth(): number {
+  try {
+    const n = Number(localStorage.getItem(LIST_WIDTH_KEY))
+    return Number.isFinite(n) ? Math.max(210, Math.min(440, Math.round(n))) : DEFAULT_LIST_WIDTH
+  } catch {
+    return DEFAULT_LIST_WIDTH
+  }
+}
 
 /** A new note, starting from the defaults in Settings → Notes. */
 export async function newNote(subjectId: string | null, d?: { noteTemplate: NoteTemplate; noteFont: NoteFont; noteCover: string }, folderId?: string | null): Promise<string> {
@@ -41,7 +53,17 @@ export function Marked({ text, terms }: { text: string; terms: string[] }) {
   )
 }
 
-export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilter?: string }) {
+export function Notes({
+  noteId,
+  subjectFilter,
+  onAiOpenChange,
+  layoutRev
+}: {
+  noteId?: string
+  subjectFilter?: string
+  onAiOpenChange?: (open: boolean) => void
+  layoutRev?: number
+}) {
   const signedIn = useAccount()?.state.mode === 'account'
   const me = useAccount()?.state.user
   // The Shared tab: notes people shared with you (open in the pane), and yours that you've shared.
@@ -406,6 +428,78 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
     return () => document.body.classList.remove('note-open')
   }, [phone, current, subjectFilter])
 
+  const layoutRef = useRef<HTMLDivElement>(null)
+  const [listWidth, setListWidth] = useState<number>(readListWidth)
+  const [listCollapsed, setListCollapsed] = useState(false)
+  const listCollapsedRef = useRef(false)
+  listCollapsedRef.current = listCollapsed
+  const autoCollapsedList = useRef(false)
+
+  const saveListWidth = (w: number) => {
+    const clamped = Math.max(210, Math.min(440, Math.round(w)))
+    setListWidth(clamped)
+    try {
+      localStorage.setItem(LIST_WIDTH_KEY, String(clamped))
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
+  const toggleList = useCallback(() => {
+    autoCollapsedList.current = false
+    setListCollapsed((v) => !v)
+  }, [])
+
+  const handleAiOpenChange = useCallback(
+    (open: boolean) => {
+      onAiOpenChange?.(open)
+      if (phone) return
+      if (open) {
+        if (!listCollapsedRef.current) {
+          setListCollapsed(true)
+          autoCollapsedList.current = true
+        }
+      } else if (autoCollapsedList.current) {
+        setListCollapsed(false)
+        autoCollapsedList.current = false
+      }
+    },
+    [phone, onAiOpenChange]
+  )
+
+  // If no note is open (e.g. deleted or switching views), bring the list back so the user isn't stranded.
+  useEffect(() => {
+    if (!current && listCollapsed) {
+      setListCollapsed(false)
+      autoCollapsedList.current = false
+    }
+  }, [current, listCollapsed])
+
+  const startResizeList = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const el = layoutRef.current
+    if (!el) return
+    let latestW = listWidth
+    document.body.classList.add('resizing-pane')
+    const move = (ev: PointerEvent) => {
+      const rect = el.getBoundingClientRect()
+      const maxW = Math.max(210, Math.min(440, Math.floor(rect.width * 0.45)))
+      latestW = Math.max(210, Math.min(maxW, Math.round(ev.clientX - rect.left)))
+      setListWidth(latestW)
+    }
+    const up = () => {
+      document.body.classList.remove('resizing-pane')
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      saveListWidth(latestW)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+  }
+
   // Inside a subject page: the notes fill the rest of the window instead of a fixed height that
   // makes the page scroll (it still scrolls when the window is too small for a usable list).
   const embedRef = useRef<HTMLDivElement>(null)
@@ -419,10 +513,15 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
       el.style.setProperty('--embed-h', `${Math.max(420, Math.floor(main.clientHeight - top - below))}px`)
     }
     fit()
+    const raf = requestAnimationFrame(fit)
     const ro = new ResizeObserver(fit)
     ro.observe(main)
-    return () => ro.disconnect()
-  }, [phone, subjectFilter])
+    if (el.parentElement) ro.observe(el.parentElement)
+    return () => {
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+    }
+  }, [phone, subjectFilter, layoutRev, focus])
 
   // A folder opens in place (its folders and notes indented under it), so the rest of the list stays in view.
   const [openFolders, setOpenFolders] = useState<Set<string>>(() => {
@@ -564,8 +663,12 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
 
   return (
     <div ref={subjectFilter ? embedRef : undefined} className={`notes-page ${subjectFilter ? 'notes-embed' : 'view notes-full'} ${focus ? 'focus' : ''}`}>
-      <div className={`notes-layout ${openOnPhone ? 'phone-open' : ''}`}>
-        {!focus && (
+      <div
+        ref={layoutRef}
+        className={`notes-layout ${openOnPhone ? 'phone-open' : ''} ${!phone && listCollapsed ? 'list-collapsed' : ''}`}
+        style={!phone ? ({ ['--list-w' as string]: `${listWidth}px` } as React.CSSProperties) : undefined}
+      >
+        {!focus && (phone || !listCollapsed) && (
           <div className="notes-list">
             <div className="np-head">
               <div className="np-titlebar">
@@ -619,6 +722,16 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
                 >
                   <MoreHorizontal size={17} />
                 </button>
+                {!phone && current && (
+                  <button
+                    className="iconbtn plain"
+                    aria-label="Hide notes list"
+                    title="Hide notes list"
+                    onClick={toggleList}
+                  >
+                    <PanelLeftClose size={16} />
+                  </button>
+                )}
                 <button className="btn sm np-new-btn" onClick={create} title="New note (Ctrl+N)">
                   <SquarePen size={15} /> New
                 </button>
@@ -808,6 +921,17 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
             </div>
           </div>
         )}
+        {!phone && !focus && !listCollapsed && (
+          <div
+            className="pane-resizer pane-resizer-list"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize notes list"
+            title="Drag to resize · Double-click to reset"
+            onPointerDown={startResizeList}
+            onDoubleClick={() => saveListWidth(DEFAULT_LIST_WIDTH)}
+          />
+        )}
 
         {view === 'shared' ? (
           sharedPick ? (
@@ -920,7 +1044,11 @@ export function Notes({ noteId, subjectFilter }: { noteId?: string; subjectFilte
               onDeleted={() => setSelected(undefined)}
               onOpen={(id) => setSelected(id)}
               focusMode={focus}
-              onToggleFocus={subjectFilter || phone ? undefined : () => setFocus(!focus)}
+              onToggleFocus={phone ? undefined : () => setFocus(!focus)}
+              listCollapsed={!phone && listCollapsed}
+              onToggleList={phone ? undefined : toggleList}
+              onAiOpenChange={handleAiOpenChange}
+              inSubject={!!subjectFilter}
               onReplaced={() => (remotePending.current = true)}
             />
           </div>

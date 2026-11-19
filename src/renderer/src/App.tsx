@@ -22,7 +22,8 @@ import { TimerView } from './views/TimerView'
 import { Stats } from './views/Stats'
 import { SubjectView } from './views/SubjectView'
 import { Groups } from './views/Groups'
-import { prefetchGroups } from './data/groups'
+import { groupCall, prefetchGroups } from './data/groups'
+import { ChatNotifier } from '@shared/chat-notify'
 import { startDriveBackup } from './data/drive'
 import { VoiceSetupHost } from './components/notes/Voice'
 import { PhoneNav } from './components/PhoneNav'
@@ -44,7 +45,7 @@ startSegments()
 /** Full → icons only → hidden (slides out at the left edge) → full. */
 export const nextSidebarMode = (m: 'full' | 'icons' | 'hidden') => (m === 'full' ? 'icons' : m === 'icons' ? 'hidden' : 'full')
 
-function Sidebar({ route, go, onEnter, onLeave }: { route: Route; go: (r: Route) => void; onEnter?: () => void; onLeave?: () => void }) {
+function Sidebar({ route, go, onEnter, onLeave, compact }: { route: Route; go: (r: Route) => void; onEnter?: () => void; onLeave?: () => void; compact?: boolean }) {
   const { items: subjects } = useRecords('subject')
   const { items: tasks } = useRecords('task')
   const timer = useTimer()
@@ -73,7 +74,7 @@ function Sidebar({ route, go, onEnter, onLeave }: { route: Route; go: (r: Route)
   const nav = s.nav.filter((n) => n.visible).map((n) => [n.id, ...items[n.id]] as [NavId, string, typeof Home, string?])
   const nextTheme: Record<ThemeMode, ThemeMode> = { system: 'dark', dark: 'light', light: 'system' }
   // Icons only: names show as tooltips.
-  const tip = (label: string) => (s.sidebarMode === 'full' ? undefined : label)
+  const tip = (label: string) => (!compact && s.sidebarMode === 'full' ? undefined : label)
 
   return (
     <aside className="side" onMouseEnter={onEnter} onMouseLeave={onLeave}>
@@ -278,6 +279,21 @@ function Shell() {
   const titleBar = !phone && (window.veyra.app.titleBar ?? 0) > 0 ? window.veyra.app.titleBar! : 0
   // Hidden sidebar (Zen-style): it slides out while you point at the left edge or at it, and back after a moment away.
   const [peek, setPeek] = useState(false)
+  // Temporarily compact the full sidebar to icons while editing a note with the Assistant open
+  // inside a Subject (or on narrower windows) so the editor never gets squeezed.
+  const [autoCompactSide, setAutoCompactSide] = useState(false)
+  useEffect(() => {
+    const onAssist = (e: Event) => {
+      const detail = (e as CustomEvent<{ open?: boolean; inSubject?: boolean }>).detail
+      setAutoCompactSide(!!detail?.open && (!!detail.inSubject || window.innerWidth < 1440))
+    }
+    window.addEventListener('veyra:assistant-open', onAssist)
+    return () => window.removeEventListener('veyra:assistant-open', onAssist)
+  }, [])
+  useEffect(() => {
+    setAutoCompactSide(false)
+  }, [s.sidebarMode, route?.name])
+  const effectiveSide = autoCompactSide && s.sidebarMode === 'full' ? 'icons' : s.sidebarMode
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const peekIn = useCallback(() => {
     if (leaveTimer.current) clearTimeout(leaveTimer.current)
@@ -316,6 +332,50 @@ function Shell() {
   useEffect(() => void emptyOldTrash(), [])
   // The tray menu or a reminder asks for a screen.
   useEffect(() => window.veyra.app.onNav((screen) => ROUTES.includes(screen) && go({ name: screen } as Route)), [])
+  // Clicking a DM / group chat desktop notification opens that conversation directly.
+  const openChatGroup = useCallback((groupId: string) => {
+    try {
+      localStorage.setItem('veyra.group', groupId)
+      localStorage.setItem('veyra.groupTab', 'chat')
+    } catch {
+      /* storage unavailable */
+    }
+    go({ name: 'groups' })
+    setTimeout(() => window.dispatchEvent(new CustomEvent('veyra:open-chat', { detail: groupId })), 0)
+  }, [])
+  useEffect(() => window.veyra.app.onOpenChat?.(openChatGroup), [openChatGroup])
+  // Web-mode fallback for DM/chat desktop notifications (Electron desktop handles this in the main process).
+  const meId = useAccount().state.user?.username ?? null
+  const chatNotifyRef = useRef(s.chatNotify)
+  chatNotifyRef.current = s.chatNotify
+  useEffect(() => {
+    if (!signedIn || window.veyra.app.notifyCheck || typeof Notification === 'undefined') return
+    const notifier = new ChatNotifier({
+      call: (method, path) => groupCall(method, path),
+      meId: () => meId,
+      enabled: () => chatNotifyRef.current && Notification.permission === 'granted',
+      isWindowActive: () => document.visibilityState === 'visible' && document.hasFocus(),
+      notify: (notice) => {
+        try {
+          const n = new Notification(notice.title, { body: notice.body })
+          n.onclick = () => {
+            window.focus()
+            openChatGroup(notice.groupId)
+          }
+        } catch {
+          /* browser blocked notification */
+        }
+      }
+    })
+    const offStatus = window.veyra.group.onStatus((st) => notifier.onEvent('group:status', st))
+    const offChanged = window.veyra.group.onChanged((ev) => notifier.onEvent('group:changed', ev))
+    if (s.chatNotify) notifier.onSettingsChanged()
+    return () => {
+      offStatus()
+      offChanged()
+      notifier.dispose()
+    }
+  }, [signedIn, meId, s.chatNotify, openChatGroup])
 
   useEffect(() => {
     if (!ready || route) return
@@ -348,14 +408,14 @@ function Shell() {
   return (
     <TimerProvider>
       <NavCtx.Provider value={{ route, go: navigate }}>
-        <div className={`shell ${phone ? 'phone-shell' : `${titleBar ? 'has-titlebar' : ''} side-${s.sidebarMode} ${peek ? 'peek' : ''}`}`} data-route={route.name} style={titleBar ? ({ '--titlebar': `${titleBar}px` } as React.CSSProperties) : undefined}>
+        <div className={`shell ${phone ? 'phone-shell' : `${titleBar ? 'has-titlebar' : ''} side-${effectiveSide} ${peek ? 'peek' : ''}`}`} data-route={route.name} style={titleBar ? ({ '--titlebar': `${titleBar}px` } as React.CSSProperties) : undefined}>
           {titleBar > 0 && <TitleBar />}
-          {phone ? <PhoneNav route={route} go={navigate} /> : <Sidebar route={route} go={navigate} onEnter={peekIn} onLeave={peekOut} />}
+          {phone ? <PhoneNav route={route} go={navigate} /> : <Sidebar route={route} go={navigate} onEnter={peekIn} onLeave={peekOut} compact={effectiveSide !== 'full'} />}
           {/* Hidden sidebar: pointing at the left edge slides it out. */}
-          {!phone && s.sidebarMode === 'hidden' && <div className="side-hotzone" onMouseEnter={peekIn} onMouseLeave={peekOut} aria-hidden />}
+          {!phone && effectiveSide === 'hidden' && <div className="side-hotzone" onMouseEnter={peekIn} onMouseLeave={peekOut} aria-hidden />}
           <UpdatedNotice />
           <CallNotices />
-          {(phone || s.sidebarMode === 'hidden') && <CallDock floating />}
+          {(phone || effectiveSide === 'hidden') && <CallDock floating />}
           <VoiceSetupHost />
           <Palette />
           <BetaNotice />
