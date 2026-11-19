@@ -4,6 +4,8 @@ export type ThemeMode = 'system' | 'light' | 'dark'
 export type NavId = 'today' | 'tasks' | 'notes' | 'ai' | 'calendar' | 'messages' | 'groups' | 'timer' | 'stats'
 export type StartScreen = NavId | 'last'
 export type TaskSort = 'due' | 'priority' | 'created' | 'title'
+export type PrivacyAudience = 'everyone' | 'friends' | 'nobody'
+export type AssistantCollapseSidebar = 'auto' | 'always' | 'never'
 
 /** Widgets on the Today page (Today → Customize). */
 export type WidgetId = 'stats' | 'due' | 'upcoming' | 'schedule' | 'focus' | 'subjects' | 'goal' | 'week' | 'streak' | 'notes' | 'quickadd'
@@ -35,6 +37,8 @@ export interface AppSettings {
   showTimerCard: boolean
   /** Computer: the full sidebar, just its icons, or hidden until you point at the left edge (like Zen browser). */
   sidebarMode: 'full' | 'icons' | 'hidden'
+  /** Computer: whether opening the note Assistant automatically compacts a full sidebar to icons. */
+  assistantCollapseSidebar: AssistantCollapseSidebar
   /* general */
   startScreen: StartScreen
   /** Reloading (pulling a page down on the phone, or the browser's reload): stay on that page, or open the start screen. */
@@ -68,6 +72,12 @@ export interface AppSettings {
   eveningTime: string
   /** Desktop notifications for incoming direct messages and group chat when Veyra is unfocused or minimized. */
   chatNotify: boolean
+  /** Who can send you direct messages. */
+  dmWhoCanMessage: PrivacyAudience
+  /** Who can send you direct message requests. */
+  dmWhoCanRequest: PrivacyAudience
+  /** Who can invite/add you to study groups. */
+  groupWhoCanAdd: PrivacyAudience
   /** Closing the window keeps Veyra in the tray (so reminders still come). */
   keepInTray: boolean
   startWithWindows: boolean
@@ -173,6 +183,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showSubjectsInSidebar: true,
   showTimerCard: true,
   sidebarMode: 'full',
+  assistantCollapseSidebar: 'auto',
   startScreen: 'today',
   reloadTo: 'page',
   name: '',
@@ -198,6 +209,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   remindEvening: true,
   eveningTime: '19:00',
   chatNotify: false,
+  dmWhoCanMessage: 'everyone',
+  dmWhoCanRequest: 'everyone',
+  groupWhoCanAdd: 'everyone',
   keepInTray: true,
   startWithWindows: false,
   voiceModel: 'base',

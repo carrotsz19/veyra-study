@@ -6,6 +6,7 @@ import { Reminders } from './reminders'
 import { checkNow, downloadNow, installNow, installReady, keepUpToDate, lookForUpdate, takeHiddenFlag, updateAtStart, updateState } from './updater'
 import { withDefaults } from '../shared/settings'
 import { ChatNotifier, type ChatNotice } from '../shared/chat-notify'
+import { isDmGroup } from '../shared/dm'
 import { APP_NAME, IS_DEV } from '../shared/channel'
 import { release } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -136,6 +137,7 @@ function openGoogle(): void {
     meId: () => group?.getStatus().me?.username ?? null,
     enabled: () => appSettings().chatNotify,
     isWindowActive: () => !!mainWin && !mainWin.isDestroyed() && mainWin.isVisible() && !mainWin.isMinimized() && mainWin.isFocused(),
+    allowGroup: (g) => !(isDmGroup(g) && appSettings().dmWhoCanMessage === 'nobody'),
     notify: showChatNotification
   })
   // Connect in the background so Group work is ready when it's opened.

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useReducer } from 'react'
-import type { Group, GroupInvite, GroupItem } from '@shared/types'
+import type { FriendCard, Group, GroupInvite, GroupItem } from '@shared/types'
 import { dmColorFor, dmGroupName, findDmInviteFrom, findDmWith, isDmGroup, normalizeHandle } from '@shared/dm'
+import { isDmGroupAllowed, isDmInviteAllowed, type MessagingPrivacy } from '@shared/privacy'
 import { gid, groupCall, useGroups, useMultiGroupMessages } from './groups'
 
 const STORAGE_KEY = 'veyra.dmRead'
@@ -68,20 +69,34 @@ export function unreadCountFor(messages: GroupItem<'message'>[], meUsername: str
 }
 
 /** Live total of unread DM messages + incoming DM message requests (for Sidebar badge). */
-export function useDmBadgeCount(signedIn: boolean, meUsername: string | null | undefined): number {
+export function useDmBadgeCount(
+  signedIn: boolean,
+  meUsername: string | null | undefined,
+  privacy?: Pick<MessagingPrivacy, 'dmWhoCanMessage' | 'dmWhoCanRequest'>,
+  friends: readonly FriendCard[] = []
+): number {
   const { groups, invites } = useGroups(false)
-  const dmIds = useMemo(() => (signedIn ? (groups ?? []).filter(isDmGroup).map((g) => g.id) : []), [signedIn, groups])
+  const dmWhoCanMessage = privacy?.dmWhoCanMessage ?? 'everyone'
+  const dmWhoCanRequest = privacy?.dmWhoCanRequest ?? 'everyone'
+  const dmIds = useMemo(() => {
+    if (!signedIn) return []
+    return (groups ?? [])
+      .filter((g) => isDmGroup(g) && isDmGroupAllowed(g, meUsername, { dmWhoCanMessage }, friends))
+      .map((g) => g.id)
+  }, [signedIn, groups, meUsername, dmWhoCanMessage, friends])
   const msgsByDm = useMultiGroupMessages(dmIds)
   const readMap = useDmReadMap()
 
   return useMemo(() => {
     if (!signedIn) return 0
-    let total = invites.filter((inv) => isDmGroup(inv.group)).length
+    let total = invites.filter(
+      (inv) => isDmGroup(inv.group) && isDmInviteAllowed(inv, meUsername, { dmWhoCanMessage, dmWhoCanRequest }, friends)
+    ).length
     for (const id of dmIds) {
       total += unreadCountFor(msgsByDm.get(id) ?? [], meUsername, readMap[id] ?? 0)
     }
     return total
-  }, [signedIn, invites, dmIds, msgsByDm, meUsername, readMap])
+  }, [signedIn, invites, dmIds, msgsByDm, meUsername, readMap, dmWhoCanMessage, dmWhoCanRequest, friends])
 }
 
 /**

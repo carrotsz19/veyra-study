@@ -29,10 +29,11 @@ import {
   searchDmMessages,
   type DmPeer
 } from '@shared/dm'
+import { isDmGroupAllowed, isDmInviteAllowed } from '@shared/privacy'
 import { Avatar, useAccount } from '../components/account'
 import { FriendsPanel } from '../components/FriendsPanel'
 import { ServerHoursBanner } from '../components/ServerHours'
-import { Dialog, Empty, useToast } from '../components/ui'
+import { Dialog, Empty, Seg, useToast } from '../components/ui'
 import { VoiceBadge, VoiceRoom } from '../components/Voice'
 import { useFriends } from '../data/friends'
 import {
@@ -53,6 +54,7 @@ import { useNav } from '../nav'
 import '../groups.css'
 import '../messages.css'
 
+type MessagesMode = 'chats' | 'friends'
 type Filter = 'all' | 'unread' | 'requests'
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Try again.')
 
@@ -149,6 +151,14 @@ export function Messages({ initialDmId }: { initialDmId?: string }) {
 
   const meUsername = status?.me?.username ?? account.user?.username ?? ''
 
+  const [mode, setMode] = useState<MessagesMode>(() => {
+    if (initialDmId) return 'chats'
+    try {
+      return sessionStorage.getItem('veyra.messagesMode') === 'friends' ? 'friends' : 'chats'
+    } catch {
+      return 'chats'
+    }
+  })
   const [openId, setOpenId] = useState<string | null>(() => {
     if (initialDmId) return initialDmId
     try {
@@ -160,7 +170,7 @@ export function Messages({ initialDmId }: { initialDmId?: string }) {
   const [phoneOpen, setPhoneOpen] = useState(!!initialDmId)
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
-  const [dialog, setDialog] = useState<'new' | 'friends' | null>(null)
+  const [newDmOpen, setNewDmOpen] = useState(false)
   const [jumpTarget, setJumpTarget] = useState<{ dmId: string; msgId: string; query: string } | null>(null)
   const [openVoiceFor, setOpenVoiceFor] = useState<string | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
@@ -168,7 +178,16 @@ export function Messages({ initialDmId }: { initialDmId?: string }) {
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    try {
+      sessionStorage.setItem('veyra.messagesMode', mode)
+    } catch {
+      /* storage unavailable */
+    }
+  }, [mode])
+
+  useEffect(() => {
     if (initialDmId) {
+      setMode('chats')
       setOpenId(initialDmId)
       if (phone) setPhoneOpen(true)
     }
@@ -187,12 +206,14 @@ export function Messages({ initialDmId }: { initialDmId?: string }) {
     const onOpenDm = (e: Event) => {
       const id = (e as CustomEvent<string>).detail
       if (!id) return
+      setMode('chats')
       setOpenId(id)
       if (phone) setPhoneOpen(true)
     }
     const onOpenVoice = (e: Event) => {
       const id = (e as CustomEvent<string>).detail
       if (!id) return
+      setMode('chats')
       setOpenId(id)
       setOpenVoiceFor(id)
       if (phone) setPhoneOpen(true)
@@ -205,9 +226,21 @@ export function Messages({ initialDmId }: { initialDmId?: string }) {
     }
   }, [phone])
 
-  const dmGroups = useMemo(() => (groups ?? []).filter(isDmGroup), [groups])
+  const rawDmGroups = useMemo(() => (groups ?? []).filter(isDmGroup), [groups])
+  const dmGroups = useMemo(
+    () => rawDmGroups.filter((g) => isDmGroupAllowed(g, meUsername, s, friendsState.data.friends)),
+    [rawDmGroups, meUsername, s, friendsState.data.friends]
+  )
+  const hiddenDmCount = rawDmGroups.length - dmGroups.length
+
   const studyGroups = useMemo(() => (groups ?? []).filter((g) => !isDmGroup(g)), [groups])
-  const dmInvites = useMemo(() => invites.filter((inv) => isDmGroup(inv.group)), [invites])
+  const rawDmInvites = useMemo(() => invites.filter((inv) => isDmGroup(inv.group)), [invites])
+  const dmInvites = useMemo(
+    () => rawDmInvites.filter((inv) => isDmInviteAllowed(inv, meUsername, s, friendsState.data.friends)),
+    [rawDmInvites, meUsername, s, friendsState.data.friends]
+  )
+  const hiddenReqCount = rawDmInvites.length - dmInvites.length
+
   const dmIds = useMemo(() => dmGroups.map((g) => g.id), [dmGroups])
   const msgsByDm = useMultiGroupMessages(dmIds)
 
@@ -274,7 +307,19 @@ export function Messages({ initialDmId }: { initialDmId?: string }) {
     return conversations
   }, [conversations, filter])
 
+  const openPrivacySettings = () => {
+    sessionStorage.setItem('veyra.settingsSection', 'messages')
+    go({ name: 'settings' })
+    window.dispatchEvent(new CustomEvent('veyra:settings-section', { detail: 'messages' }))
+  }
+
+  const openFriends = () => {
+    setNewDmOpen(false)
+    setMode('friends')
+  }
+
   const selectDm = (id: string, opts?: { jumpMsgId?: string; query?: string }) => {
+    setMode('chats')
     const conv = conversations.find((c) => c.group.id === id)
     if (conv) {
       const latest = conv.last?.createdAt ?? Date.now()
@@ -306,7 +351,7 @@ export function Messages({ initialDmId }: { initialDmId?: string }) {
         invites,
         reload
       })
-      setDialog(null)
+      setNewDmOpen(false)
       setQ('')
       selectDm(res.groupId)
       if (res.status === 'created') toast(`Chat started — invite sent to @${friend.username}`)
@@ -345,7 +390,7 @@ export function Messages({ initialDmId }: { initialDmId?: string }) {
         <div className="topbar">
           <div>
             <h1>Messages</h1>
-            <p className="dim">Direct messages with your Veyra friends.</p>
+            <p className="dim">Direct messages and friends.</p>
           </div>
         </div>
         <div className="card">
@@ -365,143 +410,252 @@ export function Messages({ initialDmId }: { initialDmId?: string }) {
   }
 
   const incomingFriendReqs = friendsState.data.incoming.length
-
-  // First-load connecting or offline screen (before any groups are cached).
-  if (!groups) {
-    const connecting = !status || status.state === 'connecting' || status.state === 'idle' || online
-    return (
-      <div className="inner view">
-        <div className="topbar">
-          <div>
-            <h1>Messages</h1>
-            <p className="dim">Direct messages with your Veyra friends.</p>
-          </div>
-          <div className="row">
-            <button className="btn sec" onClick={() => setDialog('friends')}>
-              <Users size={15} /> Friends{incomingFriendReqs > 0 ? ` (${incomingFriendReqs})` : ''}
-            </button>
-          </div>
-        </div>
-        <ServerHoursBanner />
-        {connecting ? (
-          <div className="card grp-status">
-            <RefreshCw size={16} className="spin" /> Connecting to messages…
-          </div>
-        ) : (
-          <div className="card grp-status grp-offline">
-            <WifiOff size={18} />
-            <div className="grow">
-              <b>Can’t reach the messaging server</b>
-              <div className="sm dim">{status?.error || 'It may be switched off or restarting. Your friends list still works.'}</div>
-            </div>
-            <button className="btn sec" onClick={retry}>
-              <RefreshCw size={15} /> Try again
-            </button>
-          </div>
-        )}
-        {dialog === 'friends' && (
-          <FriendsDialog
-            friendsState={friendsState}
-            emailVerified={!!account.user?.emailVerified}
-            studyGroups={studyGroups}
-            online={online}
-            onOpenSettings={() => {
-              setDialog(null)
-              go({ name: 'settings' })
-            }}
-            onInviteToGroup={inviteToStudyGroup}
-            onMessageFriend={startDmWith}
-            onClose={() => setDialog(null)}
-          />
-        )}
-      </div>
-    )
-  }
+  const connecting = !groups && (!status || status.state === 'connecting' || status.state === 'idle' || online)
+  const hiddenTotal = hiddenDmCount + hiddenReqCount
 
   return (
-    <div className={`dm-root ${phone && phoneOpen && activeConv ? 'dm-phone-open' : ''}`}>
-      <div className="dm-shell">
-        {/* ---------- LEFT PANE: chats, requests, global search ---------- */}
-        <aside className="dm-side" aria-label="Conversations">
-          <div className="dm-side-top">
-            <h1>Messages</h1>
-            <div className="dm-side-actions">
-              <button
-                className="iconbtn plain dm-badge-btn"
-                title={incomingFriendReqs ? `Friends (${incomingFriendReqs} pending)` : 'Friends'}
-                aria-label="Friends"
-                onClick={() => setDialog('friends')}
-              >
-                <Users size={18} />
-                {incomingFriendReqs > 0 && <span className="dm-badge-dot">{incomingFriendReqs}</span>}
-              </button>
-              <button
-                className="iconbtn plain"
-                title="New message"
-                aria-label="New message"
-                onClick={() => setDialog('new')}
-              >
-                <MessageSquarePlus size={18} />
-              </button>
-            </div>
-          </div>
-
-          <div className="dm-search-bar">
-            <div className="dm-search-box">
-              <Search size={15} aria-hidden="true" />
-              <input
-                ref={searchInputRef}
-                placeholder="Search chats, messages, or friends…"
-                aria-label="Search chats, messages, or friends"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape' && q) setQ('')
-                }}
-              />
-              {q && (
-                <button className="dm-search-clear" aria-label="Clear search" onClick={() => setQ('')}>
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {!isSearching && (
-            <div className="dm-filters" role="group" aria-label="Filter conversations">
-              <button className="dm-pill" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
-                All
-              </button>
-              <button className="dm-pill" aria-pressed={filter === 'unread'} onClick={() => setFilter('unread')}>
-                Unread
-                {unreadDmCount > 0 && <span className="dm-pill-count">{unreadDmCount}</span>}
-              </button>
-              <button className="dm-pill" aria-pressed={filter === 'requests'} onClick={() => setFilter('requests')}>
-                Requests
-                {dmInvites.length > 0 && <span className="dm-pill-count">{dmInvites.length}</span>}
-              </button>
-            </div>
+    <div className={`dm-root view ${mode === 'chats' && phone && phoneOpen && activeConv ? 'dm-phone-open' : ''}`}>
+      <header className="dm-topbar">
+        <div className="dm-topbar-left">
+          <h1>Messages</h1>
+          <Seg<MessagesMode>
+            value={mode}
+            onChange={(next) => {
+              setMode(next)
+              if (next === 'friends') setPhoneOpen(false)
+            }}
+            options={[
+              ['chats', 'Chats'],
+              ['friends', incomingFriendReqs > 0 ? `Friends (${incomingFriendReqs})` : 'Friends']
+            ]}
+          />
+        </div>
+        <div className="dm-topbar-actions">
+          {mode === 'chats' && groups && (
+            <button className="btn sm" onClick={() => setNewDmOpen(true)}>
+              <MessageSquarePlus size={15} /> New message
+            </button>
           )}
+        </div>
+      </header>
 
-          {status && status.state !== 'online' && (
-            <div className="dm-offline-strip">
-              {status.state === 'connecting' ? <RefreshCw size={13} className="spin" /> : <WifiOff size={13} />}
-              <span className="grow trunc">{status.state === 'connecting' ? 'Reconnecting…' : 'Offline — showing cached chats'}</span>
-              {status.state !== 'connecting' && (
-                <button className="btn ghost sm" onClick={retry}>
-                  Retry
+      {mode === 'friends' ? (
+        <div className="dm-friends-wrap">
+          <div className="dm-friends-inner">
+            <FriendsPanel
+              friendsState={friendsState}
+              emailVerified={!!account.user?.emailVerified}
+              onOpenSettings={() => go({ name: 'settings' })}
+              groups={studyGroups}
+              groupOnline={online}
+              onInviteToGroup={inviteToStudyGroup}
+              onMessageFriend={startDmWith}
+            />
+          </div>
+        </div>
+      ) : !groups ? (
+        <div className="dm-friends-wrap">
+          <div className="dm-friends-inner">
+            <ServerHoursBanner />
+            {connecting ? (
+              <div className="card grp-status">
+                <RefreshCw size={16} className="spin" /> Connecting to messages…
+              </div>
+            ) : (
+              <div className="card grp-status grp-offline">
+                <WifiOff size={18} />
+                <div className="grow">
+                  <b>Can’t reach the messaging server</b>
+                  <div className="sm dim">{status?.error || 'It may be switched off or restarting. Your Friends tab still works.'}</div>
+                </div>
+                <button className="btn sec" onClick={retry}>
+                  <RefreshCw size={15} /> Try again
                 </button>
-              )}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="dm-shell">
+          {/* ---------- LEFT PANE: chats, requests, global search ---------- */}
+          <aside className="dm-side" aria-label="Conversations">
+            <div className="dm-search-bar">
+              <div className="dm-search-box">
+                <Search size={15} aria-hidden="true" />
+                <input
+                  ref={searchInputRef}
+                  placeholder="Search chats, messages, or friends…"
+                  aria-label="Search chats, messages, or friends"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape' && q) setQ('')
+                  }}
+                />
+                {q && (
+                  <button className="dm-search-clear" aria-label="Clear search" onClick={() => setQ('')}>
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
             </div>
-          )}
 
-          <div className="dm-list">
-            {isSearching ? (
-              <>
-                {matchedChats.length > 0 && (
-                  <>
-                    <div className="dm-sec-label">Chats</div>
-                    {matchedChats.map((c) => (
+            {!isSearching && (
+              <div className="dm-filters" role="group" aria-label="Filter conversations">
+                <button className="dm-pill" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
+                  All
+                </button>
+                <button className="dm-pill" aria-pressed={filter === 'unread'} onClick={() => setFilter('unread')}>
+                  Unread
+                  {unreadDmCount > 0 && <span className="dm-pill-count">{unreadDmCount}</span>}
+                </button>
+                <button className="dm-pill" aria-pressed={filter === 'requests'} onClick={() => setFilter('requests')}>
+                  Requests
+                  {dmInvites.length > 0 && <span className="dm-pill-count">{dmInvites.length}</span>}
+                </button>
+              </div>
+            )}
+
+            {status && status.state !== 'online' && (
+              <div className="dm-offline-strip">
+                {status.state === 'connecting' ? <RefreshCw size={13} className="spin" /> : <WifiOff size={13} />}
+                <span className="grow trunc">{status.state === 'connecting' ? 'Reconnecting…' : 'Offline — showing cached chats'}</span>
+                {status.state !== 'connecting' && (
+                  <button className="btn ghost sm" onClick={retry}>
+                    Retry
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="dm-list">
+              {isSearching ? (
+                <>
+                  {matchedChats.length > 0 && (
+                    <>
+                      <div className="dm-sec-label">Chats</div>
+                      {matchedChats.map((c) => (
+                        <DmRow
+                          key={c.group.id}
+                          peer={c.peer}
+                          last={c.last}
+                          activityAt={c.activityAt}
+                          unread={c.unread}
+                          active={!phone && activeConv?.group.id === c.group.id}
+                          groupId={c.group.id}
+                          meUsername={meUsername}
+                          timeFormat={s.timeFormat}
+                          highlight={queryTerms}
+                          onClick={() => selectDm(c.group.id)}
+                        />
+                      ))}
+                    </>
+                  )}
+
+                  {matchedMessages.length > 0 && (
+                    <>
+                      <div className="dm-sec-label">Messages ({matchedMessages.length})</div>
+                      {matchedMessages.map((hit) => (
+                        <button
+                          key={`${hit.groupId}:${hit.messageId}`}
+                          className="dm-row"
+                          onClick={() => selectDm(hit.groupId, { jumpMsgId: hit.messageId, query: q.trim() })}
+                        >
+                          <div className="dm-row-av">
+                            <Avatar user={hit.peer} />
+                          </div>
+                          <div className="dm-row-body">
+                            <div className="dm-row-top">
+                              <span className="dm-row-name trunc">{hit.peer.displayName}</span>
+                              <span className="dm-row-time">{formatListTime(hit.createdAt, s.timeFormat)}</span>
+                            </div>
+                            <div className="dm-row-preview trunc">
+                              {normalizeHandle(hit.createdBy) === normalizeHandle(meUsername) ? 'You: ' : ''}
+                              <Highlight text={messageSnippet(hit.text, queryTerms)} terms={queryTerms} />
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </>
+                  )}
+
+                  {matchedNewFriends.length > 0 && (
+                    <>
+                      <div className="dm-sec-label">Start a chat</div>
+                      {matchedNewFriends.map((f) => (
+                        <button
+                          key={f.id}
+                          className="dm-row"
+                          disabled={busyKey === `dm:${f.username.toLowerCase()}`}
+                          onClick={() => void startDmWith(f)}
+                        >
+                          <div className="dm-row-av">
+                            <Avatar user={f} />
+                          </div>
+                          <div className="dm-row-body">
+                            <div className="dm-row-name trunc">
+                              <Highlight text={f.displayName || f.username} terms={queryTerms} />
+                            </div>
+                            <div className="dm-row-preview trunc">
+                              @<Highlight text={f.username} terms={queryTerms} /> · Tap to message
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </>
+                  )}
+
+                  {matchedChats.length === 0 && matchedMessages.length === 0 && matchedNewFriends.length === 0 && (
+                    <div className="dm-empty-side">
+                      <Search size={24} />
+                      <div className="sm">No chats, messages, or friends match “{q.trim()}”.</div>
+                      <button className="btn sec sm" onClick={openFriends}>
+                        <UserPlus size={14} /> Find people in Friends
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {(filter === 'all' || filter === 'requests') && dmInvites.length > 0 && (
+                    <>
+                      <div className="dm-sec-label">Message requests</div>
+                      {dmInvites.map((inv) => {
+                        const peer = dmInvitePeer(inv, meUsername, friendsState.data.friends)
+                        const busy = busyKey === `inv:${inv.id}`
+                        return (
+                          <div key={inv.id} className="dm-req-card">
+                            <Avatar user={peer} />
+                            <div className="grow" style={{ minWidth: 0 }}>
+                              <div className="dm-row-name trunc">{peer.displayName}</div>
+                              <div className="xs dim trunc">@{peer.username} wants to message you</div>
+                            </div>
+                            <div className="dm-req-actions">
+                              <button
+                                className="iconbtn plain"
+                                title="Decline"
+                                aria-label={`Decline request from ${peer.displayName}`}
+                                disabled={busy}
+                                onClick={() => void answerRequest(inv, 'decline')}
+                              >
+                                <X size={15} />
+                              </button>
+                              <button
+                                className="btn sm"
+                                disabled={busy}
+                                onClick={() => void answerRequest(inv, 'accept')}
+                              >
+                                <Check size={13} /> Accept
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </>
+                  )}
+
+                  {visibleConversations.length > 0 ? (
+                    visibleConversations.map((c) => (
                       <DmRow
                         key={c.group.id}
                         peer={c.peer}
@@ -512,248 +666,141 @@ export function Messages({ initialDmId }: { initialDmId?: string }) {
                         groupId={c.group.id}
                         meUsername={meUsername}
                         timeFormat={s.timeFormat}
-                        highlight={queryTerms}
                         onClick={() => selectDm(c.group.id)}
                       />
-                    ))}
-                  </>
-                )}
-
-                {matchedMessages.length > 0 && (
-                  <>
-                    <div className="dm-sec-label">Messages ({matchedMessages.length})</div>
-                    {matchedMessages.map((hit) => (
-                      <button
-                        key={`${hit.groupId}:${hit.messageId}`}
-                        className="dm-row"
-                        onClick={() => selectDm(hit.groupId, { jumpMsgId: hit.messageId, query: q.trim() })}
-                      >
-                        <div className="dm-row-av">
-                          <Avatar user={hit.peer} />
-                        </div>
-                        <div className="dm-row-body">
-                          <div className="dm-row-top">
-                            <span className="dm-row-name trunc">{hit.peer.displayName}</span>
-                            <span className="dm-row-time">{formatListTime(hit.createdAt, s.timeFormat)}</span>
-                          </div>
-                          <div className="dm-row-preview trunc">
-                            {normalizeHandle(hit.createdBy) === normalizeHandle(meUsername) ? 'You: ' : ''}
-                            <Highlight text={messageSnippet(hit.text, queryTerms)} terms={queryTerms} />
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </>
-                )}
-
-                {matchedNewFriends.length > 0 && (
-                  <>
-                    <div className="dm-sec-label">Start a chat</div>
-                    {matchedNewFriends.map((f) => (
-                      <button
-                        key={f.id}
-                        className="dm-row"
-                        disabled={busyKey === `dm:${f.username.toLowerCase()}`}
-                        onClick={() => void startDmWith(f)}
-                      >
-                        <div className="dm-row-av">
-                          <Avatar user={f} />
-                        </div>
-                        <div className="dm-row-body">
-                          <div className="dm-row-name trunc">
-                            <Highlight text={f.displayName || f.username} terms={queryTerms} />
-                          </div>
-                          <div className="dm-row-preview trunc">
-                            @<Highlight text={f.username} terms={queryTerms} /> · Tap to message
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </>
-                )}
-
-                {matchedChats.length === 0 && matchedMessages.length === 0 && matchedNewFriends.length === 0 && (
-                  <div className="dm-empty-side">
-                    <Search size={24} />
-                    <div className="sm">No chats, messages, or friends match “{q.trim()}”.</div>
-                    <button className="btn sec sm" onClick={() => setDialog('friends')}>
-                      <UserPlus size={14} /> Find people in Friends
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                {(filter === 'all' || filter === 'requests') && dmInvites.length > 0 && (
-                  <>
-                    <div className="dm-sec-label">Message requests</div>
-                    {dmInvites.map((inv) => {
-                      const peer = dmInvitePeer(inv, meUsername, friendsState.data.friends)
-                      const busy = busyKey === `inv:${inv.id}`
-                      return (
-                        <div key={inv.id} className="dm-req-card">
-                          <Avatar user={peer} />
-                          <div className="grow" style={{ minWidth: 0 }}>
-                            <div className="dm-row-name trunc">{peer.displayName}</div>
-                            <div className="xs dim trunc">@{peer.username} wants to message you</div>
-                          </div>
-                          <div className="dm-req-actions">
-                            <button
-                              className="iconbtn plain"
-                              title="Decline"
-                              aria-label={`Decline request from ${peer.displayName}`}
-                              disabled={busy}
-                              onClick={() => void answerRequest(inv, 'decline')}
-                            >
-                              <X size={15} />
-                            </button>
-                            <button
-                              className="btn sm"
-                              disabled={busy}
-                              onClick={() => void answerRequest(inv, 'accept')}
-                            >
-                              <Check size={13} /> Accept
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </>
-                )}
-
-                {visibleConversations.length > 0 ? (
-                  visibleConversations.map((c) => (
-                    <DmRow
-                      key={c.group.id}
-                      peer={c.peer}
-                      last={c.last}
-                      activityAt={c.activityAt}
-                      unread={c.unread}
-                      active={!phone && activeConv?.group.id === c.group.id}
-                      groupId={c.group.id}
-                      meUsername={meUsername}
-                      timeFormat={s.timeFormat}
-                      onClick={() => selectDm(c.group.id)}
-                    />
-                  ))
-                ) : filter === 'unread' ? (
-                  <div className="dm-empty-side">
-                    <Check size={24} />
-                    <div className="sm">You’re all caught up — no unread messages.</div>
-                  </div>
-                ) : filter === 'requests' ? (
-                  dmInvites.length === 0 ? (
+                    ))
+                  ) : filter === 'unread' ? (
                     <div className="dm-empty-side">
-                      <MessageCircle size={24} />
-                      <div className="sm">No pending message requests.</div>
+                      <Check size={24} />
+                      <div className="sm">You’re all caught up — no unread messages.</div>
                     </div>
-                  ) : null
-                ) : (
-                  <div className="dm-empty-side">
-                    <MessageCircle size={28} />
-                    <b style={{ color: 'var(--ink)' }}>No direct messages yet</b>
-                    <div className="sm">Start a 1-on-1 chat with any friend from Veyra Study or IronLog.</div>
-                    <div className="row" style={{ marginTop: 4 }}>
-                      <button className="btn sm" onClick={() => setDialog('new')}>
-                        <MessageSquarePlus size={14} /> New message
-                      </button>
-                      <button className="btn sec sm" onClick={() => setDialog('friends')}>
-                        <UserPlus size={14} /> Friends
-                      </button>
-                    </div>
-                    {friendsState.data.friends.length > 0 && (
-                      <div className="dm-quick-friends">
-                        <div className="dm-sec-label">Your friends</div>
-                        {friendsState.data.friends.slice(0, 6).map((f) => (
-                          <button
-                            key={f.id}
-                            className="dm-row"
-                            disabled={busyKey === `dm:${f.username.toLowerCase()}`}
-                            onClick={() => void startDmWith(f)}
-                          >
-                            <div className="dm-row-av">
-                              <Avatar user={f} />
-                            </div>
-                            <div className="dm-row-body">
-                              <div className="dm-row-name trunc">{f.displayName || f.username}</div>
-                              <div className="dm-row-preview trunc">@{f.username}</div>
-                            </div>
+                  ) : filter === 'requests' ? (
+                    dmInvites.length === 0 ? (
+                      <div className="dm-empty-side">
+                        <MessageCircle size={24} />
+                        <div className="sm">
+                          {s.dmWhoCanRequest === 'nobody'
+                            ? 'Message requests are turned off in Messages & privacy.'
+                            : 'No pending message requests.'}
+                        </div>
+                        {s.dmWhoCanRequest === 'nobody' && (
+                          <button className="btn sec sm" onClick={openPrivacySettings}>
+                            Open Messages &amp; privacy
                           </button>
-                        ))}
+                        )}
                       </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </aside>
+                    ) : null
+                  ) : s.dmWhoCanMessage === 'nobody' ? (
+                    <div className="dm-empty-side">
+                      <MessageCircle size={26} />
+                      <b style={{ color: 'var(--ink)' }}>Direct messages are muted</b>
+                      <div className="sm">“Who can text you” is set to Nobody in Messages &amp; privacy.</div>
+                      <button className="btn sec sm" onClick={openPrivacySettings}>
+                        Open Messages &amp; privacy
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="dm-empty-side">
+                      <MessageCircle size={28} />
+                      <b style={{ color: 'var(--ink)' }}>No direct messages yet</b>
+                      <div className="sm">Start a 1-on-1 chat with any friend from Veyra Study or IronLog.</div>
+                      <div className="row" style={{ marginTop: 4 }}>
+                        <button className="btn sm" onClick={() => setNewDmOpen(true)}>
+                          <MessageSquarePlus size={14} /> New message
+                        </button>
+                        <button className="btn sec sm" onClick={openFriends}>
+                          <UserPlus size={14} /> Friends
+                        </button>
+                      </div>
+                      {friendsState.data.friends.length > 0 && (
+                        <div className="dm-quick-friends">
+                          <div className="dm-sec-label">Your friends</div>
+                          {friendsState.data.friends.slice(0, 6).map((f) => (
+                            <button
+                              key={f.id}
+                              className="dm-row"
+                              disabled={busyKey === `dm:${f.username.toLowerCase()}`}
+                              onClick={() => void startDmWith(f)}
+                            >
+                              <div className="dm-row-av">
+                                <Avatar user={f} />
+                              </div>
+                              <div className="dm-row-body">
+                                <div className="dm-row-name trunc">{f.displayName || f.username}</div>
+                                <div className="dm-row-preview trunc">@{f.username}</div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-        {/* ---------- RIGHT PANE: active conversation ---------- */}
-        <section className="dm-stage" aria-label="Conversation">
-          {activeConv ? (
-            <DmConversation
-              key={activeConv.group.id}
-              group={activeConv.group}
-              peer={activeConv.peer}
-              me={status?.me ?? null}
-              meUsername={meUsername}
-              timeFormat={s.timeFormat}
-              jumpTarget={jumpTarget && jumpTarget.dmId === activeConv.group.id ? jumpTarget : null}
-              onClearJump={() => setJumpTarget(null)}
-              initialVoiceOpen={openVoiceFor === activeConv.group.id}
-              onBack={phone ? () => transition(() => setPhoneOpen(false), 'pop') : undefined}
-              onGone={() => {
-                setOpenId(null)
-                setPhoneOpen(false)
-                void reload()
-              }}
-            />
-          ) : (
-            <div className="dm-welcome">
-              <div className="dm-welcome-ic">
-                <MessageCircle size={26} />
-              </div>
-              <h2>Your direct messages</h2>
-              <p>Pick a conversation on the left, search across every message you’ve sent or received, or start a new chat with a friend.</p>
-              <div className="row" style={{ marginTop: 6 }}>
-                <button className="btn" onClick={() => setDialog('new')}>
-                  <MessageSquarePlus size={15} /> New message
-                </button>
-                <button className="btn sec" onClick={() => setDialog('friends')}>
-                  <Users size={15} /> Friends{incomingFriendReqs > 0 ? ` (${incomingFriendReqs})` : ''}
-                </button>
-              </div>
+                  {hiddenTotal > 0 && (
+                    <div className="dm-privacy-strip">
+                      <span>
+                        {hiddenTotal} {hiddenTotal === 1 ? 'item' : 'items'} hidden by privacy settings.
+                      </span>
+                      <button className="linkbtn sm" onClick={openPrivacySettings}>
+                        Settings
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-          )}
-        </section>
-      </div>
+          </aside>
 
-      {dialog === 'new' && (
+          {/* ---------- RIGHT PANE: active conversation ---------- */}
+          <section className="dm-stage" aria-label="Conversation">
+            {activeConv ? (
+              <DmConversation
+                key={activeConv.group.id}
+                group={activeConv.group}
+                peer={activeConv.peer}
+                me={status?.me ?? null}
+                meUsername={meUsername}
+                timeFormat={s.timeFormat}
+                jumpTarget={jumpTarget && jumpTarget.dmId === activeConv.group.id ? jumpTarget : null}
+                onClearJump={() => setJumpTarget(null)}
+                initialVoiceOpen={openVoiceFor === activeConv.group.id}
+                onBack={phone ? () => transition(() => setPhoneOpen(false), 'pop') : undefined}
+                onGone={() => {
+                  setOpenId(null)
+                  setPhoneOpen(false)
+                  void reload()
+                }}
+              />
+            ) : (
+              <div className="dm-welcome">
+                <div className="dm-welcome-ic">
+                  <MessageCircle size={26} />
+                </div>
+                <h2>Your direct messages</h2>
+                <p>Pick a conversation on the left, search across every message you’ve sent or received, or start a new chat with a friend.</p>
+                <div className="row" style={{ marginTop: 6 }}>
+                  <button className="btn" onClick={() => setNewDmOpen(true)}>
+                    <MessageSquarePlus size={15} /> New message
+                  </button>
+                  <button className="btn sec" onClick={openFriends}>
+                    <Users size={15} /> Friends{incomingFriendReqs > 0 ? ` (${incomingFriendReqs})` : ''}
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {newDmOpen && (
         <NewDmDialog
           friends={friendsState.data.friends}
-          dmGroups={dmGroups}
+          dmGroups={rawDmGroups}
           meUsername={meUsername}
           busyKey={busyKey}
           onPick={(f) => void startDmWith(f)}
-          onOpenFriends={() => setDialog('friends')}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {dialog === 'friends' && (
-        <FriendsDialog
-          friendsState={friendsState}
-          emailVerified={!!account.user?.emailVerified}
-          studyGroups={studyGroups}
-          online={online}
-          onOpenSettings={() => {
-            setDialog(null)
-            go({ name: 'settings' })
-          }}
-          onInviteToGroup={inviteToStudyGroup}
-          onMessageFriend={startDmWith}
-          onClose={() => setDialog(null)}
+          onOpenFriends={openFriends}
+          onClose={() => setNewDmOpen(false)}
         />
       )}
     </div>
@@ -1399,43 +1446,6 @@ function NewDmDialog({
         <button className="btn sec sm" onClick={onClose}>
           Close
         </button>
-      </div>
-    </Dialog>
-  )
-}
-
-/* ---------- Friends dialog inside Messages ---------- */
-function FriendsDialog({
-  friendsState,
-  emailVerified,
-  studyGroups,
-  online,
-  onOpenSettings,
-  onInviteToGroup,
-  onMessageFriend,
-  onClose
-}: {
-  friendsState: ReturnType<typeof useFriends>
-  emailVerified: boolean
-  studyGroups: Group[]
-  online: boolean
-  onOpenSettings: () => void
-  onInviteToGroup: (groupId: string, username: string) => Promise<void>
-  onMessageFriend: (friend: FriendCard) => Promise<void>
-  onClose: () => void
-}) {
-  return (
-    <Dialog title="Friends" onClose={onClose} width={640}>
-      <div style={{ maxHeight: '72vh', overflowY: 'auto', paddingRight: 4 }}>
-        <FriendsPanel
-          friendsState={friendsState}
-          emailVerified={emailVerified}
-          onOpenSettings={onOpenSettings}
-          groups={studyGroups}
-          groupOnline={online}
-          onInviteToGroup={onInviteToGroup}
-          onMessageFriend={onMessageFriend}
-        />
       </div>
     </Dialog>
   )

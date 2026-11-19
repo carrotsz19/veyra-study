@@ -1,7 +1,7 @@
 import { MicSetting } from '../components/notes/Voice'
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { Fragment, createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
-  ArrowDown, ArrowUp, CalendarDays, Smartphone, Minus as MinusIcon, Plus as PlusIcon, Check, ChevronLeft, Download, ExternalLink, RefreshCw, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, NotebookPen,
+  ArrowDown, ArrowUp, CalendarDays, Smartphone, Minus as MinusIcon, Plus as PlusIcon, Check, ChevronLeft, Download, ExternalLink, RefreshCw, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, MessageCircle, NotebookPen,
   LayoutGrid, Palette, Play, Plus, RotateCcw, Shapes, ShieldCheck, Sparkles, Trash2, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
 } from 'lucide-react'
 import { OwnerSection, useIsOwner } from './Owner'
@@ -36,16 +36,17 @@ import { installWebApp, useWebApp } from '../lib/webapp'
    right, and a search that finds any option across all of them.
 ===================================================================== */
 
-type SectionId = 'general' | 'appearance' | 'sidebar' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data' | 'updates' | 'phone' | 'owner'
+type SectionId = 'general' | 'appearance' | 'sidebar' | 'messages' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data' | 'updates' | 'phone' | 'owner'
 
 export const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; keys?: (keyof AppSettings)[] }[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal, hint: 'Your name, start screen, week and time', keys: ['name', 'greeting', 'startScreen', 'reloadTo', 'weekStart', 'timeFormat'] },
   { id: 'appearance', label: 'Appearance', icon: Palette, hint: 'Theme, colour, font, size and spacing', keys: ['theme', 'accent', 'font', 'zoom', 'density', 'corners', 'reduceMotion', 'material'] },
   { id: 'phone', label: 'Phone', icon: Smartphone, hint: 'The navigation bar, large titles, pure black, vibration and more', keys: ['phoneTabs', 'phoneTabLabels', 'phoneCompose', 'phoneDock', 'phoneHideNavTyping', 'phoneTimerPill', 'phoneLargeTitles', 'pureBlack', 'haptics', 'keepAwakeFocus', 'phoneNoteBar'] },
-  { id: 'sidebar', label: 'Sidebar', icon: LayoutPanelLeft, hint: 'What the sidebar shows, and in what order', keys: ['nav', 'showCounts', 'showSubjectsInSidebar', 'showTimerCard'] },
+  { id: 'sidebar', label: 'Sidebar', icon: LayoutPanelLeft, hint: 'What the sidebar shows, and how it behaves', keys: ['sidebarMode', 'assistantCollapseSidebar', 'nav', 'showCounts', 'showSubjectsInSidebar', 'showTimerCard'] },
+  { id: 'messages', label: 'Messages & privacy', icon: MessageCircle, hint: 'Who can message you, requests, group invites and notifications', keys: ['dmWhoCanMessage', 'dmWhoCanRequest', 'groupWhoCanAdd', 'chatNotify'] },
   { id: 'subjects', label: 'Subjects', icon: Shapes, hint: 'Order, colours, archived and deleted subjects' },
   { id: 'today', label: 'Today', icon: Home, hint: 'Your Today page’s widgets', keys: ['todayLayout', 'upcomingCount'] },
-  { id: 'tasks', label: 'Tasks', icon: ListTodo, hint: 'Defaults for new tasks, reminders, and message notifications', keys: ['defaultPriority', 'defaultDue', 'taskSort', 'showDoneInLists', 'highlightOverdue', 'remindersOn', 'remindMorning', 'morningTime', 'remindEvening', 'eveningTime', 'chatNotify', 'keepInTray', 'startWithWindows'] },
+  { id: 'tasks', label: 'Tasks', icon: ListTodo, hint: 'Defaults for new tasks and reminders', keys: ['defaultPriority', 'defaultDue', 'taskSort', 'showDoneInLists', 'highlightOverdue', 'remindersOn', 'remindMorning', 'morningTime', 'remindEvening', 'eveningTime', 'keepInTray', 'startWithWindows'] },
   { id: 'notes', label: 'Notes', icon: NotebookPen, hint: 'How new notes start, how pages look, and voice recordings', keys: ['voiceAutoTranscribe', 'voiceMic', 'voiceUseSubtitleMaker', 'voiceModel', 'voiceLanguage', 'noteTemplate', 'noteFont', 'noteCover', 'noteWidth', 'noteSize', 'spellcheck', 'showWordCount', 'noteToolbar', 'noteBubble', 'noteSort'] },
   { id: 'timer', label: 'Focus timer', icon: Timer, hint: 'Lengths, long breaks, sounds and your daily goal', keys: ['focusMin', 'breakMin', 'longBreakMin', 'longBreakEvery', 'autoStartBreaks', 'autoStartFocus', 'sound', 'volume', 'notify', 'dailyGoalMin'] },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays, hint: 'What appears on the calendar', keys: ['calendarShowTasks', 'calendarShowDone', 'calendarShowEvents'] },
@@ -406,6 +407,22 @@ function Sidebar() {
             ]}
           />
         </Row>
+        <Row
+          label="When Assistant opens"
+          hint="Whether opening the note Assistant automatically minimises a full sidebar to icons. Auto only minimises on narrower windows."
+          keywords="assistant ai panel collapse minimise minimize sidebar auto icons"
+        >
+          <Choice
+            label="When Assistant opens"
+            value={s.assistantCollapseSidebar}
+            onChange={(assistantCollapseSidebar) => set({ assistantCollapseSidebar })}
+            options={[
+              ['auto', 'Auto'],
+              ['always', 'Always'],
+              ['never', 'Never']
+            ]}
+          />
+        </Row>
       </Group>
       <Group title="Screens" footer="Hiding a screen keeps its data. Show it again here any time.">
         {s.nav.map((n, i) => (
@@ -568,6 +585,48 @@ function ChatNotifyGroup() {
   )
 }
 
+function MessagesPrivacy() {
+  const { s, set } = useSettings()
+  const opts: [AppSettings['dmWhoCanMessage'], string][] = [
+    ['everyone', 'Everyone'],
+    ['friends', 'Friends only'],
+    ['nobody', 'Nobody']
+  ]
+  return (
+    <>
+      <Group
+        title="Direct messages"
+        footer="Controls which incoming conversations, message requests, unread badges and alerts appear on this device."
+      >
+        <Row
+          label="Who can text you"
+          hint="Choose who can show up and notify you in your direct messages."
+          keywords="dm text message privacy everyone friends nobody block"
+        >
+          <Choice label="Who can text you" value={s.dmWhoCanMessage} onChange={(dmWhoCanMessage) => set({ dmWhoCanMessage })} options={opts} />
+        </Row>
+        <Row
+          label="Who can send message requests"
+          hint="Choose whose incoming direct message requests appear in Messages."
+          keywords="dm message request invite privacy everyone friends nobody"
+        >
+          <Choice label="Who can send message requests" value={s.dmWhoCanRequest} onChange={(dmWhoCanRequest) => set({ dmWhoCanRequest })} options={opts} />
+        </Row>
+      </Group>
+      <Group title="Groups" footer="You can still join any study group yourself using a join code.">
+        <Row
+          label="Who can add you to groups"
+          hint="Choose who can invite you to Group work study groups."
+          keywords="group invite add privacy everyone friends nobody"
+        >
+          <Choice label="Who can add you to groups" value={s.groupWhoCanAdd} onChange={(groupWhoCanAdd) => set({ groupWhoCanAdd })} options={opts} />
+        </Row>
+      </Group>
+      {!onAndroid() && <ChatNotifyGroup />}
+    </>
+  )
+}
+
 function Tasks() {
   const { s, set } = useSettings()
   return (
@@ -622,7 +681,6 @@ function Tasks() {
           </>
         )}
       </Group>
-      {!onAndroid() && <ChatNotifyGroup />}
     </>
   )
 }
@@ -1351,6 +1409,8 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
       return <Appearance />
     case 'sidebar':
       return <Sidebar />
+    case 'messages':
+      return <MessagesPrivacy />
     case 'phone':
       return <PhoneSection />
     case 'today':
@@ -1400,7 +1460,7 @@ const DESKTOP_HIDDEN: SectionId[] = ['phone']
 /** Whether a section belongs on this device. */
 export const here = (id: SectionId) => !(onAndroid() ? ANDROID_HIDDEN : DESKTOP_HIDDEN).includes(id)
 
-const SEARCHABLE: SectionId[] = ['general', 'appearance', 'phone', 'sidebar', 'subjects', 'ai', 'today', 'tasks', 'notes', 'timer', 'calendar', 'data']
+const SEARCHABLE: SectionId[] = ['general', 'appearance', 'phone', 'sidebar', 'messages', 'subjects', 'ai', 'today', 'tasks', 'notes', 'timer', 'calendar', 'data']
 
 export function Settings({ initial }: { initial?: string }) {
   const { reset, s } = useSettings()
@@ -1457,7 +1517,7 @@ export function Settings({ initial }: { initial?: string }) {
         </div>
         <nav>
           {SECTIONS.filter((x) => here(x.id) && (x.id !== 'owner' || isOwner)).map((x) => (
-            <div key={x.id}>
+            <Fragment key={x.id}>
               {(x.id === 'account' || x.id === 'data' || x.id === 'owner') && <div className="set-nav-sep" />}
               <button className="set-nav-item" aria-current={!q && section === x.id} onClick={() => go(x.id)}>
                 <span className="set-nav-icon">
@@ -1465,7 +1525,7 @@ export function Settings({ initial }: { initial?: string }) {
                 </span>
                 {x.label}
               </button>
-            </div>
+            </Fragment>
           ))}
         </nav>
       </aside>

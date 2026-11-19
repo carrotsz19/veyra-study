@@ -15,6 +15,8 @@ export interface ChatNotifierDeps {
   enabled: () => boolean
   /** True when the app window is visible, not minimized, and focused (suppresses desktop alerts). */
   isWindowActive: () => boolean
+  /** Optional privacy predicate; returning false suppresses notifications for that group/DM. */
+  allowGroup?: (group: Group) => boolean
   notify: (notice: ChatNotice) => void
   /** Injectable clock for deterministic tests. */
   now?: () => number
@@ -199,7 +201,12 @@ export class ChatNotifier {
         })
         .sort((a, b) => a.seq - b.seq)
 
-      if (fresh.length > 0 && !this.deps.isWindowActive() && this.deps.enabled()) {
+      if (
+        fresh.length > 0 &&
+        !this.deps.isWindowActive() &&
+        this.deps.enabled() &&
+        (!this.deps.allowGroup || this.deps.allowGroup(group))
+      ) {
         this.deps.notify(formatChatNotice(group, fresh))
       }
     }

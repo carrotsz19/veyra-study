@@ -24,8 +24,10 @@ import { SubjectView } from './views/SubjectView'
 import { Groups } from './views/Groups'
 import { Messages } from './views/Messages'
 import { getCachedGroup, groupCall, prefetchGroups } from './data/groups'
+import { useFriends } from './data/friends'
 import { useDmBadgeCount } from './data/dm-read'
 import { isDmGroup } from '@shared/dm'
+import { isDmGroupAllowed } from '@shared/privacy'
 import { ChatNotifier } from '@shared/chat-notify'
 import { startDriveBackup } from './data/drive'
 import { VoiceSetupHost } from './components/notes/Voice'
@@ -64,7 +66,9 @@ function Sidebar({ route, go, onEnter, onLeave, compact }: { route: Route; go: (
   const open = live.filter((t) => !t.data.done).length
   const overdue = live.filter((t) => isOverdue(t.data.due, t.data.done)).length
   const aiOpen = useAiTabOpen()
-  const dmBadge = useDmBadgeCount(!!user, user?.username)
+  const accountState = useAccount().state
+  const friends = useFriends(accountState.mode === 'account' && !accountState.ended).data.friends
+  const dmBadge = useDmBadgeCount(!!user, user?.username, s, friends)
   const items: Record<NavId, [string, typeof Home, string?]> = {
     today: ['Today', Home, overdue ? `${overdue} late` : undefined],
     tasks: ['Tasks', ListTodo, open ? String(open) : undefined],
@@ -93,78 +97,83 @@ function Sidebar({ route, go, onEnter, onLeave, compact }: { route: Route; go: (
           {IS_DEV && <span className="dev-pill">DEV</span>}
         </div>
       )}
-      <button className="side-search" onClick={() => window.dispatchEvent(new Event('veyra:palette'))} title="Search everything and run commands (Ctrl+K)">
-        <Search size={15} />
-        <span className="grow nav-label">Search</span>
-        <kbd className="nav-label">Ctrl K</kbd>
-      </button>
-      <nav aria-label="Main">
-        {nav.map(([name, label, Icon, count]) => (
-          <button key={name} className="navbtn" aria-current={route.name === name} onClick={() => go({ name } as Route)} title={tip(count ? `${label} (${count})` : label)} aria-label={label}>
-            <Icon size={17} /> <span className="nav-label">{label}</span>
-            {name === 'ai' ? count && <span className="count soon nav-label">{count}</span> : count && s.showCounts && <span className="count">{count}</span>}
-          </button>
-        ))}
-      </nav>
-
-      {s.showSubjectsInSidebar && (
-        <>
-      <SubjectNav
-        subjects={subjects}
-        route={route}
-        go={go}
-        tip={tip}
-        heading={
-          <div className="between group-label side-section">
-            <h2 style={{ margin: 0 }}>Subjects</h2>
-            <button className="iconbtn plain" style={{ width: 26, height: 26 }} aria-label="Add subject" onClick={() => setAdding(true)}>
-              <Plus size={15} />
+      <div className="side-scroll">
+        <button className="side-search" onClick={() => window.dispatchEvent(new Event('veyra:palette'))} title="Search everything and run commands (Ctrl+K)">
+          <Search size={15} />
+          <span className="grow nav-label">Search</span>
+          <kbd className="nav-label">Ctrl K</kbd>
+        </button>
+        <nav aria-label="Main">
+          {nav.map(([name, label, Icon, count]) => (
+            <button key={name} className="navbtn" aria-current={route.name === name} onClick={() => go({ name } as Route)} title={tip(count ? `${label} (${count})` : label)} aria-label={label}>
+              <Icon size={17} /> <span className="nav-label">{label}</span>
+              {name === 'ai' ? count && <span className="count soon nav-label">{count}</span> : count && s.showCounts && <span className="count">{count}</span>}
             </button>
-          </div>
-        }
-      />
-      {!subjects.some((s) => !s.data.archived) && (
-        <button className="navbtn dim" onClick={() => setAdding(true)} style={{ fontWeight: 500 }}>
-          <Plus size={16} /> Add your first subject
-        </button>
-      )}
-        </>
-      )}
+          ))}
+        </nav>
 
-      <div className="spacer" />
-      {s.showTimerCard && (timer.running || timer.remaining < timer.total) && route.name !== 'timer' && (
-        <button className={`sidecard ${timer.running ? 'live' : ''}`} onClick={() => go({ name: 'timer' })}>
-          <div className="xs nav-label" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-            {phaseLabel(timer.phase)} {timer.running ? '' : '· paused'}
-          </div>
-          <div className="num" style={{ fontSize: 20, fontWeight: 800 }}>
-            {clock(timer.remaining)}
-          </div>
-        </button>
-      )}
-      <CallDock />
-      <div className="side-foot">
-        <button className="account-chip" aria-current={route.name === 'settings'} onClick={() => go({ name: 'settings' })} title="Account and settings">
-          {user ? (
-            <Avatar user={user} />
-          ) : (
-            <span className="avatar">
-              <SettingsIcon size={15} />
+        {s.showSubjectsInSidebar && (
+          <>
+        <SubjectNav
+          subjects={subjects}
+          route={route}
+          go={go}
+          tip={tip}
+          heading={
+            <div className="between group-label side-section">
+              <h2 style={{ margin: 0 }}>Subjects</h2>
+              <button className="iconbtn plain" style={{ width: 26, height: 26 }} aria-label="Add subject" onClick={() => setAdding(true)}>
+                <Plus size={15} />
+              </button>
+            </div>
+          }
+        />
+        {!subjects.some((s) => !s.data.archived) && (
+          <button className="navbtn dim" onClick={() => setAdding(true)} style={{ fontWeight: 500 }}>
+            <Plus size={16} /> Add your first subject
+          </button>
+        )}
+          </>
+        )}
+
+        <div className="spacer" />
+      </div>
+
+      <div className="side-bottom">
+        {s.showTimerCard && (timer.running || timer.remaining < timer.total) && route.name !== 'timer' && (
+          <button className={`sidecard ${timer.running ? 'live' : ''}`} onClick={() => go({ name: 'timer' })}>
+            <div className="xs nav-label" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+              {phaseLabel(timer.phase)} {timer.running ? '' : '· paused'}
+            </div>
+            <div className="num" style={{ fontSize: 20, fontWeight: 800 }}>
+              {clock(timer.remaining)}
+            </div>
+          </button>
+        )}
+        <CallDock />
+        <div className="side-foot">
+          <button className="account-chip" aria-current={route.name === 'settings'} onClick={() => go({ name: 'settings' })} title="Account and settings">
+            {user ? (
+              <Avatar user={user} />
+            ) : (
+              <span className="avatar">
+                <SettingsIcon size={15} />
+              </span>
+            )}
+            <span className="grow nav-label" style={{ minWidth: 0 }}>
+              <span className="trunc" style={{ display: 'block', fontWeight: 650 }}>{user ? user.displayName : 'Settings'}</span>
+              <span className="trunc xs dim" style={{ display: 'block' }}>{user ? `@${user.username}` : 'Not signed in'}</span>
             </span>
-          )}
-          <span className="grow nav-label" style={{ minWidth: 0 }}>
-            <span className="trunc" style={{ display: 'block', fontWeight: 650 }}>{user ? user.displayName : 'Settings'}</span>
-            <span className="trunc xs dim" style={{ display: 'block' }}>{user ? `@${user.username}` : 'Not signed in'}</span>
-          </span>
-        </button>
-        <button
-          className="iconbtn plain"
-          onClick={() => setTheme(nextTheme[theme])}
-          title={theme === 'system' ? 'Theme: System' : theme === 'dark' ? 'Theme: Dark' : 'Theme: Light'}
-          aria-label="Change theme"
-        >
-          {theme === 'dark' ? <Moon size={16} /> : theme === 'light' ? <Sun size={16} /> : <Monitor size={16} />}
-        </button>
+          </button>
+          <button
+            className="iconbtn plain"
+            onClick={() => setTheme(nextTheme[theme])}
+            title={theme === 'system' ? 'Theme: System' : theme === 'dark' ? 'Theme: Dark' : 'Theme: Light'}
+            aria-label="Change theme"
+          >
+            {theme === 'dark' ? <Moon size={16} /> : theme === 'light' ? <Sun size={16} /> : <Monitor size={16} />}
+          </button>
+        </div>
       </div>
       {adding && <SubjectDialog onClose={() => setAdding(false)} onSaved={(id) => go({ name: 'subject', id })} />}
     </aside>
@@ -286,20 +295,30 @@ function Shell() {
   const titleBar = !phone && (window.veyra.app.titleBar ?? 0) > 0 ? window.veyra.app.titleBar! : 0
   // Hidden sidebar (Zen-style): it slides out while you point at the left edge or at it, and back after a moment away.
   const [peek, setPeek] = useState(false)
-  // Temporarily compact the full sidebar to icons while editing a note with the Assistant open
-  // inside a Subject (or on narrower windows) so the editor never gets squeezed.
-  const [autoCompactSide, setAutoCompactSide] = useState(false)
+  // Temporarily compact the full sidebar to icons while editing a note with the Assistant open,
+  // according to Settings → Sidebar → When Assistant opens ('auto' | 'always' | 'never').
+  const [assistState, setAssistState] = useState<{ open: boolean; inSubject: boolean }>({ open: false, inSubject: false })
+  const [winWidth, setWinWidth] = useState(() => window.innerWidth)
   useEffect(() => {
     const onAssist = (e: Event) => {
       const detail = (e as CustomEvent<{ open?: boolean; inSubject?: boolean }>).detail
-      setAutoCompactSide(!!detail?.open && (!!detail.inSubject || window.innerWidth < 1440))
+      setAssistState({ open: !!detail?.open, inSubject: !!detail?.inSubject })
     }
+    const onResize = () => setWinWidth(window.innerWidth)
     window.addEventListener('veyra:assistant-open', onAssist)
-    return () => window.removeEventListener('veyra:assistant-open', onAssist)
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('veyra:assistant-open', onAssist)
+      window.removeEventListener('resize', onResize)
+    }
   }, [])
   useEffect(() => {
-    setAutoCompactSide(false)
+    setAssistState({ open: false, inSubject: false })
   }, [s.sidebarMode, route?.name])
+  const autoCompactSide =
+    assistState.open &&
+    (s.assistantCollapseSidebar === 'always' ||
+      (s.assistantCollapseSidebar === 'auto' && (assistState.inSubject || winWidth < 1440)))
   const effectiveSide = autoCompactSide && s.sidebarMode === 'full' ? 'icons' : s.sidebarMode
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const peekIn = useCallback(() => {
@@ -338,7 +357,7 @@ function Shell() {
   // Notes in the trash for over 30 days go for good.
   useEffect(() => void emptyOldTrash(), [])
   // The tray menu or a reminder asks for a screen.
-  useEffect(() => window.veyra.app.onNav((screen) => ROUTES.includes(screen) && go({ name: screen } as Route)), [])
+  useEffect(() => window.veyra.app.onNav((screen) => ROUTES.includes(screen) && navigate({ name: screen } as Route)), [navigate])
   // Clicking a DM / group chat desktop notification opens that conversation directly.
   const openChatGroup = useCallback((groupId: string, isDmHint?: boolean) => {
     const cached = getCachedGroup(groupId)
@@ -349,7 +368,7 @@ function Shell() {
       } catch {
         /* storage unavailable */
       }
-      go({ name: 'messages', dmId: groupId })
+      navigate({ name: 'messages', dmId: groupId })
       setTimeout(() => window.dispatchEvent(new CustomEvent('veyra:open-dm', { detail: groupId })), 0)
       return
     }
@@ -359,14 +378,20 @@ function Shell() {
     } catch {
       /* storage unavailable */
     }
-    go({ name: 'groups' })
+    navigate({ name: 'groups' })
     setTimeout(() => window.dispatchEvent(new CustomEvent('veyra:open-chat', { detail: groupId })), 0)
-  }, [])
+  }, [navigate])
   useEffect(() => window.veyra.app.onOpenChat?.((id) => openChatGroup(id)), [openChatGroup])
   // Web-mode fallback for DM/chat desktop notifications (Electron desktop handles this in the main process).
-  const meId = useAccount().state.user?.username ?? null
+  const accountState = useAccount().state
+  const meId = accountState.user?.username ?? null
+  const webFriends = useFriends(signedIn && !accountState.ended).data.friends
   const chatNotifyRef = useRef(s.chatNotify)
   chatNotifyRef.current = s.chatNotify
+  const dmPrivacyRef = useRef(s.dmWhoCanMessage)
+  dmPrivacyRef.current = s.dmWhoCanMessage
+  const friendsRef = useRef(webFriends)
+  friendsRef.current = webFriends
   useEffect(() => {
     if (!signedIn || window.veyra.app.notifyCheck || typeof Notification === 'undefined') return
     const notifier = new ChatNotifier({
@@ -374,6 +399,7 @@ function Shell() {
       meId: () => meId,
       enabled: () => chatNotifyRef.current && Notification.permission === 'granted',
       isWindowActive: () => document.visibilityState === 'visible' && document.hasFocus(),
+      allowGroup: (g) => isDmGroupAllowed(g, meId, { dmWhoCanMessage: dmPrivacyRef.current }, friendsRef.current),
       notify: (notice) => {
         try {
           const n = new Notification(notice.title, { body: notice.body })

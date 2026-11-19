@@ -20,18 +20,17 @@ import {
   X
 } from 'lucide-react'
 import type { Editor } from '@tiptap/react'
-import type { FriendCard, Group, GroupInvite, GroupItem, GroupNote, GroupPreview, GroupTask, GroupUser } from '@shared/types'
+import type { Group, GroupInvite, GroupItem, GroupNote, GroupPreview, GroupTask, GroupUser } from '@shared/types'
 import { isDmGroup } from '@shared/dm'
+import { isGroupInviteAllowed } from '@shared/privacy'
 import { Dialog, Empty, Seg, useToast } from '../components/ui'
 import { Avatar, useAccount } from '../components/account'
-import { FriendsPanel } from '../components/FriendsPanel'
 import { ServerHoursBanner } from '../components/ServerHours'
 import { Area } from '../components/notes/NoteEditor'
 import { NoteToolbar } from '../components/notes/Toolbar'
 import { SlashMenu } from '../components/notes/SlashMenu'
 import { docText } from '../components/notes/extensions'
 import { useFriends } from '../data/friends'
-import { openOrCreateDm } from '../data/dm-read'
 import { useSettings } from '../data/settings'
 import { useNav } from '../nav'
 import { usePhone } from '../lib/phone'
@@ -57,26 +56,24 @@ import { DateField, TimeField } from '../components/DateTime'
 import { VoiceBadge, VoiceRoom } from '../components/Voice'
 
 type Tab = 'tasks' | 'chat' | 'voice' | 'notes' | 'deadlines' | 'members'
-type Section = 'groups' | 'friends'
 const msg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Try again.')
 
 export function Groups() {
   const account = useAccount().state
   const { go } = useNav()
+  const { s } = useSettings()
   const { status, retry } = useGroupStatus()
   const online = status?.state === 'online'
   const { groups: allGroups, invites: allInvites, reload, setGroups } = useGroups(online)
   // Keep 1-on-1 DMs in the dedicated Messages tab so Group work stays focused on study groups.
   const groups = useMemo(() => (allGroups ? allGroups.filter((g) => !isDmGroup(g)) : null), [allGroups])
-  const invites = useMemo(() => allInvites.filter((inv) => !isDmGroup(inv.group)), [allInvites])
   const friendsState = useFriends(account.mode === 'account' && !account.ended)
-  const [section, setSection] = useState<Section>(() => {
-    try {
-      return localStorage.getItem('veyra.groupSection') === 'friends' ? 'friends' : 'groups'
-    } catch {
-      return 'groups'
-    }
-  })
+  const rawInvites = useMemo(() => allInvites.filter((inv) => !isDmGroup(inv.group)), [allInvites])
+  const invites = useMemo(
+    () => rawInvites.filter((inv) => isGroupInviteAllowed(inv, s, friendsState.data.friends)),
+    [rawInvites, s, friendsState.data.friends]
+  )
+  const hiddenInvites = rawInvites.length - invites.length
   const [openId, setOpenId] = useState<string | null>(() => {
     try {
       return localStorage.getItem('veyra.group') || null
@@ -93,7 +90,6 @@ export function Groups() {
   // The call dock's "open the voice room" or a clicked group chat notification while Group work is already showing another group.
   useEffect(() => {
     const open = (e: Event) => {
-      setSection('groups')
       setOpenId((e as CustomEvent<string>).detail)
       if (phone) setPhoneOpen(true)
     }
@@ -106,18 +102,17 @@ export function Groups() {
   }, [phone])
   useEffect(() => {
     try {
-      localStorage.setItem('veyra.groupSection', section)
-    } catch {
-      /* storage unavailable */
-    }
-  }, [section])
-  useEffect(() => {
-    try {
       if (openId) localStorage.setItem('veyra.group', openId)
     } catch {
       /* storage unavailable */
     }
   }, [openId])
+
+  const openPrivacySettings = () => {
+    sessionStorage.setItem('veyra.settingsSection', 'messages')
+    go({ name: 'settings' })
+    window.dispatchEvent(new CustomEvent('veyra:settings-section', { detail: 'messages' }))
+  }
 
   if (account.mode !== 'account')
     return (
@@ -127,7 +122,7 @@ export function Groups() {
           <Empty
             icon={Users}
             title="Sign in to work with your group"
-            text="Group work and friends use your Veyra account, so classmates can find you by @username."
+            text="Group work uses your Veyra account, so classmates can find you by @username."
             action={
               <button className="btn" onClick={() => go({ name: 'settings' })}>
                 Sign in
@@ -138,64 +133,10 @@ export function Groups() {
       </div>
     )
 
-  const incomingCount = friendsState.data.incoming.length
-  const sectionSwitch = (
-    <Seg<Section>
-      value={section}
-      onChange={setSection}
-      options={[
-        ['groups', 'Groups'],
-        ['friends', incomingCount > 0 ? `Friends (${incomingCount})` : 'Friends']
-      ]}
-    />
-  )
-
-  const inviteToGroup = async (groupId: string, username: string) => {
-    await groupCall('POST', `/groups/${gid(groupId)}/invites`, { username })
-  }
-
-  const messageFriend = async (friend: FriendCard) => {
-    const myUser = status?.me?.username ?? account.user?.username ?? ''
-    if (!myUser) return
-    const res = await openOrCreateDm({
-      otherUsername: friend.username,
-      meUsername: myUser,
-      groups: allGroups ?? [],
-      invites: allInvites,
-      reload
-    })
-    try {
-      localStorage.setItem('veyra.dm', res.groupId)
-    } catch {
-      /* storage unavailable */
-    }
-    go({ name: 'messages', dmId: res.groupId })
-    if (res.status === 'created') toast(`Chat started — invite sent to @${friend.username}`)
-    else if (res.status === 'accepted') toast(`Accepted message request from @${friend.username}`)
-  }
-
-  if (section === 'friends')
-    return (
-      <div className="inner view grp">
-        <Header>{sectionSwitch}</Header>
-        <div className="fr-scroll">
-          <FriendsPanel
-            friendsState={friendsState}
-            emailVerified={!!account.user?.emailVerified}
-            onOpenSettings={() => go({ name: 'settings' })}
-            groups={groups ?? []}
-            groupOnline={online}
-            onInviteToGroup={inviteToGroup}
-            onMessageFriend={messageFriend}
-          />
-        </div>
-      </div>
-    )
-
   if (!groups && (!status || status.state === 'connecting' || status.state === 'idle' || online))
     return (
       <div className="inner view">
-        <Header>{sectionSwitch}</Header>
+        <Header />
         <div className="card grp-status">
           <RefreshCw size={16} className="spin" /> Connecting to the group server…
         </div>
@@ -205,13 +146,13 @@ export function Groups() {
   if (!groups)
     return (
       <div className="inner view">
-        <Header>{sectionSwitch}</Header>
+        <Header />
         <ServerHoursBanner />
         <div className="card grp-status grp-offline">
           <WifiOff size={18} />
           <div className="grow">
             <b>Can’t reach the group server</b>
-            <div className="sm dim">{status?.error || 'It may be switched off or restarting. Your own tasks, notes and friends still work.'}</div>
+            <div className="sm dim">{status?.error || 'It may be switched off or restarting. Your own tasks and notes still work.'}</div>
           </div>
           <button className="btn sec" onClick={retry}>
             <RefreshCw size={15} /> Try again
@@ -237,7 +178,6 @@ export function Groups() {
   return (
     <div className={`inner view grp ${phone && phoneOpen && open ? 'grp-phone-open' : ''}`}>
       <Header>
-        {sectionSwitch}
         <button className="btn ghost" onClick={() => setDialog('join')}>
           Join with a code
         </button>
@@ -279,6 +219,17 @@ export function Groups() {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {hiddenInvites > 0 && (
+        <div className="sm dim row" style={{ marginBottom: 12, justifyContent: 'space-between', padding: '0 4px' }}>
+          <span>
+            {hiddenInvites} group {hiddenInvites === 1 ? 'invite' : 'invites'} hidden by your privacy settings.
+          </span>
+          <button className="linkbtn sm" onClick={openPrivacySettings}>
+            Messages &amp; privacy
+          </button>
         </div>
       )}
 
@@ -376,7 +327,7 @@ function Header({ children }: { children?: React.ReactNode }) {
     <div className="topbar">
       <div>
         <h1>Group work</h1>
-        <p className="dim">Shared tasks, chat, notes, deadlines and friends.</p>
+        <p className="dim">Shared tasks, chat, notes and deadlines.</p>
       </div>
       {children && <div className="row">{children}</div>}
     </div>
@@ -1148,7 +1099,6 @@ function GroupMembers({
   const [found, setFound] = useState<GroupUser[]>([])
   const [name, setName] = useState(group.name)
   const [confirm, setConfirm] = useState<'leave' | 'delete' | null>(null)
-  const [friendBusy, setFriendBusy] = useState<string | null>(null)
 
   useEffect(() => {
     const term = q.trim().replace(/^@/, '')
@@ -1183,16 +1133,6 @@ function GroupMembers({
     void navigator.clipboard.writeText(text).then(() => toast('Copied'))
   }
 
-  const friendRel = (username: string) => {
-    const u = username.toLowerCase()
-    if (friendsState.data.friends.some((f) => f.username.toLowerCase() === u)) return { kind: 'friends' as const }
-    const inc = friendsState.data.incoming.find((f) => f.username.toLowerCase() === u)
-    if (inc) return { kind: 'incoming' as const, card: inc }
-    const out = friendsState.data.outgoing.find((f) => f.username.toLowerCase() === u)
-    if (out) return { kind: 'outgoing' as const, card: out }
-    return { kind: 'none' as const }
-  }
-
   const quickFriends = friendsState.data.friends.filter((f) => !group.members.some((m) => m.username.toLowerCase() === f.username.toLowerCase()))
 
   return (
@@ -1200,7 +1140,6 @@ function GroupMembers({
       <div className="ig">
         {group.members.map((m) => {
           const isMe = m.username === me?.username
-          const rel = !isMe && friendsState.loaded ? friendRel(m.username) : null
           return (
             <div key={m.username} className="ig-row">
               <Avatar user={m} />
@@ -1213,51 +1152,11 @@ function GroupMembers({
                     </span>
                   )}
                   {isMe && <span className="pill">You</span>}
-                  {rel?.kind === 'friends' && <span className="pill">Friend</span>}
                 </div>
                 <div className="ig-sub">
                   @{m.username} · joined {format(m.joinedAt, 'd MMM yyyy')}
                 </div>
               </div>
-              {rel?.kind === 'none' && (
-                <button
-                  className="btn ghost sm"
-                  disabled={friendBusy === m.username}
-                  onClick={async () => {
-                    setFriendBusy(m.username)
-                    try {
-                      await friendsState.send(m.username)
-                      toast(`Friend request sent to @${m.username}`)
-                    } catch (e) {
-                      toast(msg(e))
-                    } finally {
-                      setFriendBusy(null)
-                    }
-                  }}
-                >
-                  <UserPlus size={13} /> Add friend
-                </button>
-              )}
-              {rel?.kind === 'outgoing' && <span className="pill">Requested</span>}
-              {rel?.kind === 'incoming' && (
-                <button
-                  className="btn sm"
-                  disabled={friendBusy === m.username}
-                  onClick={async () => {
-                    setFriendBusy(m.username)
-                    try {
-                      await friendsState.respond(rel.card.id, true)
-                      toast(`You and @${m.username} are friends now`)
-                    } catch (e) {
-                      toast(msg(e))
-                    } finally {
-                      setFriendBusy(null)
-                    }
-                  }}
-                >
-                  Accept friend
-                </button>
-              )}
               {m.role === 'owner' && (
                 <span className="pill accent row" style={{ gap: 4 }}>
                   <Crown size={11} /> Owner
