@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { Component, StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles.css'
 import './notes.css'
@@ -40,6 +40,33 @@ window.veyra?.app?.onBackdrop?.((url) => {
   })
 }
 
+/**
+ * A screen that throws while drawing must never take the whole window with it: without this, React
+ * unmounts everything and the see-through (acrylic) window is left empty. Shows a solid panel instead.
+ */
+class Crashed extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  componentDidCatch(error: Error) {
+    console.error('Veyra hit an error while drawing', error)
+  }
+  render() {
+    if (!this.state.error) return this.props.children
+    const dark = document.documentElement.classList.contains('dark')
+    return (
+      <div role="alert" style={{ position: 'fixed', inset: 0, display: 'grid', placeItems: 'center', background: dark ? '#15140f' : '#f7f7f5', color: dark ? '#eee' : '#222', font: '14px system-ui, sans-serif', WebkitAppRegion: 'drag' } as React.CSSProperties}>
+        <div style={{ textAlign: 'center', maxWidth: 420, padding: 24, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <h2 style={{ margin: '0 0 8px' }}>Something went wrong</h2>
+          <p style={{ margin: '0 0 16px', opacity: 0.75 }}>Veyra hit a problem drawing this screen. Reload to carry on.</p>
+          <button className="btn" onClick={() => location.reload()}>Reload</button>
+        </div>
+      </div>
+    )
+  }
+}
+
 // The title bar's acrylic menu window shows just a menu; everything else is the app.
 if (location.hash === '#menu') {
   void import('./components/MenuWindow').then(({ MenuWindow }) => createRoot(document.getElementById('root')!).render(<MenuWindow />))
@@ -48,7 +75,9 @@ if (location.hash === '#menu') {
   void import('./App').then(({ App }) =>
     createRoot(document.getElementById('root')!).render(
       <StrictMode>
-        <App />
+        <Crashed>
+          <App />
+        </Crashed>
       </StrictMode>
     )
   )

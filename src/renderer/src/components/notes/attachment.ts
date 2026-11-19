@@ -125,7 +125,9 @@ declare module '@tiptap/core' {
 }
 
 /** Is attaching allowed in this editor? (Not in shared group notes: the files would only be on your computer.) */
-export const canAttach = (editor: Editor | null) => !!editor && !!editor.extensionManager.extensions.find((e) => e.name === 'attachment')?.options.enabled
+/** An editor that hasn't been destroyed (TipTap nulls `extensionManager` and `commandManager` on destroy). */
+export const editorAlive = (editor: Editor | null | undefined): editor is Editor => !!editor && !!(editor as { extensionManager?: unknown }).extensionManager
+export const canAttach = (editor: Editor | null) => editorAlive(editor) && !!editor.extensionManager.extensions.find((e) => e.name === 'attachment')?.options.enabled
 
 /** Opens the file dialog and puts the chosen files in at the cursor. */
 export async function attachFiles(editor: Editor): Promise<void> {

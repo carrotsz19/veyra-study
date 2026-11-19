@@ -5,7 +5,7 @@ import {
   Bot, Quote, Redo2, Rows2, Sparkles, Strikethrough, Table, Trash2, Underline, Undo2
 } from 'lucide-react'
 import { CALLOUTS, type CalloutTone } from './extensions'
-import { attachFiles, canAttach } from './attachment'
+import { attachFiles, canAttach, editorAlive } from './attachment'
 import { startRecording } from '../../data/voice'
 import { LinkInput } from './LinkInput'
 import { useContext } from 'react'
@@ -69,7 +69,7 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
   const s = useEditorState({
     editor,
     selector: ({ editor: e }) =>
-      e
+      editorAlive(e)
         ? {
             block: e.isActive('heading', { level: 1 }) ? 'h1' : e.isActive('heading', { level: 2 }) ? 'h2' : e.isActive('heading', { level: 3 }) ? 'h3' : 'p',
             bold: e.isActive('bold'),
@@ -93,7 +93,8 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
   })
   const ask = useContext(NoteAiCtx)
   const openAgent = useContext(NoteAgentCtx)
-  if (!editor || !s) return <div className="note-toolbar" aria-hidden="true" />
+  // A note that was just closed or switched can leave its destroyed editor here for one render.
+  if (!editorAlive(editor) || !s) return <div className="note-toolbar" aria-hidden="true" />
   const c = () => editor.chain().focus()
 
   return (
