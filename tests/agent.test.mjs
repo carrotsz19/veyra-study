@@ -34,7 +34,7 @@ const mock = createServer(async (req, res) => {
   // The student's latest message (the last plain-text one; tool results come after it).
   const plain = (m) => (typeof m.content === 'string' ? m.content : m.content.some((b) => b.type === 'tool_result') ? null : m.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n'))
   const text0 = [...body.messages].reverse().map((m) => (m.role === 'user' ? plain(m) : null)).find((t) => t != null) ?? ''
-  const scenario = sub ? 'SUB' : (/\b(PLAN|WRITE|SUBS|PAUSE|LOOP|NOAPP|SLOW|HISTORY|FILES|DRIVE)\b/.exec(text0) ?? [, 'PLAIN'])[1]
+  const scenario = sub ? 'SUB' : (/\b(PLAN|WRITE|SUBS|PAUSE|LOOP|NOAPP|SLOW|HISTORY|FILES|DRIVE|BIGPROMPT|FULL|LOST)\b/.exec(text0) ?? [, 'PLAIN'])[1]
   const turn = body.messages.filter((m) => m.role === 'assistant').length
   const lastUser = body.messages.at(-1)
   const results = Array.isArray(lastUser.content) ? lastUser.content.filter((b) => b.type === 'tool_result') : []
@@ -101,6 +101,22 @@ const mock = createServer(async (req, res) => {
     tool('update_plan', { items: [{ text: `step ${turn}`, status: 'in_progress' }] })
     stop = 'tool_use'
     usage = { input_tokens: 20000, output_tokens: 8000 } // haiku: $0.002 + $0.004 a turn
+  } else if (scenario === 'BIGPROMPT') {
+    text('big')
+    usage = { input_tokens: 120000, output_tokens: 300 } // past Haiku 5.5's 100K step
+  } else if (scenario === 'FULL') {
+    if (turn === 0) {
+      tool('update_plan', { items: [{ text: 'read a lot', status: 'in_progress' }] })
+      stop = 'tool_use'
+      usage = { input_tokens: 75000, output_tokens: 300 } // the context is nearly full after this
+    } else {
+      const told = lastUser.content.some((b) => b.type === 'text' && /at its limit/.test(b.text))
+      text(`tool_choice=${body.tool_choice?.type} told=${told}`)
+    }
+  } else if (scenario === 'LOST') {
+    await sleep(800)
+    tool('update_plan', { items: [{ text: `step ${turn}`, status: 'in_progress' }] })
+    stop = 'tool_use'
   } else if (scenario === 'NOAPP') {
     if (turn === 0) {
       tool('read_note', { id: 'current' })
@@ -127,7 +143,7 @@ const mock = createServer(async (req, res) => {
   } else if (scenario === 'HISTORY') {
     text(`Saw ${body.messages.length} messages; roles ${body.messages.map((m) => m.role[0]).join('')}`)
   } else text('Plain answer.')
-  send('message_delta', { delta: { stop_reason: stop, stop_sequence: null }, usage: { output_tokens: usage.output_tokens, ...(usage.server_tool_use ? { server_tool_use: usage.server_tool_use } : {}) } })
+  send('message_delta', { delta: { stop_reason: stop, stop_sequence: null }, usage: { input_tokens: usage.input_tokens, output_tokens: usage.output_tokens, ...(usage.server_tool_use ? { server_tool_use: usage.server_tool_use } : {}) } })
   send('message_stop', {})
   res.end()
 })
@@ -138,7 +154,7 @@ let dataDir
 const start = () =>
   new Promise((resolve, reject) => {
     server = spawn(process.execPath, [process.env.SERVER_FILE || 'server/group-server.mjs'], {
-      env: { ...process.env, SIGNING_KEY: KEY, PORT: String(PORT), DATA_DIR: dataDir, TUNNEL: 'off', OWNERS: 'boss', ANTHROPIC_API_KEY: 'sk-test-key', ANTHROPIC_BASE_URL: `http://127.0.0.1:${MOCK}`, AGENT_CALL_WAIT_MS: '1500' },
+      env: { ...process.env, SIGNING_KEY: KEY, PORT: String(PORT), DATA_DIR: dataDir, TUNNEL: 'off', OWNERS: 'boss', ANTHROPIC_API_KEY: 'sk-test-key', ANTHROPIC_BASE_URL: `http://127.0.0.1:${MOCK}`, AGENT_CALL_WAIT_MS: '1500', AGENT_LOST_MS: '2500' },
       stdio: ['ignore', 'pipe', 'pipe']
     })
     server.stderr.on('data', (d) => process.stderr.write(d))
@@ -417,4 +433,47 @@ test('a Drive file that can’t be used comes back as a note in the tool result,
   })
   assert.match(r.text(), /^Read: A file\n\[“x\.pdf” isn’t a PDF\.\]$/)
   assert.equal(r.end.error, undefined)
+})
+
+/* ---------- audit fixes ---------- */
+test('a prompt past Haiku 5.5’s 100K step is charged at its higher price', async () => {
+  const boss = await login('boss')
+  await login('fay')
+  await api(boss, 'PUT', '/admin/ai/users/fay', { fiveHour: null, week: null, month: null })
+  const r = await agent(await login('fay'), 'BIGPROMPT summarise everything')
+  assert.equal(r.text(), 'big')
+  // 120K in at $0.50, 300 out at $2.50 (five times the usual $0.10 / $0.50)
+  assert.ok(Math.abs((await spendOf(boss, 'fay')).last30 - (120000 * 0.5 + 300 * 2.5) / 1e6) < 1e-9)
+})
+
+test('known models get their real cache-read price (not a tenth of input)', async () => {
+  const boss = await login('boss')
+  // (GET /admin/ai would ask the fake API for its models, which it doesn't play.) The owner's page sends cache reads as a tenth of input.
+  const haiku = { id: 'claude-haiku-5-5', label: 'Haiku 5.5 · fast', input: 0.1, output: 0.5, cacheWrite: 0.125, cacheRead: 0.01 }
+  const sonnet = { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5 · smarter', input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 }
+  const opus = { id: 'claude-opus-5-5', label: 'Opus 5.5', enabled: false, input: 4, output: 20, cacheWrite: 5, cacheRead: 0.4 }
+  const saved = (await api(boss, 'PUT', '/admin/ai/models', { models: [haiku, sonnet, opus] })).body.models
+  assert.equal(saved.find((m) => m.id === 'claude-opus-5-5').cacheRead, 0.2)
+  assert.equal(saved.find((m) => m.id === 'claude-sonnet-5-5').cacheRead, 0.1)
+  assert.equal(saved.find((m) => m.id === 'claude-haiku-5-5').cacheRead, 0.01)
+  // A price the owner set by hand is kept.
+  const own = (await api(boss, 'PUT', '/admin/ai/models', { models: [haiku, { ...sonnet, cacheRead: 0.15 }] })).body.models
+  assert.equal(own.find((m) => m.id === 'claude-sonnet-5-5').cacheRead, 0.15)
+  await api(boss, 'PUT', '/admin/ai/models', { models: [haiku, sonnet] })
+})
+
+test('a nearly full context: the agent is told to finish, with no more tools, instead of being stopped', async () => {
+  const r = await agent(await login('dan'), 'FULL read everything')
+  assert.equal(r.text(), 'tool_choice=none told=true')
+  assert.equal(r.end.error, undefined)
+})
+
+test('a task nobody follows any more stops on its own', async () => {
+  const dan = await login('dan')
+  const run = await api(dan, 'POST', '/ai/agent/runs', { message: 'LOST keep going' })
+  assert.equal(run.status, 200)
+  await sleep(5000)
+  const ev = (await api(dan, 'GET', `/ai/agent/runs/${run.body.id}?from=0`)).body
+  assert.equal(ev.done, true)
+  assert.match(ev.events.at(-1).error, /stopped following/)
 })

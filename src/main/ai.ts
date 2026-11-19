@@ -25,7 +25,7 @@ const DEFAULT_MODELS: Record<KeyedAiProvider, string> = {
   openai: ''
 }
 /** Claude models that accept Anthropic's server-side refusal fallback ("default" form). */
-const FALLBACK_MODELS = ['claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']
+const FALLBACK_MODELS = ['claude-fable-5-2', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']
 
 /** Reads a fetch response body line by line (NDJSON or server-sent events). */
 async function* lines(res: Response): AsyncGenerator<string> {

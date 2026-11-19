@@ -44,7 +44,7 @@ import { setupAgent } from './agent.mjs'
 import { setupAnnouncements } from './announce.mjs'
 import { setupCalls } from './calls.mjs'
 
-const VERSION = '1.16.0'
+const VERSION = '1.16.1'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 

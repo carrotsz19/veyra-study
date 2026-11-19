@@ -14,6 +14,7 @@ picked automatically. They come after the older 1.0.x numbers.
 - **Change your password in Settings → Account.** Your other devices are signed out when you do.
 - **AI chats sync between your devices, end-to-end encrypted:** your chats with the Assistant are now on your computer and your phone alike. They're encrypted on your device with a key only your password opens, so nobody else can read them, not even the server's owner. It switches on when you sign in; see Settings → Account → AI chats sync. Each account on a shared computer now keeps its own chats.
 - **Tables from the Assistant:** answers with tables show as real tables, and stay tables when you add them to a note.
+- **The Assistant finishes long tasks:** when a task runs out of steps or room, the Assistant now wraps up with the best answer from what it found, instead of stopping partway. A task you close the app on stops by itself, so it doesn't use up your Veyra AI limit.
 
 ## 26.11.1
 

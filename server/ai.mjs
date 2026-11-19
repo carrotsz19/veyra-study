@@ -27,22 +27,27 @@ const HOUR = 3600_000
 const DAY = 24 * HOUR
 export const WINDOWS = { '5h': 5 * HOUR, week: 7 * DAY, month: 30 * DAY }
 
-/** US dollars per million tokens. Prefills the owner's model list; the owner can edit them. */
+/**
+ * US dollars per million tokens: [input, output, cache read when it isn't a tenth of input].
+ * Prefills the owner's model list; the owner can edit them.
+ */
 const KNOWN_PRICES = {
   'claude-haiku-5-5': [0.1, 0.5],
-  'claude-sonnet-5-5': [2, 10],
+  'claude-sonnet-5-5': [2, 10, 0.1],
   'claude-sonnet-5': [2, 10],
-  'claude-opus-5-5': [4, 20],
+  'claude-opus-5-5': [4, 20, 0.2],
   'claude-opus-5': [5, 25],
   'claude-opus-4-8': [5, 25],
   'claude-opus-4-7': [5, 25],
   'claude-opus-4-6': [5, 25],
   'claude-sonnet-4-6': [3, 15],
   'claude-haiku-4-5': [1, 5],
-  'claude-fable-5-2': [8, 40],
+  'claude-fable-5-2': [8, 40, 0.2],
   'claude-fable-5-1': [10, 50],
   'claude-fable-5': [10, 50]
 }
+/** Models whose whole request costs more past a size (all its input, cached or not): times x. */
+const LONG_PROMPT = { 'claude-haiku-5-5': { over: 100_000, x: 5 } }
 const DEFAULT_MODELS = [
   { id: 'claude-haiku-5-5', label: 'Haiku 5.5 · fast' },
   { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5 · smarter' }
@@ -81,6 +86,10 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
     db.exec('ALTER TABLE ai_usage ADD COLUMN web_searches INTEGER NOT NULL DEFAULT 0')
   } catch {} // already there
   if (!q('SELECT 1 FROM ai_models LIMIT 1').get()) DEFAULT_MODELS.forEach((m, i) => saveModel({ ...m, enabled: true, sort: i }))
+  // Cache reads saved at a tenth of input before their real price was known: the real price.
+  for (const [id, [input, , read]] of Object.entries(KNOWN_PRICES)) {
+    if (read !== undefined) q('UPDATE ai_models SET cache_read = ? WHERE id = ? AND input = ? AND abs(cache_read - input * 0.1) < 1e-9').run(read, id, input)
+  }
   // Requests cut off by a restart keep what was held for them.
   q("UPDATE ai_usage SET status = 'lost', cost = held, finished_at = ? WHERE status = 'pending'").run(clock())
 
@@ -101,9 +110,11 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
   const limitOf = (v) => (v === null || v === '' || v === undefined ? null : Math.round(num(v, 0, 10_000) * 100) / 100)
 
   function saveModel(m) {
-    const [pi, po] = KNOWN_PRICES[m.id] ?? [m.input, m.output]
+    const [pi, po, pr] = KNOWN_PRICES[m.id] ?? [m.input, m.output]
     const input = m.input ?? pi
     const output = m.output ?? po
+    // The owner's page fills cache reads in as a tenth of input: a known model at its known input price gets its real one.
+    const cacheRead = pr !== undefined && input === pi && (m.cacheRead === undefined || Math.abs(m.cacheRead - input * 0.1) < 1e-9) ? pr : (m.cacheRead ?? input * 0.1)
     if (!(input >= 0) || !(output >= 0)) throw new HttpError(400, `Set the prices for ${m.id}.`)
     q(`INSERT INTO ai_models (id, label, enabled, sort, input, output, cache_write, cache_read, effort, max_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET label = excluded.label, enabled = excluded.enabled, sort = excluded.sort, input = excluded.input, output = excluded.output,
@@ -115,7 +126,7 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
       input,
       output,
       m.cacheWrite ?? input * 1.25,
-      m.cacheRead ?? input * 0.1,
+      cacheRead,
       EFFORTS.includes(m.effort) ? m.effort : null,
       Math.round(m.maxTokens ?? 12000)
     )
@@ -131,8 +142,13 @@ export function setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUse
   const CHARGE = "CASE status WHEN 'pending' THEN held ELSE cost END"
   const spentBy = (u, since) => q(`SELECT coalesce(sum(${CHARGE}), 0) AS s FROM ai_usage WHERE username = ? AND at >= ?`).get(u, since).s
   const spentAll = (since) => q(`SELECT coalesce(sum(${CHARGE}), 0) AS s FROM ai_usage WHERE at >= ?`).get(since).s
-  // Web searches are $10 per 1,000 on top of tokens (web fetch is only its tokens).
-  const price = (m, u) => (u.input * m.input + u.output * m.output + u.cacheWrite * m.cache_write + u.cacheRead * m.cache_read) / 1e6 + (u.webSearches ?? 0) * 0.01
+  // Web searches are $10 per 1,000 on top of tokens (web fetch is only its tokens). A prompt past a
+  // model's size step (Haiku 5.5: 100K) is charged at the higher rate throughout.
+  const price = (m, u) => {
+    const long = LONG_PROMPT[m.id]
+    const x = long && u.input + u.cacheWrite + u.cacheRead > long.over ? long.x : 1
+    return (x * (u.input * m.input + u.output * m.output + u.cacheWrite * m.cache_write + u.cacheRead * m.cache_read)) / 1e6 + (u.webSearches ?? 0) * 0.01
+  }
 
   function month() {
     const d = new Date(clock())

@@ -21,6 +21,8 @@ const MAX_SUB_CALLS = 3 // run_subagents calls per task
 const RUN_MS = 12 * 60_000
 const CALL_WAIT_MS = Number(process.env.AGENT_CALL_WAIT_MS) || 5 * 60_000 // for the app to answer a note/task tool (approvals included)
 const MAX_INPUT_TOKENS = 90_000 // per model call (keeps Haiku under its 100K price step too)
+const WRAP_TOKENS = 72_000 // past this, the agent is told to finish with what it has (rather than stopped later)
+const LOST_MS = Number(process.env.AGENT_LOST_MS) || 90_000 // no app following the task for this long: it stops
 const MAX_RESULT_CHARS = 40_000
 const LEAD_MAX_TOKENS = 8000
 const SUB_MAX_TOKENS = 3000
@@ -280,12 +282,26 @@ export function setupAgent({ route, HttpError, ai, isOwner, log }) {
     webSearches: u.server_tool_use?.web_search_requests ?? 0
   })
 
+  /**
+   * Input tokens of a call, roughly: by length, or (once this agent has made a call) what the last
+   * one really used plus what's been added since, whichever is more. Length alone can be far under
+   * for some text (Chinese, say, or formulas), and Haiku costs five times more past 100K.
+   */
+  function estimate(run, a, params) {
+    const byLength = Math.ceil(tokensOf(params.messages) + params.system.length / 3.2 + JSON.stringify(params.tools ?? []).length / 3.2)
+    const last = run.sizes.get(a)
+    if (!last || last.n > params.messages.length) return byLength
+    return Math.max(byLength, Math.ceil(last.tokens + tokensOf(params.messages.slice(last.n))))
+  }
+
   /** One model call, inside the limits: held first, settled to its real cost after. */
   async function call(run, a, m, params) {
     if (run.stopped) throw new Stop('Stopped.')
     if (ai.clock() - run.startedAt > RUN_MS) throw new Stop('This task ran out of time, so it stopped here.')
-    if (run.spent >= run.cap) throw new Stop('This task reached the most one task can use, so it stopped here. Ask again to carry on.')
-    const est = Math.ceil(tokensOf(params.messages) + params.system.length / 3.2 + JSON.stringify(params.tools ?? []).length / 3.2)
+    if (ai.clock() - run.seenAt > LOST_MS) throw new Stop('The app stopped following this task, so it stopped here.')
+    // What's still held for calls in progress (parallel subagents) counts too.
+    if (run.spent + run.holding >= run.cap) throw new Stop('This task reached the most one task can use, so it stopped here. Ask again to carry on.')
+    const est = estimate(run, a, params)
     if (est > MAX_INPUT_TOKENS) throw new Stop('This conversation got too long. Start a new chat to keep going.')
     run.lastEst = est
     let held
@@ -294,6 +310,7 @@ export function setupAgent({ route, HttpError, ai, isOwner, log }) {
     } catch (e) {
       throw new Stop(e.message)
     }
+    run.holding += held.held
     const usage = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, webSearches: 0 }
     let started = false
     const t0 = ai.clock()
@@ -319,6 +336,8 @@ export function setupAgent({ route, HttpError, ai, isOwner, log }) {
       const final = await stream.finalMessage()
       Object.assign(usage, fromUsage(final.usage))
       run.spent += ai.settle(held.id, m, usage, final.stop_reason === 'refusal' ? 'refused' : 'done')
+      // How big this agent's conversation really is now (its answer is the next call's input).
+      run.sizes.set(a, { n: params.messages.length, tokens: usage.input + usage.cacheRead + usage.cacheWrite + usage.output })
       return final
     } catch (e) {
       // Stopped or failed partway: charge what was used (estimated; thinking by time too).
@@ -337,8 +356,24 @@ export function setupAgent({ route, HttpError, ai, isOwner, log }) {
       if (e?.status == null && started && !run.abort.signal.aborted) throw new BadJson(String(e?.message ?? e))
       throw e
     } finally {
+      run.holding -= held.held
       flush(run)
     }
+  }
+
+  /**
+   * Near the end (its last step, or its context nearly full): no more tools, and a word to finish
+   * with what it has, added to the newest message (tool results), so earlier turns stay as they were.
+   */
+  const wrapped = new WeakSet()
+  function wrapUp(run, a, params, last) {
+    if (!last && estimate(run, a, params) <= WRAP_TOKENS) return {}
+    const end = params.messages.at(-1)
+    if (end?.role === 'user' && Array.isArray(end.content) && !wrapped.has(end)) {
+      wrapped.add(end) // once, even when the call is tried again
+      end.content.push({ type: 'text', text: '(From the app: this task is at its limit. Don’t use any more tools; give your best answer now from what you have, and say briefly what’s left undone.)' })
+    }
+    return { tool_choice: { type: 'none' } }
   }
 
   const friendly = (e) =>
@@ -418,14 +453,14 @@ export function setupAgent({ route, HttpError, ai, isOwner, log }) {
     let retries = 0
     try {
       for (let turn = 1; ; turn++) {
-        const last = turn >= SUB_TURNS
+        const params = { max_tokens: SUB_MAX_TOKENS, system: SUB_SYSTEM(run.today, web), tools, messages }
         let msg
         try {
-          msg = await call(run, a, run.subModel, { max_tokens: SUB_MAX_TOKENS, system: SUB_SYSTEM(run.today, web), tools, messages, ...(last ? { tool_choice: { type: 'none' } } : {}) })
+          msg = await call(run, a, run.subModel, { ...params, ...wrapUp(run, a, params, turn >= SUB_TURNS) })
         } catch (e) {
           if (e instanceof BadJson && retries++ < 2) continue
           // This model doesn't take the web tool: carry on without it.
-          if (e?.status === 400 && web && turn === 1 && !run.subNoWeb) {
+          if (e?.status === 400 && web && turn === 1 && !run.subNoWeb && /web/i.test(String(e?.message ?? ''))) {
             run.subNoWeb = true
             log('agent: subagent web search refused for', run.subModel.id)
             tools = tools.filter((t) => t.name !== 'web_search')
@@ -462,13 +497,14 @@ export function setupAgent({ route, HttpError, ai, isOwner, log }) {
     try {
       for (let turn = 1; ; turn++) {
         if (turn > LEAD_TURNS) throw new Stop('This task took a lot of steps, so it stopped here. Ask again to carry on.')
+        const params = { max_tokens: LEAD_MAX_TOKENS, system: leadSystem(run.today, run.web, run.subagents, run.drive), tools, messages }
         let msg
         try {
-          msg = await call(run, 'lead', run.m, { max_tokens: LEAD_MAX_TOKENS, system: leadSystem(run.today, run.web, run.subagents, run.drive), tools, messages })
+          msg = await call(run, 'lead', run.m, { ...params, ...wrapUp(run, 'lead', params, turn === LEAD_TURNS) })
         } catch (e) {
           if (e instanceof BadJson && retries++ < 2) continue
           // This model doesn't take the web tools: carry on without them (subagents too).
-          if (e?.status === 400 && turn === 1 && run.web) {
+          if (e?.status === 400 && turn === 1 && run.web && /web/i.test(String(e?.message ?? ''))) {
             log('agent: web tools refused for', run.m.id, String(e?.message ?? '').slice(0, 160))
             run.web = false
             tools = tools.filter((t) => t.name !== 'web_search' && t.name !== 'web_fetch')
@@ -593,7 +629,11 @@ export function setupAgent({ route, HttpError, ai, isOwner, log }) {
       sources: new Map(),
       abort: new AbortController(),
       startedAt: ai.clock(),
+      // When the app last asked how it's going: a task nobody follows any more stops (and stops spending).
+      seenAt: ai.clock(),
       spent: 0,
+      holding: 0,
+      sizes: new Map(),
       subSeq: 0,
       subCalls: 0,
       release,
@@ -609,6 +649,7 @@ export function setupAgent({ route, HttpError, ai, isOwner, log }) {
   route('GET', '/ai/agent/runs/:id', async ({ me, params, url, req }) => {
     const run = runs.get(params.id)
     if (!run || run.username !== me) throw new HttpError(404, 'That task isn’t here any more.')
+    run.seenAt = ai.clock()
     const from = Math.max(0, Number(url.searchParams.get('from')) || 0)
     if (!run.done && run.events.length <= from) {
       await new Promise((resolve) => {
