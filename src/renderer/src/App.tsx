@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { NavId, ThemeMode } from '@shared/settings'
 import { SettingsProvider, useSettings } from './data/settings'
 import { phaseLabel } from './components/timer'
-import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, Monitor, Moon, NotebookPen, Plus, Search, Settings as SettingsIcon, Sparkles, Sun, Timer, Users } from 'lucide-react'
+import { BarChart3, CalendarDays, GraduationCap, Home, ListTodo, MessageCircle, Monitor, Moon, NotebookPen, Plus, Search, Settings as SettingsIcon, Sparkles, Sun, Timer, Users } from 'lucide-react'
 import { useRecords } from './data/store'
 import { clock, isOverdue } from './lib/dates'
 import { NavCtx, useNav, type Route } from './nav'
@@ -22,7 +22,10 @@ import { TimerView } from './views/TimerView'
 import { Stats } from './views/Stats'
 import { SubjectView } from './views/SubjectView'
 import { Groups } from './views/Groups'
-import { groupCall, prefetchGroups } from './data/groups'
+import { Messages } from './views/Messages'
+import { getCachedGroup, groupCall, prefetchGroups } from './data/groups'
+import { useDmBadgeCount } from './data/dm-read'
+import { isDmGroup } from '@shared/dm'
 import { ChatNotifier } from '@shared/chat-notify'
 import { startDriveBackup } from './data/drive'
 import { VoiceSetupHost } from './components/notes/Voice'
@@ -61,12 +64,14 @@ function Sidebar({ route, go, onEnter, onLeave, compact }: { route: Route; go: (
   const open = live.filter((t) => !t.data.done).length
   const overdue = live.filter((t) => isOverdue(t.data.due, t.data.done)).length
   const aiOpen = useAiTabOpen()
+  const dmBadge = useDmBadgeCount(!!user, user?.username)
   const items: Record<NavId, [string, typeof Home, string?]> = {
     today: ['Today', Home, overdue ? `${overdue} late` : undefined],
     tasks: ['Tasks', ListTodo, open ? String(open) : undefined],
     notes: ['Notes', NotebookPen],
     ai: ['Veyra AI', Sparkles, aiOpen === false ? 'Soon' : undefined],
     calendar: ['Calendar', CalendarDays],
+    messages: ['Messages', MessageCircle, dmBadge ? (dmBadge > 99 ? '99+' : String(dmBadge)) : undefined],
     groups: ['Group work', Users],
     timer: ['Focus timer', Timer],
     stats: ['Stats', BarChart3]
@@ -178,6 +183,8 @@ function Screen({ route }: { route: Route }) {
       return <AiView chatId={route.chatId} />
     case 'calendar':
       return <Calendar />
+    case 'messages':
+      return <Messages initialDmId={route.dmId} />
     case 'groups':
       return <Groups />
     case 'timer':
@@ -257,7 +264,7 @@ function AnnouncementsHost({ signedIn }: { signedIn: boolean }) {
   return signedIn ? <Announcements online={status?.state === 'online'} /> : null
 }
 
-const ROUTES = ['today', 'tasks', 'notes', 'ai', 'calendar', 'groups', 'timer', 'stats', 'settings']
+const ROUTES = ['today', 'tasks', 'notes', 'ai', 'calendar', 'messages', 'groups', 'timer', 'stats', 'settings']
 
 /** The page this tab was on before a reload, if it was reloaded. */
 function reloadedOn(): Route | null {
@@ -333,7 +340,19 @@ function Shell() {
   // The tray menu or a reminder asks for a screen.
   useEffect(() => window.veyra.app.onNav((screen) => ROUTES.includes(screen) && go({ name: screen } as Route)), [])
   // Clicking a DM / group chat desktop notification opens that conversation directly.
-  const openChatGroup = useCallback((groupId: string) => {
+  const openChatGroup = useCallback((groupId: string, isDmHint?: boolean) => {
+    const cached = getCachedGroup(groupId)
+    const dm = isDmHint ?? (cached ? isDmGroup(cached) : false)
+    if (dm) {
+      try {
+        localStorage.setItem('veyra.dm', groupId)
+      } catch {
+        /* storage unavailable */
+      }
+      go({ name: 'messages', dmId: groupId })
+      setTimeout(() => window.dispatchEvent(new CustomEvent('veyra:open-dm', { detail: groupId })), 0)
+      return
+    }
     try {
       localStorage.setItem('veyra.group', groupId)
       localStorage.setItem('veyra.groupTab', 'chat')
@@ -343,7 +362,7 @@ function Shell() {
     go({ name: 'groups' })
     setTimeout(() => window.dispatchEvent(new CustomEvent('veyra:open-chat', { detail: groupId })), 0)
   }, [])
-  useEffect(() => window.veyra.app.onOpenChat?.(openChatGroup), [openChatGroup])
+  useEffect(() => window.veyra.app.onOpenChat?.((id) => openChatGroup(id)), [openChatGroup])
   // Web-mode fallback for DM/chat desktop notifications (Electron desktop handles this in the main process).
   const meId = useAccount().state.user?.username ?? null
   const chatNotifyRef = useRef(s.chatNotify)
@@ -360,7 +379,7 @@ function Shell() {
           const n = new Notification(notice.title, { body: notice.body })
           n.onclick = () => {
             window.focus()
-            openChatGroup(notice.groupId)
+            openChatGroup(notice.groupId, notice.isDm)
           }
         } catch {
           /* browser blocked notification */
@@ -421,7 +440,7 @@ function Shell() {
           <BetaNotice />
           <AnnouncementsHost signedIn={signedIn} />
           <ServerHoursNotice />
-          <main className={`main ${route.name === 'settings' ? 'main-settings' : route.name === 'notes' ? 'main-notes' : route.name === 'groups' ? 'main-groups' : route.name === 'ai' ? 'main-ai' : route.name === 'calendar' ? 'main-calendar' : ''}`}>
+          <main className={`main ${route.name === 'settings' ? 'main-settings' : route.name === 'notes' ? 'main-notes' : route.name === 'messages' ? 'main-messages' : route.name === 'groups' ? 'main-groups' : route.name === 'ai' ? 'main-ai' : route.name === 'calendar' ? 'main-calendar' : ''}`}>
             <Screen key={route.name + ('id' in route ? route.id : '')} route={route} />
           </main>
         </div>

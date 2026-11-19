@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import type { Editor } from '@tiptap/react'
 import type { FriendCard, Group, GroupInvite, GroupItem, GroupNote, GroupPreview, GroupTask, GroupUser } from '@shared/types'
+import { isDmGroup } from '@shared/dm'
 import { Dialog, Empty, Seg, useToast } from '../components/ui'
 import { Avatar, useAccount } from '../components/account'
 import { FriendsPanel } from '../components/FriendsPanel'
@@ -30,6 +31,7 @@ import { NoteToolbar } from '../components/notes/Toolbar'
 import { SlashMenu } from '../components/notes/SlashMenu'
 import { docText } from '../components/notes/extensions'
 import { useFriends } from '../data/friends'
+import { openOrCreateDm } from '../data/dm-read'
 import { useSettings } from '../data/settings'
 import { useNav } from '../nav'
 import { usePhone } from '../lib/phone'
@@ -63,7 +65,10 @@ export function Groups() {
   const { go } = useNav()
   const { status, retry } = useGroupStatus()
   const online = status?.state === 'online'
-  const { groups, invites, reload, setGroups } = useGroups(online)
+  const { groups: allGroups, invites: allInvites, reload, setGroups } = useGroups(online)
+  // Keep 1-on-1 DMs in the dedicated Messages tab so Group work stays focused on study groups.
+  const groups = useMemo(() => (allGroups ? allGroups.filter((g) => !isDmGroup(g)) : null), [allGroups])
+  const invites = useMemo(() => allInvites.filter((inv) => !isDmGroup(inv.group)), [allInvites])
   const friendsState = useFriends(account.mode === 'account' && !account.ended)
   const [section, setSection] = useState<Section>(() => {
     try {
@@ -85,7 +90,7 @@ export function Groups() {
   const phone = usePhone()
   const [phoneOpen, setPhoneOpen] = useState(false)
 
-  // The call dock's "open the voice room" or a clicked DM/chat notification while Group work is already showing another group.
+  // The call dock's "open the voice room" or a clicked group chat notification while Group work is already showing another group.
   useEffect(() => {
     const open = (e: Event) => {
       setSection('groups')
@@ -150,41 +155,23 @@ export function Groups() {
   }
 
   const messageFriend = async (friend: FriendCard) => {
-    const target = friend.username.toLowerCase()
-    const myUser = (status?.me?.username ?? account.user?.username ?? '').toLowerCase()
-    const existing = (groups ?? []).find(
-      (g) =>
-        g.members.length === 2 &&
-        g.members.some((m) => m.username.toLowerCase() === target) &&
-        (!myUser || g.members.some((m) => m.username.toLowerCase() === myUser))
-    )
-    if (existing) {
-      try {
-        localStorage.setItem('veyra.groupTab', 'chat')
-      } catch {
-        /* storage unavailable */
-      }
-      setSection('groups')
-      setOpenId(existing.id)
-      if (phone) setPhoneOpen(true)
-      setTimeout(() => window.dispatchEvent(new CustomEvent('veyra:open-chat', { detail: existing.id })), 0)
-      return
-    }
-    const color = GROUP_COLORS[Math.floor(Math.random() * GROUP_COLORS.length)]
-    const name = (friend.displayName?.trim() || `@${friend.username}`).slice(0, 60)
-    const r = await groupCall<{ group: Group }>('POST', '/groups', { name, color })
-    await groupCall('POST', `/groups/${gid(r.group.id)}/invites`, { username: friend.username })
-    await reload()
+    const myUser = status?.me?.username ?? account.user?.username ?? ''
+    if (!myUser) return
+    const res = await openOrCreateDm({
+      otherUsername: friend.username,
+      meUsername: myUser,
+      groups: allGroups ?? [],
+      invites: allInvites,
+      reload
+    })
     try {
-      localStorage.setItem('veyra.groupTab', 'chat')
+      localStorage.setItem('veyra.dm', res.groupId)
     } catch {
       /* storage unavailable */
     }
-    setSection('groups')
-    setOpenId(r.group.id)
-    if (phone) setPhoneOpen(true)
-    setTimeout(() => window.dispatchEvent(new CustomEvent('veyra:open-chat', { detail: r.group.id })), 0)
-    toast(`Chat created — invite sent to @${friend.username}`)
+    go({ name: 'messages', dmId: res.groupId })
+    if (res.status === 'created') toast(`Chat started — invite sent to @${friend.username}`)
+    else if (res.status === 'accepted') toast(`Accepted message request from @${friend.username}`)
   }
 
   if (section === 'friends')

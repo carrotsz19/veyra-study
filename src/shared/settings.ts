@@ -1,7 +1,7 @@
 import type { NoteFont, NoteTemplate, Priority } from './types'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
-export type NavId = 'today' | 'tasks' | 'notes' | 'ai' | 'calendar' | 'groups' | 'timer' | 'stats'
+export type NavId = 'today' | 'tasks' | 'notes' | 'ai' | 'calendar' | 'messages' | 'groups' | 'timer' | 'stats'
 export type StartScreen = NavId | 'last'
 export type TaskSort = 'due' | 'priority' | 'created' | 'title'
 
@@ -153,6 +153,7 @@ export const NAV_LABELS: Record<NavId, string> = {
   notes: 'Notes',
   ai: 'Veyra AI',
   calendar: 'Calendar',
+  messages: 'Messages',
   groups: 'Group work',
   timer: 'Focus timer',
   stats: 'Stats'
@@ -167,7 +168,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   corners: 'soft',
   reduceMotion: false,
   material: 'acrylic',
-  nav: (['today', 'tasks', 'notes', 'ai', 'calendar', 'groups', 'timer', 'stats'] as NavId[]).map((id) => ({ id, visible: true })),
+  nav: (['today', 'tasks', 'notes', 'ai', 'calendar', 'messages', 'groups', 'timer', 'stats'] as NavId[]).map((id) => ({ id, visible: true })),
   showCounts: true,
   showSubjectsInSidebar: true,
   showTimerCard: true,

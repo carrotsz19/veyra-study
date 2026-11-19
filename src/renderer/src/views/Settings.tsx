@@ -297,7 +297,7 @@ function Appearance() {
 }
 
 /* ---------- Phone (the Android app) ---------- */
-const SCREEN_LABELS: Record<NavId, string> = { today: 'Today', tasks: 'Tasks', notes: 'Notes', ai: 'Veyra AI', calendar: 'Calendar', groups: 'Group work', timer: 'Focus timer', stats: 'Stats' }
+const SCREEN_LABELS: Record<NavId, string> = { today: 'Today', tasks: 'Tasks', notes: 'Notes', ai: 'Veyra AI', calendar: 'Calendar', messages: 'Messages', groups: 'Group work', timer: 'Focus timer', stats: 'Stats' }
 function PhoneSection() {
   const { s, set } = useSettings()
   const tabs = s.phoneTabs

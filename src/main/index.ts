@@ -616,7 +616,7 @@ app.whenReady().then(async () => {
     }
     if (!Notification.isSupported()) return { shown: false }
     const n = new Notification({ title: t, body: b, silent: false })
-    n.on('click', () => showWindow('groups'))
+    n.on('click', () => showWindow('messages'))
     n.show()
     return { shown: true }
   })

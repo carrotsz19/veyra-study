@@ -208,6 +208,45 @@ export function useGroupItems(groupId: string) {
 
 export type ItemsApi = ReturnType<typeof useGroupItems>
 
+/** Looks up a group from the shared in-memory cache (for notification / call dock routing). */
+export function getCachedGroup(groupId: string): Group | undefined {
+  return groupsCache.groups?.find((g) => g.id === groupId)
+}
+
+/**
+ * Subscribes to messages across multiple groups (e.g. all DMs) using the shared
+ * ItemStore cache so list previews, unread counts, and global search stay live
+ * with zero duplicate requests.
+ */
+export function useMultiGroupMessages(groupIds: string[]): Map<string, GroupItem<'message'>[]> {
+  const key = groupIds.join('\0')
+  const [, tick] = useReducer((x: number) => x + 1, 0)
+  useEffect(() => {
+    const ids = key ? key.split('\0') : []
+    const subscribed = ids.map((id) => {
+      const s = itemStore(id)
+      s.subs.add(tick)
+      if (!s.loaded) void s.load()
+      return s
+    })
+    return () => {
+      for (const s of subscribed) s.subs.delete(tick)
+    }
+  }, [key])
+
+  const out = new Map<string, GroupItem<'message'>[]>()
+  for (const id of groupIds) {
+    const s = stores.get(id)
+    if (!s) {
+      out.set(id, [])
+      continue
+    }
+    const msgs = ([...s.items.values()].filter((i) => i.kind === 'message') as GroupItem<'message'>[]).sort((a, b) => a.createdAt - b.createdAt)
+    out.set(id, msgs)
+  }
+  return out
+}
+
 /* ---------- writes ---------- */
 export async function addItem<K extends GroupItemKind>(groupId: string, kind: K, data: GroupItemData[K]): Promise<GroupItem<K>> {
   return (await groupCall<{ item: GroupItem<K> }>('POST', `/groups/${gid(groupId)}/items`, { kind, data })).item

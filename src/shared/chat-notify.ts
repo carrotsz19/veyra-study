@@ -6,6 +6,7 @@ export interface ChatNotice {
   title: string
   body: string
   count: number
+  isDm: boolean
 }
 
 export interface ChatNotifierDeps {
@@ -21,6 +22,7 @@ export interface ChatNotifierDeps {
 
 const RECENT_NEW_GROUP_MS = 5 * 60_000
 const MAX_BODY_LEN = 140
+const DM_NAME_RE = /^DM(?:\s*·\s*|:)@([a-z0-9_.-]+)(?:\s*·\s*|:)@([a-z0-9_.-]+)$/i
 
 function clip(text: string): string {
   const clean = text.replace(/\s+/g, ' ').trim()
@@ -38,14 +40,16 @@ export function formatChatNotice(group: Group, messages: GroupItem<'message'>[])
   const last = messages[messages.length - 1]
   const who = senderName(group, last.createdBy)
   const preview = clip(last.data?.text ?? '')
-  const isDm = group.members.length <= 2
+  const taggedDm = DM_NAME_RE.test(group.name.trim())
+  const isDm = taggedDm || group.members.length <= 2
   if (messages.length === 1) {
     return {
       groupId: group.id,
       groupName: group.name,
       title: isDm ? who : `${who} · ${group.name}`,
       body: preview,
-      count: 1
+      count: 1,
+      isDm: taggedDm
     }
   }
   return {
@@ -53,7 +57,8 @@ export function formatChatNotice(group: Group, messages: GroupItem<'message'>[])
     groupName: group.name,
     title: isDm ? who : group.name,
     body: isDm ? `${messages.length} new messages — ${preview}` : `${messages.length} new messages — ${who}: ${preview}`,
-    count: messages.length
+    count: messages.length,
+    isDm: taggedDm
   }
 }
 

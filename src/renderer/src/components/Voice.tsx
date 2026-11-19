@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Headphones, HeadphoneOff, Mic, MicOff, PhoneOff, Settings2, Volume2, WifiOff } from 'lucide-react'
 import type { Group } from '@shared/types'
+import { isDmGroup } from '@shared/dm'
+import { getCachedGroup } from '../data/groups'
 import { Avatar } from './account'
 import { Popover } from './Popover'
 import { Select } from './Select'
@@ -286,6 +288,17 @@ export function CallDock({ floating }: { floating?: boolean }) {
       <button
         className="call-where"
         onClick={() => {
+          const cached = getCachedGroup(call.groupId!)
+          if (cached && isDmGroup(cached)) {
+            try {
+              localStorage.setItem('veyra.dm', call.groupId!)
+            } catch {
+              /* storage unavailable */
+            }
+            go({ name: 'messages', dmId: call.groupId! })
+            setTimeout(() => window.dispatchEvent(new CustomEvent('veyra:open-dm-voice', { detail: call.groupId })), 0)
+            return
+          }
           try {
             localStorage.setItem('veyra.group', call.groupId!)
             localStorage.setItem('veyra.groupTab', 'voice')

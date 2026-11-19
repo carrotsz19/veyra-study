@@ -6,6 +6,7 @@ export type Route =
   | { name: 'notes'; noteId?: string }
   | { name: 'ai'; chatId?: string }
   | { name: 'calendar' }
+  | { name: 'messages'; dmId?: string }
   | { name: 'groups' }
   | { name: 'timer' }
   | { name: 'stats' }

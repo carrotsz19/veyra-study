@@ -23,6 +23,7 @@ const SCREENS: [NavId, string][] = [
   ['tasks', 'Tasks'],
   ['notes', 'Notes'],
   ['calendar', 'Calendar'],
+  ['messages', 'Messages'],
   ['groups', 'Group work'],
   ['timer', 'Focus timer'],
   ['stats', 'Stats'],
@@ -149,9 +150,10 @@ export function TitleBar() {
       if (e.key === 'F11') {
         e.preventDefault()
         win('fullscreen')
-      } else if (ctrl && !e.shiftKey && !e.altKey && /^[1-8]$/.test(e.key)) {
+      } else if (ctrl && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
         e.preventDefault()
-        go({ name: SCREENS[Number(e.key) - 1][0] } as Route)
+        const picked = SCREENS[Number(e.key) - 1]
+        if (picked) go({ name: picked[0] } as Route)
       } else if (ctrl && e.key === ',') {
         e.preventDefault()
         settings()

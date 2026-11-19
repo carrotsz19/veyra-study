@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  BarChart3, CalendarDays, CornerDownLeft, FileText, Home, ListTodo, Monitor, Moon, NotebookPen, Pause, Play, Plus, Search, Settings as SettingsIcon, Sun, Timer, Users,
+  BarChart3, CalendarDays, CornerDownLeft, FileText, Home, ListTodo, MessageCircle, Monitor, Moon, NotebookPen, Pause, Play, Plus, Search, Settings as SettingsIcon, Sun, Timer, Users,
   type LucideIcon
 } from 'lucide-react'
 import type { Rec } from '@shared/types'
@@ -41,6 +41,7 @@ const SCREENS: [Route['name'], string, LucideIcon, string][] = [
   ['tasks', 'Tasks', ListTodo, 'todo list homework'],
   ['notes', 'Notes', NotebookPen, 'notebook'],
   ['calendar', 'Calendar', CalendarDays, 'schedule events'],
+  ['messages', 'Messages', MessageCircle, 'dm direct message chat friends whatsapp'],
   ['groups', 'Group work', Users, 'group chat shared'],
   ['timer', 'Focus timer', Timer, 'pomodoro study'],
   ['stats', 'Stats', BarChart3, 'statistics progress'],
