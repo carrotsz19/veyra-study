@@ -7,7 +7,7 @@ in Settings → Software update. Write new changes under "## Unreleased":
 Versions are year.month.release-in-that-month (26.11.1, 26.11.2, then 26.12.1),
 picked automatically. They come after the older 1.0.x numbers.
 
-## Unreleased
+## 26.11.3
 
 - **Fixed the app going blank (see-through) while writing notes:** the note toolbar could keep drawing for a moment after a note closed or switched, and that took the whole window down, leaving only the translucent background. It now waits for the note instead, and if any screen ever fails to draw, Veyra shows a Reload button instead of an empty window.
 - **Cleaner spellcheck for links, citations, and modern words:** spellcheck no longer flags URLs (`https://...`, emails, domains), academic citations (`et al.`, numbered source titles), or common modern/compound words (such as `lockdown`, `telehealth`, `wellbeing`, and `mothership`).
