@@ -3,7 +3,7 @@ import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { ignoreWord, isWord, learnWord, loadSpelling, onSpellingChange, spellingReady, suggestions } from '../../lib/spell'
-import { WORD_RE, collectDocumentNames, isAcceptableWord } from '../../lib/spell-rules'
+import { WORD_RE, collectDocumentNames, collectIgnoredSpans, isAcceptableWord } from '../../lib/spell-rules'
 
 /**
  * Spelling in notes:
@@ -32,6 +32,7 @@ function misspelled(doc: PMNode, skipPos: number | null): DecorationSet {
   const decos: Decoration[] = []
 
   for (const block of blocks) {
+    const ignoredSpans = collectIgnoredSpans(block.text)
     let blockOffset = 0
     block.node.forEach((child, childOffset) => {
       const len = child.isText ? (child.text?.length ?? 0) : child.textContent.length
@@ -47,7 +48,7 @@ function misspelled(doc: PMNode, skipPos: number | null): DecorationSet {
           if (skipPos !== null && skipPos >= from && skipPos <= to) continue
           if (
             !isAcceptableWord(
-              { word: w, blockText: block.text, offsetInBlock: blockOffset + at, docNames },
+              { word: w, blockText: block.text, offsetInBlock: blockOffset + at, docNames, ignoredSpans },
               isWord
             )
           ) {

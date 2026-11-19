@@ -23,7 +23,9 @@ import {
 const MINI_DICT = new Set([
   'the', 'exam', 'met', 'with', 'brought', 'notes', 'package', 'today', 'is', 'great',
   'read', 'linear', 'receive', 'spelling', 'friend', 'study', 'class', 'tomorrow', 'she', 'he',
-  'and', 'at', 'on', 'are', 'will'
+  'and', 'at', 'on', 'are', 'will', 'one', 'dormitory', 'during', 'surveyed', 'interviewed',
+  'worker', 'interviews', 'from', 'only', 'summary', 'was', 'health', 'bullying', 'topic',
+  'social', 'about', 'migrant', 'workers', 'in', 'via', 'method', 'report', 'or'
 ])
 const inDict = (w) => MINI_DICT.has(w)
 
@@ -105,6 +107,22 @@ test('spell rules skip names, honorifics, possessives, brands, and document-lear
     "I met Garrett and Aaliyah Kowalski with Dr. Patel at O'Connor's study class.",
     "Garrett's notes on Veyra IronLog and iPhone flashcards are great.",
     'Garrett brought pre-exam non-linear notes today.'
+  ]
+  assert.deepEqual(flaggedWords(blocks), [])
+})
+
+test('spell rules skip URLs, academic citations (et al.), modern compounds, and numbered source titles', () => {
+  const blocks = [
+    '1. Tan et al., BMJ Open (2022)',
+    'Method: one dormitory during the COVID lockdown; 175 surveyed, 23 interviewed.',
+    'https://doi.org/10.1136/bmjopen-2021-060163',
+    '2. IMH and NUS study (2026), via the Straits Times',
+    'https://asianews.network/singapore-migrant-workers-hesitate-to-seek-mental-health-support-due-to-job-loss-fear-misconceptions-study/',
+    '3. Mothership, "Firsthand from Kallang" (Sep 2023)',
+    'Method: worker interviews. https://mothership.sg/2023/09/kallang-fields-volleyball-migrants',
+    '4. Subramaniam et al. (2024) on telehealth, cyberbullying, psychosocial subtopic notes.',
+    '5. Sengkang, "Local report" (2025) and email contact@veyra.study or www.example.org/custom-slug.',
+    'Punggol, "Community notes" (2024)'
   ]
   assert.deepEqual(flaggedWords(blocks), [])
 })
