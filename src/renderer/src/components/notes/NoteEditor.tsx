@@ -5,10 +5,11 @@ import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/r
 import { BubbleMenu } from '@tiptap/react/menus'
 import { formatDistanceToNowStrict } from 'date-fns'
 import {
-  Archive, ArchiveRestore, Bold, Code, Copy, Download, FileUp, Hash, History as HistoryIcon, ImagePlus, Italic, Share2, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, PanelLeftOpen, Paperclip, Pin, PinOff,
+  Archive, ArchiveRestore, Bold, Code, Copy, Download, FileDown, FileText, FileUp, Hash, History as HistoryIcon, ImagePlus, Italic, Share2, Link2, Maximize2, Minimize2, MoreHorizontal, Palette, PanelLeftOpen, Paperclip, Pin, PinOff,
   Sparkles, Strikethrough, Trash2, Underline
 } from 'lucide-react'
 import type { Note, NoteFont, NoteTemplate, Rec } from '@shared/types'
+import type { ExportFormat } from '@shared/note-export'
 import { db, onExternalChange, useRecords } from '../../data/store'
 import { useToast } from '../ui'
 import { docText, noteExtensions, wordCount } from './extensions'
@@ -29,6 +30,7 @@ import { AiPanel } from './AiPanel'
 import { useAiState } from '../../data/veyra-ai'
 import { parseBullets, parseCards, type AiTask } from '../../data/ai'
 import { noteToMarkdown } from './markdown'
+import { exportNotesAs } from './exportNote'
 import { useSettings } from '../../data/settings'
 import { registerOpenNote, trashNotes } from '../../lib/notes'
 import { Select } from '../Select'
@@ -306,7 +308,7 @@ function PageMenu({
   onHistory: () => void
   /** Share… (only when signed in to a Veyra account). */
   onShare?: () => void
-  onExport: () => void
+  onExport: (format: ExportFormat) => void
   onSaveDocs: () => void
   onClose: () => void
 }) {
@@ -351,7 +353,13 @@ function PageMenu({
       <button className="menu-row" onClick={onDuplicate}>
         <Copy size={15} /> Duplicate
       </button>
-      <button className="menu-row" onClick={onExport}>
+      <button className="menu-row" onClick={() => onExport('pdf')}>
+        <FileDown size={15} /> Export as PDF
+      </button>
+      <button className="menu-row" onClick={() => onExport('docx')}>
+        <FileText size={15} /> Export as Word (.docx)
+      </button>
+      <button className="menu-row" onClick={() => onExport('md')}>
         <Download size={15} /> Export as Markdown
       </button>
       {!onAndroid() && (
@@ -832,9 +840,18 @@ export function NoteEditor({
     toast('Note duplicated')
     onOpen?.(copy.id)
   }
-  const exportMd = async () => {
+  const exportNote = async (format: ExportFormat) => {
     setMenu(null)
-    if (await exportNotes([latest.current])) toast('Note exported')
+    if (timer.current) flush()
+    const sub = subjects.find((s) => s.id === latest.current.subjectId)?.data.name
+    try {
+      const saved = await exportNotesAs([{ ...latest.current, subject: sub, updatedAt: savedAt }], format)
+      if (saved) {
+        toast(format === 'pdf' ? 'Exported as PDF' : format === 'docx' ? 'Exported as Word (.docx)' : 'Note exported')
+      }
+    } catch (e) {
+      toast(cleanError(e, 'Couldn’t export that note.'))
+    }
   }
   const saveDocs = async () => {
     setMenu(null)
@@ -957,7 +974,7 @@ export function NoteEditor({
                   <MoreHorizontal size={18} />
                 </button>
                 {menu === 'page' && (
-                  <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportMd} onSaveDocs={saveDocs} onHistory={() => (setMenu(null), setHistory(true))} onShare={signedIn ? () => (setMenu(null), timer.current && flush(), setSharing(true)) : undefined} onClose={() => setMenu(null)} />
+                  <PageMenu data={data} set={(p) => update(p, true)} onDelete={remove} onDuplicate={duplicate} onExport={exportNote} onSaveDocs={saveDocs} onHistory={() => (setMenu(null), setHistory(true))} onShare={signedIn ? () => (setMenu(null), timer.current && flush(), setSharing(true)) : undefined} onClose={() => setMenu(null)} />
                 )}
                 {sharing && (
                   <ShareDialog noteId={note.id} note={() => latest.current} onClose={() => setSharing(false)} />

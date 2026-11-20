@@ -7,6 +7,10 @@ in Settings → Software update. Write new changes under "## Unreleased":
 Versions are year.month.release-in-that-month (26.11.1, 26.11.2, then 26.12.1),
 picked automatically. They come after the older 1.0.x numbers.
 
+## Unreleased
+
+- **Export notes to PDF and Word (.docx):** alongside Markdown, you can now export any note — or several selected notes at once — as a formatted PDF or Word (`.docx`) document from the note's `•••` menu, right-click menu, or multi-select bar. Headings, formatting, highlights, checklists, callouts, question toggles, tables, code blocks, Cornell layouts, drawings, and attached images are preserved.
+
 ## 26.11.4
 
 - **The note toolbar is back:** in 26.11.3 the formatting bar at the top of a note could show up empty. It now always follows the part of the page you're writing in.

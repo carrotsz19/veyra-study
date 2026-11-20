@@ -10,8 +10,8 @@ import * as idb from './idb'
 import { ON_WEB } from '@shared/channel'
 
 /** The website: an ordinary browser download. */
-function download(name: string, text: string, type: string) {
-  const url = URL.createObjectURL(new Blob([text], { type }))
+function download(name: string, data: BlobPart, type: string) {
+  const url = URL.createObjectURL(new Blob([data], { type }))
   const a = document.createElement('a')
   a.href = url
   a.download = name
@@ -21,11 +21,22 @@ function download(name: string, text: string, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 
+function toB64(bytes: Uint8Array): string {
+  let s = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(s)
+}
+
 const safe = (n: string) => (n.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim() || 'Untitled').slice(0, 120)
 const cancelled = (e: unknown) => /cancel/i.test(String((e as Error)?.message ?? e))
 
 async function write(name: string, text: string): Promise<string> {
   const r = await Filesystem.writeFile({ path: `exports/${name}`, data: text, directory: Directory.Cache, encoding: Encoding.UTF8, recursive: true })
+  return r.uri
+}
+
+async function writeBytes(name: string, bytes: Uint8Array): Promise<string> {
+  const r = await Filesystem.writeFile({ path: `exports/${name}`, data: toB64(bytes), directory: Directory.Cache, recursive: true })
   return r.uri
 }
 
@@ -62,6 +73,26 @@ export async function exportNotes(files: { name: string; text: string }[]): Prom
     used.add(base.toLowerCase())
     if (ON_WEB) download(`${base}.md`, f.text, 'text/markdown')
     else uris.push(await write(`${base}.md`, f.text))
+  }
+  if (ON_WEB) return { saved: files.length }
+  return { saved: (await share(files.length === 1 ? 'Export note' : `Export ${files.length} notes`, uris)) ? files.length : 0 }
+}
+
+export async function exportFiles(
+  files: { name: string; ext: string; mime: string; bytes: Uint8Array }[],
+  _kindLabel: string
+): Promise<{ saved: number }> {
+  if (!files.length) return { saved: 0 }
+  const used = new Set<string>()
+  const uris: string[] = []
+  for (const f of files) {
+    const ext = (f.ext || 'bin').replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 8) || 'bin'
+    let base = safe(f.name)
+    for (let i = 2; used.has(base.toLowerCase()); i++) base = `${safe(f.name)} (${i})`
+    used.add(base.toLowerCase())
+    const filename = `${base}.${ext}`
+    if (ON_WEB) download(filename, f.bytes as BlobPart, f.mime || 'application/octet-stream')
+    else uris.push(await writeBytes(filename, f.bytes))
   }
   if (ON_WEB) return { saved: files.length }
   return { saved: (await share(files.length === 1 ? 'Export note' : `Export ${files.length} notes`, uris)) ? files.length : 0 }

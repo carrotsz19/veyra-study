@@ -63,6 +63,8 @@ const appApi = {
   importData: () => ipcRenderer.invoke('data:import'),
   openDataFolder: () => ipcRenderer.invoke('data:openFolder'),
   exportNotes: (files: { name: string; text: string }[]) => ipcRenderer.invoke('notes:export', files),
+  exportFiles: (files: { name: string; ext: string; mime: string; bytes: Uint8Array }[], kindLabel: string) => ipcRenderer.invoke('notes:exportFiles', files, kindLabel),
+  exportPdf: (files: { name: string; html: string }[]) => ipcRenderer.invoke('notes:exportPdf', files),
   version: () => ipcRenderer.invoke('app:version'),
   /** Windows 11 can show acrylic or mica behind the app. */
   materialSupported: ipcRenderer.sendSync('app:materialSupported') as boolean,

@@ -25,6 +25,7 @@ import { Sync } from './sync'
 import { VoiceError, Whisper } from './whisper'
 import { McpServer, addToClient, clientConfigPath, clientHasVeyra, mcpEntry } from './mcp'
 import { setupMenus, setupTextMenu } from './popup'
+import { exportBinaryFiles, exportPdfFiles } from './export'
 
 // Dev checks: VEYRA_FAKE_MIC=1 records a test tone instead of the real microphone.
 if (process.env['VEYRA_FAKE_MIC']) app.commandLine.appendSwitch('use-fake-device-for-media-stream')
@@ -675,6 +676,12 @@ app.whenReady().then(async () => {
     }
     return { saved: files.length }
   })
+  ipcMain.handle('notes:exportFiles', (_e, list: { name: string; ext: string; bytes: Uint8Array }[], kindLabel: string) =>
+    friendly(() => exportBinaryFiles(list, kindLabel))
+  )
+  ipcMain.handle('notes:exportPdf', (_e, list: { name: string; html: string }[]) =>
+    friendly(() => exportPdfFiles(list))
+  )
   ipcMain.handle('app:open', (_e, url: string) => {
     // Web links, and email (the "still being built" notice's Email button).
     if (/^https:\/\//.test(url) || /^mailto:[^\s]+$/.test(url)) shell.openExternal(url)
