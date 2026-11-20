@@ -6,11 +6,15 @@ How releases work step by step is in [RELEASING.md](RELEASING.md).
 
 ## Releases
 
-1. **Dev by default.** Every finished change goes out as a Dev build only:
-   `npm run release:dev` (Windows and Android) and `npm run release:web:dev` (the Dev website).
-2. **Prod only when the owner says so**, in words like "push to prod" or "ship it". A yes for one
-   release doesn't cover the next one. Prod is `npm run ship` (Windows and Android), then
-   `npm run release:web` (the website is separate).
+1. **Dev by default (PR → `veyra-study-dev` `main` → Dev builds).** Open a PR from a feature branch
+   into `carrotsz19/veyra-study-dev` `main` (`npm run pr:dev`). Once accepted and merged, sync
+   `dev` (`npm run sync:dev`) and publish Dev builds: `npm run release:dev` (Windows and Android)
+   and `npm run release:web:dev` (the Dev website). Release scripts enforce the channel branch
+   (`dev` for Dev builds, `main` for Prod).
+2. **Prod only after Dev testing and when the owner says so**, in words like "push to prod" or
+   "ship it". A yes for one release doesn't cover the next one. Promote verified Dev via PR to
+   `carrotsz19/veyra-study` `main` (`npm run pr:prod`); once accepted, switch to `main`, pull, and
+   run `npm run ship` (Windows and Android), then `npm run release:web` (the website is separate).
 3. **Never set a version by hand.** Versions are date-based (year.month.n, e.g. 26.11.2) and
    `npm run ship` picks them.
 4. **Write the release notes as you go:** user-facing changes go under `## Unreleased` in

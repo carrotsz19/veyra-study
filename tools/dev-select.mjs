@@ -17,6 +17,7 @@ import { copyFileSync, existsSync, readFileSync, rmSync, symlinkSync, writeFileS
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
+import { DEV_REPO, findRemote } from './channels.mjs'
 
 const META_OPEN = '<!-- veyra-dev-meta:'
 const META_CLOSE = ' -->'
@@ -159,7 +160,9 @@ function tryGit(args, cwd) {
 }
 
 function defaultBase(repoDir) {
-  for (const candidate of ['origin/dev', 'dev', 'origin/main', 'main', 'HEAD']) {
+  const devRemote = findRemote(DEV_REPO, { cwd: repoDir })
+  const candidates = [...(devRemote ? [`${devRemote}/main`] : []), 'origin/dev', 'dev', 'origin/main', 'main', 'HEAD']
+  for (const candidate of candidates) {
     if (tryGit(['rev-parse', '--verify', `${candidate}^{commit}`], repoDir)) return candidate
   }
   return 'HEAD'
@@ -167,10 +170,20 @@ function defaultBase(repoDir) {
 
 /** Resolves a ref (including pr#12 / #12) to { sha, branchLabel }. */
 function resolveRef(repoDir, ref) {
+  if (String(ref).startsWith('-')) throw new Error(`Invalid ref "${ref}".`)
   const pr = /^(?:pr#?|#)(\d+)$/i.exec(ref)
   if (pr) {
     const num = pr[1]
-    execFileSync('git', ['fetch', 'origin', `pull/${num}/head`], { cwd: repoDir, stdio: 'inherit' })
+    const devRemote = findRemote(DEV_REPO, { cwd: repoDir })
+    let fetched = false
+    for (const remote of [...(devRemote ? [devRemote] : []), 'origin']) {
+      const r = spawnSync('git', ['fetch', remote, `pull/${num}/head`], { cwd: repoDir, stdio: 'inherit' })
+      if (r.status === 0) {
+        fetched = true
+        break
+      }
+    }
+    if (!fetched) throw new Error(`Couldn't fetch PR #${num} from ${DEV_REPO} or origin.`)
     const sha = git(['rev-parse', 'FETCH_HEAD'], repoDir)
     return { sha, branchLabel: `PR #${num}` }
   }
@@ -209,7 +222,7 @@ export async function promptDevSelection(repoDir) {
 
   let prs = []
   try {
-    const raw = execFileSync('gh', ['pr', 'list', '--state', 'open', '--limit', '10', '--json', 'number,title,headRefName'], { cwd: repoDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    const raw = execFileSync('gh', ['pr', 'list', '--repo', DEV_REPO, '--state', 'open', '--limit', '10', '--json', 'number,title,headRefName'], { cwd: repoDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
     prs = JSON.parse(raw || '[]')
   } catch {
     /* offline or gh unavailable */
@@ -295,7 +308,12 @@ export function prepareDevWorktree({ repoDir = process.cwd(), ref = '', commits 
   git(['worktree', 'prune'], root)
   git(['worktree', 'add', '--detach', workDir, checkoutSha], root)
 
+  let cleaned = false
   const cleanup = () => {
+    if (cleaned) return
+    cleaned = true
+    process.off('SIGINT', onSignal)
+    process.off('SIGTERM', onSignal)
     try {
       // Unlink the node_modules junction/symlink itself (never touching its target) before removing the worktree.
       const nm = join(workDir, 'node_modules')
@@ -310,6 +328,12 @@ export function prepareDevWorktree({ repoDir = process.cwd(), ref = '', commits 
       console.warn(`(Temporary build folder left at ${workDir}; you can delete it safely.)`)
     }
   }
+  const onSignal = (sig) => {
+    cleanup()
+    process.exit(sig === 'SIGINT' ? 130 : 143)
+  }
+  process.on('SIGINT', onSignal)
+  process.on('SIGTERM', onSignal)
 
   try {
     if (commits.length) {

@@ -26,8 +26,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { devVersion as nextDevVersion, nextVersion } from './version.mjs'
 import { hasDevSelection, parseDevSelectArgs, prepareDevWorktree, promptDevSelection } from './dev-select.mjs'
+import { assertDevChannel, assertProdChannel } from './channels.mjs'
 
 const dev = process.argv.includes('--dev')
+const allowLocal = process.argv.includes('--local')
 if (dev && !process.env.VEYRA_DEV_SELECTED) {
   const sel = parseDevSelectArgs(process.argv.slice(2))
   if (hasDevSelection(sel)) {
@@ -39,19 +41,26 @@ if (dev && !process.env.VEYRA_DEV_SELECTED) {
       base: chosen.base,
       label: chosen.label || sel.label
     })
+    let exitCode = 0
     try {
       const r = spawnSync('node', [join(import.meta.dirname, 'release-web.mjs'), '--dev'], {
         cwd: dir,
         env: { ...process.env, VEYRA_DEV_SELECTED: '1' },
-        stdio: 'inherit',
-        shell: process.platform === 'win32'
+        stdio: 'inherit'
       })
-      if (r.status !== 0) process.exit(r.status ?? 1)
+      exitCode = r.status ?? 1
     } finally {
       cleanup()
     }
-    process.exit(0)
+    process.exit(exitCode)
   }
+}
+try {
+  if (dev) assertDevChannel({ cwd: process.cwd(), allowLocal })
+  else assertProdChannel({ cwd: process.cwd(), allowRollback: process.env.VEYRA_ROLLBACK === '1' })
+} catch (e) {
+  console.error(e instanceof Error ? e.message : String(e))
+  process.exit(1)
 }
 const worker = dev ? 'veyra-study-dev' : 'veyra-study-web'
 const run = (cmd, args, env = process.env, cwd = process.cwd()) => {
