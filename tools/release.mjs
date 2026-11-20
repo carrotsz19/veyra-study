@@ -30,13 +30,13 @@ import { join, resolve } from 'node:path'
 import { signing } from './signing.mjs'
 import { devVersion as nextDevVersion, nextVersion } from './version.mjs'
 import { currentTreeDevMeta, formatDevReleaseNotes, hasDevSelection, parseDevSelectArgs, prepareDevWorktree, promptDevSelection } from './dev-select.mjs'
+import { DEV_REPO, PROD_REPO, assertDevChannel, assertProdChannel } from './channels.mjs'
 
-const REPO = 'carrotsz19/veyra-study'
-/** Private: Dev test builds (only you can see them). */
-const DEV_REPO = 'carrotsz19/veyra-study-dev'
+const REPO = PROD_REPO
 const dev = process.argv.includes('--dev')
+const allowLocal = process.argv.includes('--local')
 const run = (cmd, args, env = process.env) => {
-  const r = spawnSync(cmd, args, { stdio: 'inherit', env, shell: process.platform === 'win32' })
+  const r = spawnSync(cmd, args, { stdio: 'inherit', env, shell: cmd !== 'node' && process.platform === 'win32' })
   if (r.status !== 0) process.exit(r.status ?? 1)
 }
 const git = (...a) => execFileSync('git', a, { encoding: 'utf8' }).trim()
@@ -86,17 +86,26 @@ if (dev) {
     })
     const forwarded = ['--dev', ...(process.argv.includes('--windows-only') ? ['--windows-only'] : [])]
     const childEnv = { ...process.env, VEYRA_DEV_SELECTED: '1', VEYRA_DEV_META: JSON.stringify(meta) }
+    let exitCode = 0
     try {
-      const r = spawnSync('node', [join(import.meta.dirname, 'release.mjs'), ...forwarded], { cwd: dir, env: childEnv, stdio: 'inherit', shell: process.platform === 'win32' })
-      if (r.status !== 0) process.exit(r.status ?? 1)
-      if (sel.web) {
-        const w = spawnSync('node', [join(import.meta.dirname, 'release-web.mjs'), '--dev'], { cwd: dir, env: childEnv, stdio: 'inherit', shell: process.platform === 'win32' })
-        if (w.status !== 0) process.exit(w.status ?? 1)
+      const r = spawnSync('node', [join(import.meta.dirname, 'release.mjs'), ...forwarded], { cwd: dir, env: childEnv, stdio: 'inherit' })
+      exitCode = r.status ?? 1
+      if (exitCode === 0 && sel.web) {
+        const w = spawnSync('node', [join(import.meta.dirname, 'release-web.mjs'), '--dev'], { cwd: dir, env: childEnv, stdio: 'inherit' })
+        exitCode = w.status ?? 1
       }
     } finally {
       cleanup()
     }
-    process.exit(0)
+    process.exit(exitCode)
+  }
+
+  let devCheck
+  try {
+    devCheck = assertDevChannel({ cwd: process.cwd(), allowLocal })
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e))
+    process.exit(1)
   }
 
   // The next version, marked as a test build: 26.11.1 → 26.11.2-dev.202611181905 (tools/version.mjs).
@@ -128,9 +137,19 @@ if (dev) {
   writeFileSync(notesFile, formatDevReleaseNotes(meta, devVersion, tag))
   const files = ['Veyra-Study-Dev-Setup.exe', 'Veyra-Study-Dev-Setup.exe.blockmap', 'latest.yml'].map((f) => join('release-dev', f))
   const titleSuffix = meta.label ? ` · ${meta.label}` : meta.commit ? ` (${meta.commit})` : ''
-  execFileSync('gh', ['release', 'create', tag, ...files, '--repo', DEV_REPO, '--title', `Veyra Study Dev ${devVersion}${titleSuffix}`, '--notes-file', notesFile, '--latest'], { stdio: 'inherit', env: ghEnv })
+  const includeAndroid = !process.argv.includes('--windows-only')
+  // Create as draft when Android will also be uploaded, so Windows + Android appear atomically.
+  const targetArgs = !allowLocal && !process.env.VEYRA_DEV_SELECTED && devCheck?.headSha ? ['--target', devCheck.headSha] : []
+  execFileSync(
+    'gh',
+    ['release', 'create', tag, ...files, '--repo', DEV_REPO, ...targetArgs, '--title', `Veyra Study Dev ${devVersion}${titleSuffix}`, '--notes-file', notesFile, ...(includeAndroid ? ['--draft'] : ['--latest'])],
+    { stdio: 'inherit', env: ghEnv }
+  )
   // Then the Android test build, onto the same release (unless --windows-only).
-  if (!process.argv.includes('--windows-only')) run('node', [join(import.meta.dirname, 'release-android.mjs'), '--dev'], { ...env, GH_TOKEN: token, VEYRA_DEV_TAG: tag })
+  if (includeAndroid) {
+    run('node', [join(import.meta.dirname, 'release-android.mjs'), '--dev'], { ...env, GH_TOKEN: token, VEYRA_DEV_TAG: tag })
+    execFileSync('gh', ['release', 'edit', tag, '--repo', DEV_REPO, '--draft=false', '--latest'], { stdio: 'inherit', env: ghEnv })
+  }
   // Keep the newest 20 test builds so the in-app Dev build switcher has plenty of history.
   const old = gh(['release', 'list', '--repo', DEV_REPO, '--limit', '100', '--json', 'tagName', '--jq', '.[].tagName'], ghEnv)
     .split(/\r?\n/)
@@ -141,8 +160,10 @@ if (dev) {
   process.exit(0)
 }
 
-if (git('status', '--porcelain')) {
-  console.error('Commit your changes first, so the release matches what is in git.')
+try {
+  assertProdChannel({ cwd: process.cwd(), allowRollback: process.env.VEYRA_ROLLBACK === '1' })
+} catch (e) {
+  console.error(e instanceof Error ? e.message : String(e))
   process.exit(1)
 }
 const tags = git('ls-remote', '--tags', 'origin', `v${version}`)

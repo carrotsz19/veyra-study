@@ -21,11 +21,11 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { devVersion as nextDevVersion, nextVersion } from './version.mjs'
+import { DEV_REPO, PROD_REPO, assertDevChannel, assertProdChannel } from './channels.mjs'
 
-const REPO = 'carrotsz19/veyra-study'
-/** Private: Dev test builds (only you can see them). */
-const DEV_REPO = 'carrotsz19/veyra-study-dev'
+const REPO = PROD_REPO
 const dev = process.argv.includes('--dev')
+const allowLocal = process.argv.includes('--local')
 const install = process.argv.includes('--install')
 const git = (...a) => execFileSync('git', a, { encoding: 'utf8' }).trim()
 let token = process.env.GH_TOKEN
@@ -38,11 +38,19 @@ const { version } = JSON.parse(readFileSync('package.json', 'utf8'))
 const appVersion = dev ? process.env.VEYRA_VERSION || nextDevVersion(version) : version
 const env = { ...process.env, VEYRA_CHANNEL: dev ? 'dev' : 'prod', VEYRA_VERSION: dev ? appVersion : '' }
 
-if (!dev) {
-  if (git('status', '--porcelain')) {
-    console.error('Commit your changes first, so the release matches what is in git.')
-    process.exit(1)
+try {
+  if (dev) {
+    // When invoked from release.mjs --dev, channel checks already ran (and VEYRA_DEV_TAG is set).
+    if (!process.env.VEYRA_DEV_TAG) assertDevChannel({ cwd: process.cwd(), allowLocal })
+  } else {
+    assertProdChannel({ cwd: process.cwd(), allowRollback: process.env.VEYRA_ROLLBACK === '1' })
   }
+} catch (e) {
+  console.error(e instanceof Error ? e.message : String(e))
+  process.exit(1)
+}
+
+if (!dev) {
   if (git('ls-remote', '--tags', 'origin', `android-v${version}`)) {
     console.error(`android-v${version} is already released. Use npm run ship: it picks the next version (${nextVersion(version)}) itself.`)
     process.exit(1)
