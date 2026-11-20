@@ -8,6 +8,7 @@ import './auth.css'
 import { deviceWord } from '../lib/phone'
 import type { AccountState } from '@shared/types'
 import { IS_DEV } from '@shared/channel'
+import { LegalDialog, type LegalWhich } from './Legal'
 import { setChatOwner } from '../data/agent'
 import { chatSyncAfterSignIn, startChatSync } from '../data/chat-sync'
 
@@ -113,6 +114,7 @@ export function Welcome({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(notice && notice !== 'moved' ? notice : '')
   const [legal, setLegal] = useState<{ legal: string } | null>(null)
+  const [legalPage, setLegalPage] = useState<LegalWhich | null>(null)
   // Forgot password, or confirming the email of a new account (it's signed in by then: pending).
   const [pane, setPane] = useState<null | 'reset' | 'verify'>(null)
   const [pending, setPending] = useState<AccountState | null>(null)
@@ -290,7 +292,27 @@ export function Welcome({
             <label className="check">
               <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
               <span>
-                I&apos;m 16 or over, and I agree to the{' '}
+                I&apos;m 16 or over, and I agree to Veyra Study&apos;s{' '}
+                <a
+                  href="#terms"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setLegalPage('terms')
+                  }}
+                >
+                  Terms of Service
+                </a>{' '}
+                and{' '}
+                <a
+                  href="#privacy"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setLegalPage('privacy')
+                  }}
+                >
+                  Privacy Policy
+                </a>
+                , and to the Veyra account{' '}
                 <a
                   href={legal?.legal}
                   onClick={(e) => {
@@ -298,12 +320,13 @@ export function Welcome({
                     open(legal?.legal)
                   }}
                 >
-                  Terms of Service and Privacy Policy
+                  Terms and Privacy Policy
                 </a>{' '}
-                for IronLog and Cashline. I understand IronLog isn&apos;t medical or fitness advice, and Cashline isn&apos;t financial advice.
+                shared with IronLog and Cashline. I understand IronLog isn&apos;t medical or fitness advice, and Cashline isn&apos;t financial advice.
               </span>
             </label>
           )}
+          {legalPage && <LegalDialog which={legalPage} onClose={() => setLegalPage(null)} />}
           <p className="err" role="alert">
             {err}
           </p>

@@ -41,6 +41,8 @@ import { startSegments } from './lib/segments'
 import { transition } from './lib/motion'
 import { IS_DEV } from '@shared/channel'
 import { BetaNotice } from './components/BetaNotice'
+import { LegalHost } from './components/Legal'
+import { DiagAsk } from './components/DiagAsk'
 import { ServerHoursNotice } from './components/ServerHours'
 import { SubjectNav } from './components/SubjectNav'
 import { CallDock, CallNotices } from './components/Voice'
@@ -132,12 +134,13 @@ function Sidebar({
           {IS_DEV && <span className="dev-pill">DEV</span>}
         </div>
       )}
+      {/* Search stays put above the tabs; only what's below it scrolls. */}
+      <button className="side-search" onClick={() => window.dispatchEvent(new Event('veyra:palette'))} title="Search everything and run commands (Ctrl+K)">
+        <Search size={15} />
+        <span className="grow nav-label">Search</span>
+        <kbd className="nav-label">Ctrl K</kbd>
+      </button>
       <div className="side-scroll">
-        <button className="side-search" onClick={() => window.dispatchEvent(new Event('veyra:palette'))} title="Search everything and run commands (Ctrl+K)">
-          <Search size={15} />
-          <span className="grow nav-label">Search</span>
-          <kbd className="nav-label">Ctrl K</kbd>
-        </button>
         <nav aria-label="Main">
           {nav.map(([name, label, Icon, count]) => (
             <button key={name} className="navbtn" aria-current={route.name === name} onClick={() => go({ name } as Route)} title={tip(count ? `${label} (${count})` : label)} aria-label={label}>
@@ -595,6 +598,8 @@ function Shell() {
           <VoiceSetupHost />
           <Palette />
           <BetaNotice />
+          <LegalHost />
+          <DiagAsk />
           <AnnouncementsHost signedIn={signedIn} />
           <ServerHoursNotice />
           <main className={`main ${route.name === 'settings' ? 'main-settings' : route.name === 'notes' ? 'main-notes' : route.name === 'messages' ? 'main-messages' : route.name === 'groups' ? 'main-groups' : route.name === 'ai' ? 'main-ai' : route.name === 'calendar' ? 'main-calendar' : ''}`}>

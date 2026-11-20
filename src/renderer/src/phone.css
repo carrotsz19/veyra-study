@@ -156,7 +156,8 @@
   /* Settings: the list of sections, or one section */
   html .settings.phone-list .set-main, html .settings.phone-page .set-nav { display: none; }
   html .settings { display: block !important; height: 100%; }
-  html .settings .set-nav { border-right: 0; height: 100%; padding: 18px 14px calc(20px + var(--tabbar)); background: transparent; }
+  html .settings .set-nav { border-right: 0; height: 100%; padding: 18px 14px 0; background: transparent; }
+  html .settings .set-nav nav { padding-bottom: calc(20px + var(--tabbar)); }
   html .settings .set-main { padding-bottom: calc(var(--tabbar) + 20px) !important; }
   html .settings .set-main { height: 100%; padding: 12px 16px 40px; }
   html .set-row { flex-wrap: wrap; gap: 10px; }
@@ -168,6 +169,11 @@
   html .upd-card .grow { flex: 1 1 200px; }
   html .upd-actions { width: 100%; }
   html .upd-actions .btn { flex: 1; justify-content: center; min-height: 44px; }
+
+  /* Plan & billing: single-column cards with generous tap targets */
+  html .billing-plans { grid-template-columns: minmax(0, 1fr); }
+  html .billing-mode-act { width: 100%; margin-left: 0; justify-content: center; }
+  html .billing-cta { min-height: 44px; font-size: 14px; }
 
   /* Calendar */
   /* the month fills the screen above the dock; the page itself never scrolls */

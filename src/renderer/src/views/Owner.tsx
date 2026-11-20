@@ -6,6 +6,8 @@ import { Avatar } from '../components/account'
 import { Dialog, Seg, useToast } from '../components/ui'
 import { OwnerAiTab } from './OwnerAi'
 import { OwnerAnnounceTab } from './OwnerAnnounce'
+import { OwnerDiagnosticsTab } from './OwnerDiagnostics'
+import { OwnerPlansTab } from './OwnerPlans'
 
 /**
  * Settings → Owner: only for the owner of Veyra Study (the group server
@@ -28,7 +30,11 @@ type Overview = {
   dbBytes: number
   /** Servers from 1.14.0: the month's Cloudflare call relay use. */
   voice?: { used: number; cap: number; month: string; closed: boolean; cloudflare: boolean }
+  /** Servers from 1.17.0: diagnostic reports, and automatic ones in the last hour by version. */
+  diagnostics?: { total: number; unread: number; lastHour: { version: string; count: number }[] }
 }
+/** This many automatic reports from one version within an hour: probably a bad release. */
+const BAD_RELEASE_REPORTS = 3
 type AdminUser = {
   username: string
   displayName: string
@@ -77,7 +83,17 @@ const size = (b: number) => (b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 102
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
 
 export function OwnerSection() {
-  const [tab, setTab] = useState<'overview' | 'users' | 'groups' | 'ai' | 'announce'>('overview')
+  const [tab, setTab] = useState<'overview' | 'users' | 'groups' | 'ai' | 'plans' | 'announce' | 'diagnostics'>(() => {
+    const want = sessionStorage.getItem('veyra.ownerTab')
+    if (want) sessionStorage.removeItem('veyra.ownerTab')
+    return want === 'plans' ? 'plans' : 'overview'
+  })
+  const [unread, setUnread] = useState(0)
+  useEffect(() => {
+    groupCall<Overview>('GET', '/admin/overview')
+      .then((o) => setUnread(o.diagnostics?.unread ?? 0))
+      .catch(() => {})
+  }, [])
   return (
     <div className="owner">
       <div className="owner-head">
@@ -89,15 +105,19 @@ export function OwnerSection() {
             ['users', 'Users'],
             ['groups', 'Groups'],
             ['ai', 'AI'],
-            ['announce', 'Announcements']
+            ['plans', 'Plans'],
+            ['announce', 'Announcements'],
+            ['diagnostics', unread ? `Diagnostics (${unread})` : 'Diagnostics']
           ]}
         />
       </div>
-      {tab === 'overview' && <OverviewTab />}
+      {tab === 'overview' && <OverviewTab openDiagnostics={() => setTab('diagnostics')} />}
       {tab === 'users' && <UsersTab />}
       {tab === 'groups' && <GroupsTab />}
       {tab === 'ai' && <OwnerAiTab />}
+      {tab === 'plans' && <OwnerPlansTab />}
       {tab === 'announce' && <OwnerAnnounceTab />}
+      {tab === 'diagnostics' && <OwnerDiagnosticsTab onCount={setUnread} />}
     </div>
   )
 }
@@ -132,7 +152,7 @@ function Problem({ error, retry }: { error: string; retry: () => void }) {
 }
 
 /* ---------- overview ---------- */
-function OverviewTab() {
+function OverviewTab({ openDiagnostics }: { openDiagnostics: () => void }) {
   const { data: o, error, load } = useLoad<Overview>('/admin/overview')
   const [downloads, setDownloads] = useState<{ total: number; latest: string; latestCount: number } | null>(null)
   useEffect(() => {
@@ -163,10 +183,18 @@ function OverviewTab() {
     ...(o.voice
       ? ([['Call relay this month', gb(o.voice.used), o.voice.closed ? `Voice paused: over ${gb(o.voice.cap)}` : `of ${gb(o.voice.cap)} cap${o.voice.cloudflare ? ' · Cloudflare count' : ' · counted by the apps'}`]] as [string, string, string][])
       : []),
+    ...(o.diagnostics ? ([['Diagnostic reports', o.diagnostics.unread ? `${o.diagnostics.unread} new` : o.diagnostics.total, `${o.diagnostics.total} in the last 90 days`]] as [string, string | number, string][]) : []),
     ...(downloads ? ([['Downloads', downloads.total, downloads.latest ? `${downloads.latestCount} of ${downloads.latest}` : undefined]] as [string, number, string?][]) : [])
   ]
+  const bad = (o.diagnostics?.lastHour ?? []).filter((v) => v.count >= BAD_RELEASE_REPORTS)
   return (
     <>
+      {bad.map((v) => (
+        <button key={v.version} className="card owner-alert" onClick={openDiagnostics}>
+          <b>{v.count} automatic crash reports from {v.version} in the last hour.</b>
+          <span className="sm">This release may be broken. Open Diagnostics to look, then ship a fix or roll back (node tools/rollback.mjs).</span>
+        </button>
+      ))}
       <div className="owner-tiles">
         {tiles.map(([label, value, sub]) => (
           <div key={label} className="card owner-tile">

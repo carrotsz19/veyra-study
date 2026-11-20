@@ -208,6 +208,9 @@ const update: Veyra['update'] = ON_WEB
   check: () => updates.check(),
   download: () => updates.download(),
   install: () => updates.install(),
+  devBuilds: () => updates.listDevBuilds(),
+  installDevBuild: (tag) => updates.installDevBuild(tag),
+  unpinDevBuild: () => updates.unpinDevBuild(),
   onState: (cb) => updates.onState(cb)
 }
 const mcp: Veyra['mcp'] = {

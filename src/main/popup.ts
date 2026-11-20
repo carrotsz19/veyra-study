@@ -41,9 +41,12 @@ export function setupMenus(main: BrowserWindow, load: Load, preload: string, mat
   load(pop, 'menu')
   // Clicking anywhere else closes it (the app hears so, to un-highlight its button).
   pop.on('blur', () => hide('away'))
+  // Only this window's own menu: when a fresh main window replaced this one, its menu stays.
+  const mine = pop
   main.on('closed', () => {
-    pop?.destroy()
-    pop = null
+    if (!mine.isDestroyed()) mine.destroy()
+    if (pop === mine) pop = null
+    if (owner === main) owner = null
   })
   main.on('move', () => hide('away'))
   main.on('resize', () => hide('away'))
