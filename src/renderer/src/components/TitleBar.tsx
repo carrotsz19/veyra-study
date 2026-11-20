@@ -9,6 +9,7 @@ import { TaskDialog } from './editors'
 import { useToast } from './ui'
 import { IS_DEV } from '@shared/channel'
 import { emailOwner, reportBug } from './BetaNotice'
+import { showLegal } from './Legal'
 
 /**
  * Veyra's own title bar on Windows: the app's mark and name, then File, Edit,
@@ -137,7 +138,11 @@ export function TitleBar() {
         'sep',
         { label: 'Report a bug', run: reportBug },
         { label: 'Email the owner', run: emailOwner },
+        { label: 'Send diagnostics…', run: () => settings('data') },
         { label: IS_DEV ? 'Test builds on GitHub' : 'All versions on GitHub', run: () => void window.veyra.open(IS_DEV ? 'https://github.com/carrotsz19/veyra-study-dev/releases' : `${REPO}/releases`) },
+        'sep',
+        { label: 'Privacy Policy', run: () => showLegal('privacy') },
+        { label: 'Terms of Service', run: () => showLegal('terms') },
         'sep',
         { label: `About Veyra Study ${__APP_VERSION__}`, run: () => settings('updates') }
       ]

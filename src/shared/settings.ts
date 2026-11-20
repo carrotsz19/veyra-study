@@ -95,6 +95,8 @@ export interface AppSettings {
   mcpAllowWrites: boolean
   /** Check for a new version each time Veyra starts (the installed app). */
   checkUpdatesAtStart: boolean
+  /** Computer app: send the diagnostics log to the owner by itself after a crash or similar problem (off unless chosen). */
+  diagAutoSend: boolean
   /* notes */
   noteTemplate: NoteTemplate
   noteFont: NoteFont
@@ -223,6 +225,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mcpEnabled: false,
   mcpAllowWrites: false,
   checkUpdatesAtStart: true,
+  diagAutoSend: false,
   noteTemplate: 'page',
   noteFont: 'sans',
   noteCover: 'none',

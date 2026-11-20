@@ -484,7 +484,7 @@ html.material :is(.dialog, .pal, .popover, .tb-pop, .ctx-menu, .slash-menu, .fb-
 
 /* ---------- Ctrl+K palette ---------- */
 .side-search {
-  display: flex; align-items: center; gap: 9px; width: 100%; margin: -6px 0 12px; padding: 7px 10px;
+  flex-shrink: 0; display: flex; align-items: center; gap: 9px; width: 100%; margin: -6px 0 12px; padding: 7px 10px;
   border: 1px solid var(--line); border-radius: var(--r-control); background: var(--panel); color: var(--dim); font-size: 13px; text-align: left;
 }
 .side-search:hover { border-color: var(--accent); color: var(--ink); }
@@ -607,10 +607,7 @@ html.dark .seg.has-thumb > [aria-selected='true'] { background: transparent; }
 html.dark .seg.has-thumb::before { background: var(--separator); }
 .seg.thumb-instant::before { transition: none; }
 
-/* The switch's knob stretches a little while pressed, then springs across. */
-.switch::after { transition: transform var(--spring-snappy-ms) var(--spring-snappy), width var(--spring-snappy-ms) var(--spring-snappy); }
-.switch:active::after { width: 31px; }
-.switch:checked:active::after { transform: translateX(15px); }
+/* The switch's press-and-stretch lives with the rest of the switch in account.css (loaded after this file). */
 
 /* drop-down variants by place */
 .sel.sel-auto { width: auto; }

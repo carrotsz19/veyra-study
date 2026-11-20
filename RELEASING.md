@@ -19,13 +19,16 @@ The two install side by side; neither ever updates into the other.
 ## Trying a change: a Dev build
 
 ```
-npm run release:dev
+npm run release:dev                              # current working tree (uncommitted changes included)
+npm run release:dev:pick                         # interactive picker: choose a commit, branch, PR, or commits to cherry-pick
+npm run release:dev -- --ref <sha|branch|pr#12>  # build a specific commit, branch, or GitHub PR
+npm run release:dev -- --commits <a,b> --base origin/main  # cherry-pick specific commits onto a clean base
 ```
 
-- No version bump or changelog needed, and uncommitted work is fine.
-- It builds Windows and Android as version `<next version>-dev.<date and time>` and publishes them as a release in the **private** repo carrotsz19/veyra-study-dev (the newest 10 are kept).
-- Installed Dev apps pick it up by themselves (Windows at its next check; Android in Settings → Software update).
-- `--windows-only` skips Android.
+- No version bump or changelog needed, and uncommitted work is fine (when using `--pick`, `--ref`, or `--commits`, it builds in a temporary git worktree without touching your working directory; add `--web` to publish the Dev website from the same selection, or use `npm run release:web:dev -- --pick`).
+- It builds Windows and Android as version `<next version>-dev.<date and time>` and publishes them as a release in the **private** repo carrotsz19/veyra-study-dev (the newest 20 are kept).
+- Installed Dev apps pick it up by themselves (Windows at its next check; Android in Settings → Software update), and **Settings → Software update → Dev builds** lets you switch between any of the published Dev builds by commit (switching to an older build on Windows pins automatic updates until you click **Follow latest**).
+- `--windows-only` skips Android; `--label "Billing rework"` adds a friendly name shown in the Dev build switcher.
 - First install: `Veyra-Study-Dev-Setup.exe` and `Veyra-Study-Dev.apk` from https://github.com/carrotsz19/veyra-study-dev/releases (sign in to GitHub to see it).
 - Dev apps read that private repo with a **read-only token for that one repo**, kept outside the code at `C:\dev\tools\veyra-dev-feed.token` and built into Dev builds only (never Prod). If it ever leaks, delete it on GitHub (Settings → Developer settings → Fine-grained tokens), make a new one, save it to that file, and run `npm run release:dev` again; Dev apps already installed then need the new installer once.
 

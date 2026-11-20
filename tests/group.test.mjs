@@ -550,3 +550,65 @@ test('cursors and saved links: presence reaches others; opened links stay in Sha
   // ...and removing it from the list doesn't stop the owner's link.
   assert.equal((await api(null, 'GET', `/shares/public/${link.id}`)).status, 200)
 })
+
+/* ---------------- diagnostics people choose to send ---------------- */
+test('diagnostics: signed-in people can send a report; only the owner can read reports', async () => {
+  const boss = await login('carrotsz19')
+  const ana = await login('ana')
+  // Not without signing in, and not empty.
+  assert.equal((await api(null, 'POST', '/diagnostics', { log: 'x' })).status, 401)
+  assert.equal((await api(ana, 'POST', '/diagnostics', { log: '   ' })).status, 400)
+  // Too big.
+  assert.equal((await api(ana, 'POST', '/diagnostics', { log: 'a'.repeat(330_000) })).status, 413)
+
+  const sent = await api(ana, 'POST', '/diagnostics', { log: '2026-11-20T10:00:00Z start version=1\n', note: 'Window vanished', version: '26.11.5', platform: 'win32 10.0' })
+  assert.equal(sent.status, 200)
+  assert.match(sent.body.id, /^\d{8}-\d{6}-ana-[a-f0-9]{8}$/)
+
+  // Others can't list or read them.
+  assert.equal((await api(ana, 'GET', '/admin/diagnostics')).status, 403)
+  assert.equal((await api(ana, 'GET', `/admin/diagnostics/${sent.body.id}`)).status, 403)
+  // The owner can.
+  const list = (await api(boss, 'GET', '/admin/diagnostics')).body.reports
+  const mine = list.find((r) => r.id === sent.body.id)
+  assert.equal(mine.username, 'ana')
+  assert.equal(mine.note, 'Window vanished')
+  const full = (await api(boss, 'GET', `/admin/diagnostics/${sent.body.id}`)).body.report
+  assert.equal(full.log, '2026-11-20T10:00:00Z start version=1\n')
+  // Ids that aren't report ids are refused (no reading other files).
+  assert.equal((await api(boss, 'GET', '/admin/diagnostics/..%2F..%2Fgroup.db')).status, 404)
+
+  // Sent by hand, a report needs to say what happened.
+  assert.equal((await api(ana, 'POST', '/diagnostics', { log: 'x', note: '' })).status, 400)
+
+  // Sent by the app itself: flagged, unread, and the person can add what happened afterwards.
+  const zed = await login('zed')
+  const auto = await api(zed, 'POST', '/diagnostics', { log: 'crash', auto: true, trigger: 'screen process gone' })
+  assert.equal(auto.status, 200)
+  let card = (await api(boss, 'GET', '/admin/diagnostics')).body.reports.find((r) => r.id === auto.body.id)
+  assert.equal(card.auto, true)
+  assert.equal(card.trigger, 'screen process gone')
+  assert.equal(card.note, '')
+  assert.equal(card.read, false)
+  assert.ok((await api(boss, 'GET', '/admin/overview')).body.diagnostics.unread >= 2)
+  assert.ok((await api(boss, 'GET', '/admin/overview')).body.diagnostics.lastHour.some((v) => v.count >= 1))
+  // Only its sender can add the note.
+  assert.equal((await api(ana, 'POST', `/diagnostics/${auto.body.id}/note`, { note: 'not mine' })).status, 404)
+  assert.equal((await api(zed, 'POST', `/diagnostics/${auto.body.id}/note`, { note: 'It froze while I typed' })).status, 200)
+  // Marking read, and a new note makes it unread again.
+  assert.equal((await api(ana, 'PATCH', `/admin/diagnostics/${auto.body.id}`, { read: true })).status, 403)
+  assert.equal((await api(boss, 'PATCH', `/admin/diagnostics/${auto.body.id}`, { read: true })).body.report.read, true)
+  await api(zed, 'POST', `/diagnostics/${auto.body.id}/note`, { note: 'It froze while I typed a note' })
+  card = (await api(boss, 'GET', '/admin/diagnostics')).body.reports.find((r) => r.id === auto.body.id)
+  assert.equal(card.note, 'It froze while I typed a note')
+  assert.equal(card.read, false)
+  // Deleting.
+  assert.equal((await api(ana, 'DELETE', `/admin/diagnostics/${auto.body.id}`)).status, 403)
+  assert.equal((await api(boss, 'DELETE', `/admin/diagnostics/${auto.body.id}`)).status, 200)
+  assert.equal((await api(boss, 'GET', `/admin/diagnostics/${auto.body.id}`)).status, 404)
+
+  // A few an hour, then a pause.
+  let last = 200
+  for (let i = 0; i < 6; i++) last = (await api(ana, 'POST', '/diagnostics', { log: 'again', note: 'again please' })).status
+  assert.equal(last, 429)
+})
