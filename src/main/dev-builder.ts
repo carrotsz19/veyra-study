@@ -251,3 +251,5 @@ export function stopDevBuildOnQuit(): void {
   }
 }
 
+/** A build is running (updates wait, so installing one doesn't stop it). */
+export const devBuildRunning = (): boolean => !!child

@@ -132,13 +132,14 @@ export function DevBuilderSection({ onBuilt }: { onBuilt: () => void }) {
   const branches = (cands?.branches ?? []).filter((b) => hit(`${b.name} ${b.sha} ${b.subject}`))
   const prs = (cands?.prs ?? []).filter((p) => hit(`#${p.number} ${p.title} ${p.headRefName}`))
   const activeTab: Tab = how === 'pick' ? 'commits' : tab
+  const nothingToPick = preview?.kind === 'commits' && preview.commits.length > 0 && preview.commits.every((c) => c.onBase)
 
   const start = () => {
     if (!req) return
     setStartErr('')
     setConfirming(false)
     void api
-      .start({ ...req, label: label.trim() || target?.label || '', windowsOnly: !android, web })
+      .start({ ...req, label: label.trim() || (how === 'as-is' ? target?.label : '') || '', windowsOnly: !android, web })
       .then((s) => {
         setShowLog(true)
         setSt(s)
@@ -344,8 +345,8 @@ export function DevBuilderSection({ onBuilt }: { onBuilt: () => void }) {
                       <ul className="devb-plist">
                         {preview.commits.slice(0, 12).map((c) => (
                           <li key={c.sha} className="xs">
-                            <code>{c.sha}</code> {c.subject}
-                            {c.stat && <span className="tert"> · {c.stat}</span>}
+                            <code>{c.sha}</code> <span className={c.onBase ? 'tert devb-skip' : ''}>{c.subject}</span>
+                            {c.onBase ? <span className="tert"> · already on {preview.base}, skipped</span> : c.stat && <span className="tert"> · {c.stat}</span>}
                           </li>
                         ))}
                         {preview.commits.length > 12 && <li className="xs tert">… and {preview.commits.length - 12} more</li>}
@@ -357,7 +358,7 @@ export function DevBuilderSection({ onBuilt }: { onBuilt: () => void }) {
             )}
 
             <div className="devb-opt">
-              <input className="set-input grow" placeholder={target?.label || 'Label for the build switcher (optional)'} value={label} maxLength={80} onChange={(e) => setLabel(e.target.value)} aria-label="Build label" />
+              <input className="set-input grow" placeholder={(how === 'as-is' && target?.label) || 'Label for the build switcher (optional)'} value={label} maxLength={80} onChange={(e) => setLabel(e.target.value)} aria-label="Build label" />
             </div>
             <div className="devb-opt devb-checks">
               <label className="row sm" style={{ gap: 6 }}>
@@ -378,7 +379,7 @@ export function DevBuilderSection({ onBuilt }: { onBuilt: () => void }) {
                   </button>
                 </>
               ) : (
-                <button className="btn sm" disabled={!req || running || !!previewErr} onClick={() => setConfirming(true)}>
+                <button className="btn sm" disabled={!req || running || !!previewErr || nothingToPick} onClick={() => setConfirming(true)}>
                   <Hammer size={13} /> Build…
                 </button>
               )}

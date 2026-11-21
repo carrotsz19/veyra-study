@@ -195,6 +195,11 @@ function resolveRef(repoDir, ref) {
   return { sha, branchLabel: isSha ? '' : ref }
 }
 
+/** `a` is already contained in `b` (exit status, so a failure doesn't read as "no"). */
+function isAncestor(cwd, a, b) {
+  return spawnSync('git', ['merge-base', '--is-ancestor', a, b], { cwd, stdio: 'ignore' }).status === 0
+}
+
 function commitInfo(repoDir, sha) {
   const out = git(['show', '-s', '--format=%h%x1f%H%x1f%P%x1f%s', sha], repoDir)
   const [shortSha, fullSha, parents, subject] = out.split('\x1f')
@@ -279,12 +284,24 @@ export function previewDevSelection(repoDir, { ref = '', commits = [], base = ''
     return { kind: 'ref', ref, title: `${head.sha} ${head.subject}`, base: against, commits: ahead, aheadCount: total, shortstat: shortstat([`${against}...${sha}`]) }
   }
   if (!commits.length) throw new Error('Nothing selected.')
+  if (String(against).startsWith('-')) throw new Error(`Invalid base "${against}".`)
+  const baseSha = tryGit(['rev-parse', '--verify', `${against}^{commit}`], repoDir)
+  if (!baseSha) throw new Error(`Unknown base "${against}".`)
   const infos = commits.map((c) => {
     if (String(c).startsWith('-')) throw new Error(`Invalid commit "${c}".`)
     const info = commitInfo(repoDir, c)
-    return { sha: info.sha, subject: info.subject, stat: tryGit(['show', '--shortstat', '--format=', info.full], repoDir) }
+    const onBase = isAncestor(repoDir, info.full, baseSha)
+    return { sha: info.sha, subject: info.subject, stat: tryGit(['show', '--shortstat', '--format=', info.full], repoDir), ...(onBase ? { onBase: true } : {}) }
   })
-  return { kind: 'commits', title: `${infos.length} commit${infos.length === 1 ? '' : 's'} onto ${against}`, base: against, commits: infos }
+  const skipped = infos.filter((i) => i.onBase).length
+  const applied = infos.length - skipped
+  return {
+    kind: 'commits',
+    title: `${applied} commit${applied === 1 ? '' : 's'} onto ${against}`,
+    base: against,
+    commits: infos,
+    ...(skipped ? { skipped, note: applied ? `${skipped} already on ${against}; skipped.` : `Every selected commit is already on ${against}, so there is nothing to cherry-pick. Build ${against} as is instead.` } : {})
+  }
 }
 
 /* ---------- terminal picker (npm run release:dev:pick) ---------- */
@@ -464,7 +481,7 @@ function printPreview(p) {
   if (p.kind === 'ref' && p.aheadCount !== undefined) {
     console.log(style('2', `  ${p.aheadCount} commit${p.aheadCount === 1 ? '' : 's'} not on ${p.base}${p.shortstat ? ` · ${p.shortstat}` : ''}`))
   }
-  for (const cm of p.commits.slice(0, 15)) console.log(`   ${cm.sha}  ${cm.subject}${cm.stat ? style('2', `  (${cm.stat})`) : ''}`)
+  for (const cm of p.commits.slice(0, 15)) console.log(`   ${cm.sha}  ${cm.subject}${cm.onBase ? style('2', '  (already on the base, skipped)') : cm.stat ? style('2', `  (${cm.stat})`) : ''}`)
   if (p.commits.length > 15) console.log(style('2', `   … and ${p.commits.length - 15} more`))
   console.log('')
 }
@@ -484,7 +501,9 @@ export async function promptDevSelection(repoDir) {
     base = second.result.ref
   }
 
-  printPreview(previewDevSelection(repoDir, { ref: picked.ref, commits: picked.commits, base }))
+  const preview = previewDevSelection(repoDir, { ref: picked.ref, commits: picked.commits, base })
+  printPreview(preview)
+  if (preview.kind === 'commits' && preview.commits.every((cm) => cm.onBase)) throw new Error('Nothing to cherry-pick.')
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   try {
     const labelAns = (await rl.question(`Build label (optional)${picked.label ? ` [${picked.label}]` : ''}: `)).trim()
@@ -613,16 +632,29 @@ export function prepareDevWorktree({ repoDir = process.cwd(), ref = '', commits 
   process.on('SIGINT', onSignal)
   process.on('SIGTERM', onSignal)
 
+  let applied = pickedInfos
   try {
     if (commits.length) {
       console.log(`Cherry-picking ${pickedInfos.length} commit${pickedInfos.length === 1 ? '' : 's'} onto ${baseLabel} (${checkoutSha.slice(0, 7)})…`)
+      applied = []
       for (const info of pickedInfos) {
+        if (isAncestor(workDir, info.full, checkoutSha)) {
+          console.log(`Skipping ${info.sha} (${info.subject}): already on ${baseLabel}.`)
+          continue
+        }
         // A merge commit is applied as its changes against its first parent (the branch it was merged into).
         const r = spawnSync('git', ['cherry-pick', ...(info.merge ? ['-m', '1'] : []), info.full], { cwd: workDir, stdio: 'inherit' })
         if (r.status !== 0) {
+          // Nothing left to apply (the same change is already on the base): skip it rather than fail.
+          if (!tryGit(['status', '--porcelain'], workDir) && spawnSync('git', ['cherry-pick', '--skip'], { cwd: workDir, stdio: 'ignore' }).status === 0) {
+            console.log(`Skipping ${info.sha} (${info.subject}): its changes are already on ${baseLabel}.`)
+            continue
+          }
           throw new Error(`Cherry-pick conflict on ${info.sha} (${info.subject}). Your main checkout was not touched.`)
         }
+        applied.push(info)
       }
+      if (!applied.length) throw new Error(`Every selected commit is already on ${baseLabel}; nothing to cherry-pick. Build ${baseLabel} as is instead (--ref ${baseLabel}).`)
     }
 
     // Carry over gitignored build input if present.
@@ -648,13 +680,13 @@ export function prepareDevWorktree({ repoDir = process.cwd(), ref = '', commits 
 
     const head = commitInfo(workDir, 'HEAD')
     const meta = {
-      commit: commits.length ? pickedInfos.at(-1).sha : head.sha,
-      fullCommit: commits.length ? pickedInfos.at(-1).full : head.full,
-      branch: branchLabel || (baseLabel ? `${baseLabel} + ${pickedInfos.length} commit${pickedInfos.length === 1 ? '' : 's'}` : undefined),
+      commit: commits.length ? applied.at(-1).sha : head.sha,
+      fullCommit: commits.length ? applied.at(-1).full : head.full,
+      branch: branchLabel || (baseLabel ? `${baseLabel} + ${applied.length} commit${applied.length === 1 ? '' : 's'}` : undefined),
       label: label || undefined,
       base: baseLabel || undefined,
       dirty: false,
-      commits: pickedInfos.map((c) => ({ sha: c.sha, subject: c.subject }))
+      commits: applied.map((c) => ({ sha: c.sha, subject: c.subject }))
     }
 
     return { dir: workDir, meta, cleanup }

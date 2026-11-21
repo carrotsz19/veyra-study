@@ -287,3 +287,55 @@ test('in-app builder turns a selection into release.mjs arguments and refuses un
   assert.equal(describeRequest({ mode: 'ref', ref: 'pr#9', label: 'Billing' }), 'Billing (PR #9)')
   assert.equal(describeRequest({ mode: 'commits', commits: [sha, sha], base: 'dev' }), '2 commits onto dev')
 })
+
+test('cherry-picking skips commits already on the base (by ancestry or by identical changes)', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'veyra-dev-skip-repo-'))
+  const git = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim()
+  const write = (name, text) => writeFileSync(join(repo, name), text)
+  try {
+    git('init', '-b', 'main')
+    git('config', 'user.email', 'test@example.com')
+    git('config', 'user.name', 'Test')
+    write('package.json', JSON.stringify({ name: 'demo', version: '26.11.4' }))
+    write('package-lock.json', '{}')
+    mkdirSync(join(repo, 'node_modules'), { recursive: true })
+    git('add', '.')
+    git('commit', '-m', 'Base')
+    write('old.txt', 'old')
+    git('add', 'old.txt')
+    git('commit', '-m', 'Already on main')
+    const onMain = git('rev-parse', 'HEAD')
+    git('checkout', '-b', 'feat/y')
+    write('y.txt', 'y')
+    git('add', 'y.txt')
+    git('commit', '-m', 'Add y')
+    const shaY = git('rev-parse', 'HEAD')
+    write('same.txt', 'same')
+    git('add', 'same.txt')
+    git('commit', '-m', 'Same change as on main')
+    const dup = git('rev-parse', 'HEAD')
+    git('checkout', 'main')
+    write('same.txt', 'same')
+    git('add', 'same.txt')
+    git('commit', '-m', 'Same change, made on main')
+
+    const p = previewDevSelection(repo, { commits: [onMain, shaY], base: 'main' })
+    assert.equal(p.commits[0].onBase, true)
+    assert.equal(p.commits[1].onBase, undefined)
+    assert.equal(p.skipped, 1)
+    assert.match(p.title, /^1 commit onto main/)
+
+    const w = prepareDevWorktree({ repoDir: repo, commits: [onMain, shaY, dup], base: 'main' })
+    try {
+      assert.equal(existsSync(join(w.dir, 'y.txt')), true)
+      assert.deepEqual(w.meta.commits.map((c) => c.subject), ['Add y'])
+    } finally {
+      w.cleanup()
+    }
+
+    assert.match(previewDevSelection(repo, { commits: [onMain], base: 'main' }).note, /nothing to cherry-pick/)
+    assert.throws(() => prepareDevWorktree({ repoDir: repo, commits: [onMain], base: 'main' }), /already on main/)
+  } finally {
+    rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  }
+})

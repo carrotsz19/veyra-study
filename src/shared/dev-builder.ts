@@ -62,7 +62,9 @@ export interface DevPreview {
   ref?: string
   title: string
   base: string
-  commits: { sha: string; subject: string; stat?: string }[]
+  /** onBase: already contained in the base, so it is skipped. */
+  commits: { sha: string; subject: string; stat?: string; onBase?: boolean }[]
+  skipped?: number
   aheadCount?: number
   shortstat?: string
   note?: string
