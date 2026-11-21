@@ -9,6 +9,7 @@ picked automatically. They come after the older 1.0.x numbers.
 
 ## Unreleased
 
+- **Export notes to PDF and Word (.docx):** alongside Markdown, you can now export any note — or several selected notes at once — as a formatted PDF or Word (`.docx`) document from the note's `•••` menu, right-click menu, or multi-select bar. Headings, formatting, highlights, checklists, callouts, question toggles, tables, code blocks, Cornell layouts, drawings, and attached images are preserved.
 - **Update checks no longer fail while a new version is going out:** a new release now only shows up once all its files are uploaded, and if you check during those few minutes, Veyra says an update is being published instead of "Couldn't check for updates."
 - **Search stays at the top of the sidebar:** the Search box above the tabs no longer scrolls away with your subjects.
 - **Settings keeps its title and search in view:** only the list of sections scrolls.

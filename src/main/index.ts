@@ -25,6 +25,7 @@ import { Sync } from './sync'
 import { VoiceError, Whisper } from './whisper'
 import { McpServer, addToClient, clientConfigPath, clientHasVeyra, mcpEntry } from './mcp'
 import { setupMenus, setupTextMenu } from './popup'
+import { exportBinaryFiles, exportPdfFiles } from './export'
 import { crashedRunsInARow, diag, diagDir, initDiag, onProblem, problem, readDiag, recentDiag, trackWindow, windowFacts } from './diaglog'
 import { CONTACT } from '../shared/contact'
 
@@ -943,6 +944,12 @@ app.whenReady().then(async () => {
     }
     return { saved: files.length }
   })
+  ipcMain.handle('notes:exportFiles', (_e, list: { name: string; ext: string; bytes: Uint8Array }[], kindLabel: string) =>
+    friendly(() => exportBinaryFiles(list, kindLabel))
+  )
+  ipcMain.handle('notes:exportPdf', (_e, list: { name: string; html: string }[]) =>
+    friendly(() => exportPdfFiles(list))
+  )
   ipcMain.handle('app:open', (_e, url: string) => {
     // Web links, and email (the "still being built" notice's Email button).
     if (/^https:\/\//.test(url) || /^mailto:[^\s]+$/.test(url)) shell.openExternal(url)

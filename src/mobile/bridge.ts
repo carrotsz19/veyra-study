@@ -233,6 +233,7 @@ const appApi: Veyra['app'] = {
   },
   openDataFolder: async () => {},
   exportNotes: (files) => exports.exportNotes(files),
+  exportFiles: (files, kindLabel) => exports.exportFiles(files, kindLabel),
   version: async () => __APP_VERSION__,
   materialSupported: false,
   setMaterial: async () => {},
