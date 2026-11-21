@@ -134,7 +134,7 @@ test('prepareDevWorktree checks out a single ref or cherry-picks selected commit
     writeFileSync(join(repo, 'dirty.txt'), 'keep me\n')
 
     // 1) Single ref checkout at shaA: has a.txt, not b.txt, not dirty.txt, and links node_modules.
-    const one = prepareDevWorktree({ repoDir: repo, ref: shaA, label: 'Only A' })
+    const one = prepareDevWorktree({ linkNodeModules: true, repoDir: repo, ref: shaA, label: 'Only A' })
     try {
       assert.equal(existsSync(join(one.dir, 'a.txt')), true)
       assert.equal(existsSync(join(one.dir, 'b.txt')), false)
@@ -148,7 +148,7 @@ test('prepareDevWorktree checks out a single ref or cherry-picks selected commit
     assert.equal(existsSync(one.dir), false)
 
     // 2) Cherry-pick ONLY shaB onto baseSha: has b.txt, NOT a.txt!
-    const picked = prepareDevWorktree({ repoDir: repo, commits: [shaB], base: baseSha, label: 'Just B' })
+    const picked = prepareDevWorktree({ linkNodeModules: true, repoDir: repo, commits: [shaB], base: baseSha, label: 'Just B' })
     try {
       assert.equal(existsSync(join(picked.dir, 'b.txt')), true)
       assert.equal(existsSync(join(picked.dir, 'a.txt')), false)
@@ -248,7 +248,7 @@ test('previewDevSelection lists what a ref adds over the base, and cherry-picks 
     assert.throws(() => previewDevSelection(repo, { ref: '--evil' }), /Invalid ref/)
 
     // A merge commit cherry-picks onto a base without it (applied against its first parent).
-    const w = prepareDevWorktree({ repoDir: repo, commits: [mergeSha], base: 'other' })
+    const w = prepareDevWorktree({ linkNodeModules: true, repoDir: repo, commits: [mergeSha], base: 'other' })
     try {
       assert.equal(existsSync(join(w.dir, 'x.txt')), true)
     } finally {
@@ -325,7 +325,7 @@ test('cherry-picking skips commits already on the base (by ancestry or by identi
     assert.equal(p.skipped, 1)
     assert.match(p.title, /^1 commit onto main/)
 
-    const w = prepareDevWorktree({ repoDir: repo, commits: [onMain, shaY, dup], base: 'main' })
+    const w = prepareDevWorktree({ linkNodeModules: true, repoDir: repo, commits: [onMain, shaY, dup], base: 'main' })
     try {
       assert.equal(existsSync(join(w.dir, 'y.txt')), true)
       assert.deepEqual(w.meta.commits.map((c) => c.subject), ['Add y'])
@@ -334,7 +334,7 @@ test('cherry-picking skips commits already on the base (by ancestry or by identi
     }
 
     assert.match(previewDevSelection(repo, { commits: [onMain], base: 'main' }).note, /nothing to cherry-pick/)
-    assert.throws(() => prepareDevWorktree({ repoDir: repo, commits: [onMain], base: 'main' }), /already on main/)
+    assert.throws(() => prepareDevWorktree({ linkNodeModules: true, repoDir: repo, commits: [onMain], base: 'main' }), /already on main/)
   } finally {
     rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }

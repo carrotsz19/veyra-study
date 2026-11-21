@@ -8,8 +8,8 @@
  *  - optional friendly name shown in the Dev app:  --label "Billing rework"
  *
  * Runs inside a clean detached git worktree so your main checkout (and any uncommitted work)
- * is never disturbed. When package-lock.json matches, it reuses node_modules via a directory
- * junction/symlink for fast builds; otherwise it runs npm ci inside the worktree.
+ * is never disturbed. It installs its own node_modules (npm ci --prefer-offline), because electron-builder
+ * can't package dependencies through a junction to another checkout's node_modules.
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -571,9 +571,9 @@ function fileHash(path) {
 
 /**
  * Prepares a clean detached git worktree for the chosen ref or cherry-picked commits,
- * reuses node_modules when package-lock.json matches, and returns { dir, meta, cleanup }.
+ * installs node_modules (or, with linkNodeModules, links your checkout's for quick checks), and returns { dir, meta, cleanup }.
  */
-export function prepareDevWorktree({ repoDir = process.cwd(), ref = '', commits = [], base = '', label = '' }) {
+export function prepareDevWorktree({ repoDir = process.cwd(), ref = '', commits = [], base = '', label = '', linkNodeModules = false }) {
   const root = resolve(repoDir)
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
   // The in-app builder chooses the folder itself (VEYRA_DEV_WORKDIR) so it can tidy up after a cancel.
@@ -667,14 +667,15 @@ export function prepareDevWorktree({ repoDir = process.cwd(), ref = '', commits 
     workPkg.version = pkg.version
     writeFileSync(workPkgPath, JSON.stringify(workPkg, null, 2) + '\n')
 
-    // Fast path: reuse node_modules via directory junction when package-lock.json is identical.
+    // A build needs real node_modules: electron-builder can't follow a junction to another folder and
+    // silently leaves dependencies (fs-extra, …) out of the app. Linking is only for quick checks (tests).
     const mainLock = fileHash(join(root, 'package-lock.json'))
     const workLock = fileHash(join(workDir, 'package-lock.json'))
-    if (mainLock && mainLock === workLock && existsSync(join(root, 'node_modules'))) {
+    if (linkNodeModules && mainLock && mainLock === workLock && existsSync(join(root, 'node_modules'))) {
       symlinkSync(join(root, 'node_modules'), join(workDir, 'node_modules'), 'junction')
     } else {
-      console.log('package-lock.json differs from your working tree; running npm ci in the build worktree…')
-      const r = spawnSync('npm', ['ci', '--no-audit', '--no-fund'], { cwd: workDir, stdio: 'inherit', shell: process.platform === 'win32' })
+      console.log('Installing dependencies in the build worktree (npm ci, from the npm cache where possible)…')
+      const r = spawnSync('npm', ['ci', '--prefer-offline', '--no-audit', '--no-fund'], { cwd: workDir, stdio: 'inherit', shell: process.platform === 'win32' })
       if (r.status !== 0) throw new Error('npm ci failed in temporary worktree.')
     }
 
