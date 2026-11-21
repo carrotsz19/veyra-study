@@ -3,7 +3,7 @@ import iconPath from '../../resources/icon.png?asset'
 import trayPath from '../../resources/tray@2x.png?asset'
 import devBadgePath from '../../resources/dev-badge.png?asset'
 import { Reminders } from './reminders'
-import { checkNow, downloadNow, installNow, installReady, keepUpToDate, lookForUpdate, takeHiddenFlag, updateAtStart, updateState } from './updater'
+import { checkNow, downloadNow, installDevBuild, installNow, installReady, keepUpToDate, listDevBuilds, lookForUpdate, takeHiddenFlag, unpinDevBuild, updateAtStart, updateState } from './updater'
 import { withDefaults } from '../shared/settings'
 import { ChatNotifier, type ChatNotice } from '../shared/chat-notify'
 import { isDmGroup } from '../shared/dm'
@@ -26,6 +26,8 @@ import { VoiceError, Whisper } from './whisper'
 import { McpServer, addToClient, clientConfigPath, clientHasVeyra, mcpEntry } from './mcp'
 import { setupMenus, setupTextMenu } from './popup'
 import { exportBinaryFiles, exportPdfFiles } from './export'
+import { crashedRunsInARow, diag, diagDir, initDiag, onProblem, problem, readDiag, recentDiag, trackWindow, windowFacts } from './diaglog'
+import { CONTACT } from '../shared/contact'
 
 // Dev checks: VEYRA_FAKE_MIC=1 records a test tone instead of the real microphone.
 if (process.env['VEYRA_FAKE_MIC']) app.commandLine.appendSwitch('use-fake-device-for-media-stream')
@@ -39,10 +41,22 @@ else app.setPath('userData', join(app.getPath('appData'), devData ? 'veyra-study
 app.setName(APP_NAME)
 
 // One Veyra at a time: opening it again shows the one already running (in the tray, say).
-if (!app.requestSingleInstanceLock()) app.quit()
+const firstCopy = app.requestSingleInstanceLock()
+if (!firstCopy) app.quit()
+// The technical log (Settings → Data & privacy → Diagnostics). Only the copy that stays writes to it.
+else initDiag()
+/** When Veyra was last opened again while already running. */
+let lastReopen = 0
 // Opening Veyra again (Start menu, taskbar): install a downloaded update first if there is one.
 app.on('second-instance', () => {
+  diag('second launch: current window', { window: windowFacts(mainWin), tray: !!tray && !tray.isDestroyed() })
   if (installReady(false)) return
+  // Opened twice in quick succession: whatever is there didn't appear, so build a fresh window
+  // instead of trusting the old one. (Windows can lose Veyra's window without telling it: then
+  // showing it again does nothing, and every later launch hands off to the same invisible copy.)
+  const again = Date.now() - lastReopen < 15_000
+  lastReopen = Date.now()
+  if (again && !startingUp && app.isReady()) return rebuildWindow()
   showWindow()
 })
 // Packaged builds have a Start menu shortcut with this id, which Windows needs for notifications.
@@ -71,6 +85,131 @@ function showWindow(screen?: string): void {
   if (screen) w.webContents.send('app:nav', screen)
   // Back from the tray: a good moment to look for an update (at most every 5 minutes).
   void lookForUpdate()
+}
+
+/*
+ * "Veyra Study couldn't open properly" (or "keeps closing unexpectedly"): a plain Windows message,
+ * so it still works when the app's own screens don't (a bad release, say). It offers to send a
+ * report (that press is the person's go-ahead, even with automatic reports off), the log folder,
+ * and the owner's email. Not an older version: its start-up update check would install the broken
+ * one again. The way out of a bad release is a fix or tools/rollback.mjs, which installs by itself.
+ */
+let reportNow: ((trigger: string) => Promise<{ ok: true } | { ok: false; error: string }>) | null = null
+let openTrouble = false
+async function couldntOpen(why: string, kind: 'open' | 'crashes' = 'open'): Promise<void> {
+  if (openTrouble) return
+  openTrouble = true
+  if (kind === 'open') problem('couldn’t open', { why })
+  // Test launches (tools/smoke.mjs) only need the log line, not a message nobody will click.
+  if (process.env['VEYRA_SCREENSHOT']) return
+  for (;;) {
+    const { response } = await dialog.showMessageBox({
+      type: 'error',
+      title: APP_NAME,
+      message: kind === 'open' ? `${APP_NAME} couldn’t open properly` : `${APP_NAME} keeps closing unexpectedly`,
+      detail: `${why}\n\nYou can send a technical report to the owner so it gets fixed. It holds app events and errors, not your notes or messages. When a fixed version is out, ${APP_NAME} installs it by itself the next time it starts.`,
+      buttons: ['Send a report', 'Open the log folder', 'Email the owner', 'Close'],
+      defaultId: 0,
+      cancelId: 3,
+      noLink: true
+    })
+    if (response === 0) {
+      const r = reportNow ? await reportNow(kind === 'open' ? 'couldn’t open' : 'last run ended unexpectedly') : { ok: false as const, error: 'Veyra hadn’t finished starting.' }
+      await dialog.showMessageBox({
+        type: r.ok ? 'info' : 'warning',
+        title: APP_NAME,
+        message: r.ok ? 'Report sent. Thank you!' : 'Couldn’t send the report',
+        detail: r.ok
+          ? 'If you can, also tell the owner what you were doing: by email, or in Veyra when it opens (it will ask).'
+          : `${r.error}\n\nYou can email the log instead: choose “Open the log folder” and attach diagnostics.log.`,
+        buttons: ['OK']
+      })
+      if (r.ok) break
+      continue
+    }
+    if (response === 1) {
+      void shell.openPath(diagDir())
+      continue
+    }
+    if (response === 2) {
+      void shell.openExternal(`mailto:${CONTACT.email}?subject=${encodeURIComponent(`${APP_NAME} ${app.getVersion()} won’t open`)}`)
+      continue
+    }
+    break
+  }
+}
+
+/** Watches the first main window open: a screen that crashes, fails to load, stays blank or never appears gets the message above. */
+let openingWatched = false
+function watchOpening(win: BrowserWindow): void {
+  if (openingWatched) return
+  openingWatched = true
+  let fine = false
+  const failed = (why: string) => !fine && !win.isDestroyed() && void couldntOpen(why)
+  // Not for a quiet start with Windows (a busy login can be slow, and nobody is waiting for the window).
+  const hiddenStart = process.argv.includes('--hidden')
+  const never = hiddenStart ? undefined : setTimeout(() => failed('Its window didn’t finish opening within a minute and a half.'), 90_000)
+  win.webContents.on('render-process-gone', (_e, d) => d.reason !== 'clean-exit' && failed(`Its screen crashed while opening (${d.reason}).`))
+  win.webContents.on('did-fail-load', (_e, code, desc, _url, isMainFrame) => isMainFrame && code !== -3 && failed(`Its screen didn’t load (${desc}).`))
+  win.webContents.once('did-finish-load', () => {
+    // Loaded is not the same as drawn: a bad release can leave the page empty. Look a little later.
+    setTimeout(() => {
+      if (win.isDestroyed()) return
+      win.webContents
+        .executeJavaScript("document.getElementById('root')?.childElementCount ?? 0")
+        .then((n: number) => {
+          if (n > 0) {
+            fine = true
+            clearTimeout(never)
+          } else failed('Its screen stayed blank.')
+        })
+        .catch(() => failed('Its screen stopped responding while opening.'))
+    }, 8000)
+  })
+}
+
+/** Replaces the main window (and the tray icon) with fresh ones: the way back when the old window went missing. */
+function rebuildWindow(): void {
+  problem('rebuilding window', { old: windowFacts(mainWin) })
+  const old = mainWin && !mainWin.isDestroyed() ? mainWin : null
+  // The new window first: with no window at all for a moment, Veyra would quit.
+  mainWin = null
+  createWindow()
+  const w = mainWin as BrowserWindow | null
+  w?.once('ready-to-show', () => {
+    if (w.isDestroyed()) return
+    w.show()
+    w.focus()
+  })
+  if (old) {
+    // destroy() skips the page's unload handlers, where notes and settings save their last edits:
+    // run them first (the saves are synchronous), giving up after a moment if the old screen is stuck.
+    const flush = old.webContents.isDestroyed() ? Promise.resolve() : old.webContents.executeJavaScript("window.dispatchEvent(new Event('beforeunload'))").catch(() => {})
+    void Promise.race([flush, new Promise((r) => setTimeout(r, 1500))]).then(() => {
+      for (const child of old.getChildWindows()) if (!child.isDestroyed()) child.destroy()
+      if (!old.isDestroyed()) old.destroy()
+    })
+  }
+  if (!process.env['VEYRA_SCREENSHOT']) {
+    if (tray && !tray.isDestroyed()) tray.destroy()
+    makeTray()
+  }
+}
+
+/** The tray icon and its menu. */
+function makeTray(): void {
+  tray = new Tray(nativeImage.createFromPath(trayPath).resize({ width: 16, height: 16 }))
+  tray.setToolTip(APP_NAME)
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: `Open ${APP_NAME}`, click: () => showWindow() },
+      { label: 'Today', click: () => showWindow('today') },
+      { label: 'Tasks', click: () => showWindow('tasks') },
+      { type: 'separator' },
+      { label: `Quit ${APP_NAME}`, click: () => app.quit() }
+    ])
+  )
+  tray.on('click', () => showWindow())
 }
 
 function openChat(groupId: string): void {
@@ -305,6 +444,8 @@ function createWindow(): void {
   })
 
   mainWin = win
+  trackWindow(win, 'main')
+  watchOpening(win)
   // The title bar's window buttons dim when Veyra isn't the active window, and show restore when maximised.
   const sendState = () => !win.isDestroyed() && win.webContents.send('win:state', { focused: win.isFocused(), maximized: win.isMaximized() })
   for (const ev of ['focus', 'blur', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'] as const) win.on(ev as 'focus', sendState)
@@ -577,6 +718,130 @@ app.whenReady().then(async () => {
   ipcMain.on('app:windowButtons', (e) => (e.returnValue = windowButtons))
   ipcMain.on('app:windowButtonsChoice', (e) => (e.returnValue = windowPrefs().buttons))
   ipcMain.handle('app:setWindowButtons', (_e, b: string) => savePrefs({ buttons: b === 'windows' ? 'windows' : 'dots' }))
+  // Diagnostics: show the log, and send it to the group server when the person asks (never by itself).
+  ipcMain.handle('diag:read', () => ({ text: readDiag(), folder: diagDir() }))
+  ipcMain.handle('diag:open', () => shell.openPath(diagDir()))
+  /*
+   * Sending reports by itself (Settings → Data & privacy → Diagnostics, off unless chosen):
+   * after a crash, a window that stopped responding or went missing, or a run that ended
+   * unexpectedly. It waits a little so what happened next is in the log too, sends at most
+   * once every 6 hours, and keeps one that couldn't go (offline, server asleep) for later.
+   */
+  const AUTO_EVERY = 6 * 3600_000
+  const autoFile = () => join(diagDir(), 'auto-send.json')
+  /** lastSent: when one last went; pending: the problem waiting to be sent; ask: a sent one to ask the person about. */
+  type AutoState = { lastSent: number; pending: string; ask: { id: string; trigger: string; at: number } | null }
+  const autoState = (): AutoState => {
+    try {
+      const j = JSON.parse(readFileSync(autoFile(), 'utf8'))
+      const ask = j.ask && typeof j.ask.id === 'string' ? { id: String(j.ask.id), trigger: String(j.ask.trigger ?? ''), at: Number(j.ask.at) || 0 } : null
+      return { lastSent: Number(j.lastSent) || 0, pending: String(j.pending ?? ''), ask }
+    } catch {
+      return { lastSent: 0, pending: '', ask: null }
+    }
+  }
+  const saveAuto = (st: AutoState) => {
+    try {
+      writeFileSync(autoFile(), JSON.stringify(st))
+    } catch {
+      /* tries again next time */
+    }
+  }
+  let autoTimer: NodeJS.Timeout | null = null
+  const autoSend = async () => {
+    autoTimer = null
+    if (!appSettings().diagAutoSend || !group) return
+    const st = autoState()
+    if (!st.pending || Date.now() - st.lastSent < AUTO_EVERY) return
+    try {
+      const r = await group.call('POST', '/diagnostics', {
+        log: recentDiag(150_000),
+        auto: true,
+        trigger: st.pending,
+        version: app.getVersion(),
+        platform: `${process.platform} ${release()}`
+      })
+      const ask = r?.id ? { id: String(r.id), trigger: st.pending, at: Date.now() } : null
+      saveAuto({ lastSent: Date.now(), pending: '', ask })
+      diag('diagnostics sent automatically', { id: r?.id })
+      // Ask the person what happened (the report is far more useful with it).
+      if (ask) for (const w of BrowserWindow.getAllWindows()) if (!w.webContents.isDestroyed()) w.webContents.send('diag:ask', ask)
+    } catch (e) {
+      // Kept for later: the next problem, the hourly try, or the next start.
+      diag('diagnostics not sent automatically', { status: e instanceof GroupError ? e.status : 0 })
+    }
+  }
+  // Sent from the "couldn't open" message: now, whatever the setting (pressing Send is the go-ahead).
+  reportNow = async (trigger) => {
+    if (!group) return { ok: false, error: 'Sign in to your Veyra account to send reports.' }
+    try {
+      const r = await group.call('POST', '/diagnostics', { log: recentDiag(150_000), auto: true, trigger, version: app.getVersion(), platform: `${process.platform} ${release()}` })
+      const st = autoState()
+      saveAuto({ lastSent: Date.now(), pending: '', ask: r?.id ? { id: String(r.id), trigger, at: Date.now() } : st.ask })
+      diag('diagnostics sent from the couldn’t-open message', { id: r?.id })
+      return { ok: true }
+    } catch (e) {
+      const status = e instanceof GroupError ? e.status : 0
+      if (status === 401) return { ok: false, error: 'Sign in to your Veyra account to send reports.' }
+      if (status <= 0) return { ok: false, error: 'Couldn’t reach the Veyra server. It’s off from about midnight to 8 am.' }
+      return { ok: false, error: 'The server didn’t take the report.' }
+    }
+  }
+  onProblem((what) => {
+    if (!appSettings().diagAutoSend) return
+    const st = autoState()
+    if (!st.pending) saveAuto({ ...st, pending: what })
+    if (!autoTimer) autoTimer = setTimeout(() => void autoSend(), 20_000)
+  })
+  // One left from before (or from a run that crashed before it could send): try soon, then every hour.
+  setTimeout(() => void autoSend(), 60_000).unref()
+  setInterval(() => void autoSend(), 3600_000).unref()
+  // A report sent by itself that the person hasn't said anything about yet (asked for a week at most).
+  ipcMain.handle('diag:ask', () => {
+    const { ask } = autoState()
+    return ask && Date.now() - ask.at < 7 * 86400_000 ? ask : null
+  })
+  ipcMain.handle('diag:answer', async (_e, id: string, note: string): Promise<{ ok: true } | { ok: false; error: string }> => {
+    const st = autoState()
+    if (!group || !st.ask || st.ask.id !== id) return { ok: false, error: 'That report is no longer waiting for an answer.' }
+    try {
+      await group.call('POST', `/diagnostics/${encodeURIComponent(id)}/note`, { note: String(note ?? '').slice(0, 2000) })
+      saveAuto({ ...st, ask: null })
+      diag('diagnostics answer sent', { id })
+      return { ok: true }
+    } catch (e) {
+      const status = e instanceof GroupError ? e.status : 0
+      return { ok: false, error: status <= 0 ? 'Couldn’t reach the Veyra server. It’s off from about midnight to 8 am; try again later.' : 'Couldn’t add that to the report. Try again later.' }
+    }
+  })
+  ipcMain.handle('diag:dismiss', () => {
+    const st = autoState()
+    if (st.ask) saveAuto({ ...st, ask: null })
+  })
+  ipcMain.handle('diag:send', async (_e, text: string, note: string): Promise<{ ok: true; id: string } | { ok: false; error: string }> => {
+    if (!group) return { ok: false, error: 'Sign in to your Veyra account first, then try again.' }
+    try {
+      // Exactly what the person saw in the preview (the newest part, if it's very long).
+      const r = await group.call('POST', '/diagnostics', {
+        log: String(text ?? '').slice(-300_000),
+        note: String(note ?? '').slice(0, 2000),
+        version: app.getVersion(),
+        platform: `${process.platform} ${release()}`
+      })
+      diag('diagnostics sent', { id: r?.id })
+      return { ok: true, id: String(r?.id ?? '') }
+    } catch (e) {
+      const status = e instanceof GroupError ? e.status : 0
+      diag('diagnostics not sent', { status })
+      if (status === 401) return { ok: false, error: 'Sign in to your Veyra account first, then try again.' }
+      if (status === 400) return { ok: false, error: 'Say what happened (a sentence is enough), then send.' }
+      if (status === 404) return { ok: false, error: 'The Veyra server can’t take reports yet. Try again after the next update.' }
+      if (status === 413) return { ok: false, error: 'The report is too big to send. Email it instead.' }
+      if (status === 429) return { ok: false, error: 'Too many reports for now. Try again in an hour.' }
+      if (status <= 0) return { ok: false, error: 'Couldn’t reach the Veyra server. It’s off from about midnight to 8 am; try again later.' }
+      return { ok: false, error: e instanceof Error ? e.message : 'Couldn’t send the report. Try again later.' }
+    }
+  })
   ipcMain.handle('app:relaunch', () => {
     app.relaunch()
     app.quit()
@@ -607,6 +872,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('update:check', () => checkNow())
   ipcMain.handle('update:download', () => downloadNow())
   ipcMain.handle('update:install', () => installNow())
+  ipcMain.handle('update:devBuilds', () => listDevBuilds())
+  ipcMain.handle('update:installDevBuild', (_e, tag: string) => installDevBuild(String(tag ?? '')))
+  ipcMain.handle('update:unpinDevBuild', () => unpinDevBuild())
   ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('app:notifyCheck', () => ({ supported: Notification.isSupported() }))
   ipcMain.handle('app:notifyTest', (_e, title?: string, body?: string) => {
@@ -699,21 +967,12 @@ app.whenReady().then(async () => {
   if ((await updateAtStart(appSettings().checkUpdatesAtStart).catch(() => 'open' as const)) === 'installing') return
   createWindow()
   startingUp = false
+  // Closed unexpectedly the last two times or more: say so, with the same ways out. Only once the
+  // window is actually on screen (not during a quiet start with Windows).
+  const crashes = crashedRunsInARow()
+  if (crashes >= 2) mainWin?.once('show', () => void couldntOpen(`It closed unexpectedly the last ${crashes} times it was used.`, 'crashes'))
   keepUpToDate(() => appSettings().checkUpdatesAtStart)
-  if (!process.env['VEYRA_SCREENSHOT']) {
-    tray = new Tray(nativeImage.createFromPath(trayPath).resize({ width: 16, height: 16 }))
-    tray.setToolTip(APP_NAME)
-    tray.setContextMenu(
-      Menu.buildFromTemplate([
-        { label: `Open ${APP_NAME}`, click: () => showWindow() },
-        { label: 'Today', click: () => showWindow('today') },
-        { label: 'Tasks', click: () => showWindow('tasks') },
-        { type: 'separator' },
-        { label: `Quit ${APP_NAME}`, click: () => app.quit() }
-      ])
-    )
-    tray.on('click', () => showWindow())
-  }
+  if (!process.env['VEYRA_SCREENSHOT']) makeTray()
   const reminders = new Reminders(() => store, (screen) => showWindow(screen))
 
   // AI apps (MCP): reads go through here; writes refresh the screens and sync like any edit.

@@ -8,8 +8,9 @@
 import { CapacitorHttp } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
 import { FileOpener } from '@capacitor-community/file-opener'
-import type { UpdateState } from '@shared/types'
+import type { DevBuild, UpdateState } from '@shared/types'
 import { registerPlugin } from '@capacitor/core'
+import { compareVeyraVersions, parseDevRelease, stripDevMetaComment, type DevReleaseLike } from '@shared/dev-builds'
 
 /** The app's own bit of Android code (android/.../UpdateInstallerPlugin.java). */
 const Installer = registerPlugin<{
@@ -113,7 +114,7 @@ export async function check(): Promise<UpdateState> {
       if (asset && version !== current) {
         apk = asset.url
         apkAuth = true
-        publish({ status: 'available', latest: version, notes: rel.body ?? '', releaseDate: rel.published_at, checkedAt: Date.now() })
+        publish({ status: 'available', latest: version, notes: stripDevMetaComment(rel.body ?? ''), releaseDate: rel.published_at, checkedAt: Date.now() })
       } else publish({ status: 'up-to-date', latest: current, notes: undefined, checkedAt: Date.now() })
     } catch (e) {
       publish({ status: 'error', error: /timeout|host|network|connect/i.test(String(e)) ? 'Can’t reach GitHub. Check your connection.' : 'Couldn’t check for test builds. Try again later.' })
@@ -203,4 +204,59 @@ export function checkAtStart(onFound: (version: string) => void): void {
     /* storage unavailable: check anyway */
   }
   setTimeout(() => void check().then((s) => s.status === 'available' && s.latest && onFound(s.latest)), 4000)
+}
+
+/* ---------- Dev build picker on Android (IS_DEV only) ---------- */
+export async function listDevBuilds(): Promise<{ builds: DevBuild[]; pinnedTag: string | null; error?: string }> {
+  if (!IS_DEV) return { builds: [], pinnedTag: null }
+  try {
+    if (!DEV_FEED_TOKEN) throw new Error('This Dev build has no test-build feed token.')
+    const r = await CapacitorHttp.request({
+      method: 'GET',
+      url: `https://api.github.com/repos/${DEV_REPO.owner}/${DEV_REPO.repo}/releases?per_page=20`,
+      headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${DEV_FEED_TOKEN}` },
+      connectTimeout: 15000,
+      readTimeout: 15000
+    })
+    if (r.status !== 200) throw new Error(`GitHub answered ${r.status}.`)
+    const list = (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as DevReleaseLike[]
+    const builds = (Array.isArray(list) ? list : [])
+      .map((rel) => parseDevRelease(rel, current))
+      .filter((b): b is DevBuild => b !== null)
+      .sort((a, b) => compareVeyraVersions(b.version, a.version))
+    return { builds, pinnedTag: null }
+  } catch (e) {
+    return { builds: [], pinnedTag: null, error: e instanceof Error ? e.message : 'Couldn’t load Dev builds.' }
+  }
+}
+
+export async function installDevBuild(tag: string): Promise<UpdateState> {
+  if (!IS_DEV || state.status === 'downloading') return state
+  publish({ status: 'checking', targetTag: tag, error: undefined })
+  try {
+    if (!DEV_FEED_TOKEN) throw new Error('This Dev build has no test-build feed token.')
+    const r = await CapacitorHttp.request({
+      method: 'GET',
+      url: `https://api.github.com/repos/${DEV_REPO.owner}/${DEV_REPO.repo}/releases/tags/${encodeURIComponent(tag)}`,
+      headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${DEV_FEED_TOKEN}` },
+      connectTimeout: 15000,
+      readTimeout: 15000
+    })
+    if (r.status !== 200) throw new Error(`GitHub answered ${r.status}.`)
+    const rel = (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as DevReleaseLike
+    const parsed = parseDevRelease(rel, current)
+    const asset = rel.assets?.find((a) => a.name === 'Veyra-Study-Dev.apk' && a.url)
+    if (!parsed || !asset?.url) throw new Error('That Dev build does not have an Android APK.')
+    apk = asset.url
+    apkAuth = true
+    publish({ status: 'available', latest: parsed.version, notes: parsed.notes, releaseDate: parsed.publishedAt, targetTag: tag })
+    return await download()
+  } catch (e) {
+    publish({ status: 'idle', targetTag: undefined, error: e instanceof Error ? e.message : 'Couldn’t download that Dev build.' })
+    return state
+  }
+}
+
+export async function unpinDevBuild(): Promise<UpdateState> {
+  return check()
 }

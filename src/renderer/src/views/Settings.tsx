@@ -1,8 +1,8 @@
 import { MicSetting } from '../components/notes/Voice'
 import { Fragment, createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
-  ArrowDown, ArrowUp, CalendarDays, Smartphone, Minus as MinusIcon, Plus as PlusIcon, Check, ChevronLeft, Download, ExternalLink, RefreshCw, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, MessageCircle, NotebookPen,
-  LayoutGrid, Palette, Play, Plus, RotateCcw, Shapes, ShieldCheck, Sparkles, Trash2, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
+  ArrowDown, ArrowUp, CalendarDays, Smartphone, Minus as MinusIcon, Plus as PlusIcon, Check, ChevronLeft, Download, ExternalLink, GitCommitHorizontal, Pin, RefreshCw, Database, Eye, EyeOff, Home, LayoutPanelLeft, ListTodo, MessageCircle, NotebookPen,
+  LayoutGrid, CreditCard, Palette, Play, Plus, RotateCcw, Shapes, ShieldCheck, Sparkles, Trash2, Search, SlidersHorizontal, Timer, UserRound, Link2, X, type LucideIcon
 } from 'lucide-react'
 import { OwnerSection, useIsOwner } from './Owner'
 import { useAccount } from '../components/account'
@@ -24,11 +24,14 @@ import { sortSubjects } from '../lib/subjects'
 import { SubjectDialog } from '../components/editors'
 import { FolderNameDialog, FolderPickDialog } from '../components/FolderDialogs'
 import { childrenOf, deleteFolder, folderPath, folderTree, moveFolder as putFolderIn, newFolder, parentOf, renameFolder, useFolders, withDescendants } from '../lib/folders'
-import type { AiProvider, AiState, KeyedAiProvider, Rec, UpdateState } from '@shared/types'
+import type { AiProvider, AiState, DevBuild, KeyedAiProvider, Rec, UpdateState } from '@shared/types'
+import { compareVeyraVersions } from '@shared/dev-builds'
 import { Select as Dropdown } from '../components/Select'
 import { TimeField } from '../components/DateTime'
 import { IS_DEV } from '@shared/channel'
 import { BetaNote } from '../components/BetaNotice'
+import { showLegal } from '../components/Legal'
+import { Billing } from './Billing'
 import { installWebApp, useWebApp } from '../lib/webapp'
 
 /* =====================================================================
@@ -36,7 +39,7 @@ import { installWebApp, useWebApp } from '../lib/webapp'
    right, and a search that finds any option across all of them.
 ===================================================================== */
 
-type SectionId = 'general' | 'appearance' | 'sidebar' | 'messages' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'data' | 'updates' | 'phone' | 'owner'
+type SectionId = 'general' | 'appearance' | 'sidebar' | 'messages' | 'subjects' | 'ai' | 'today' | 'tasks' | 'notes' | 'timer' | 'calendar' | 'account' | 'connections' | 'plan' | 'data' | 'updates' | 'phone' | 'owner'
 
 export const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: string; keys?: (keyof AppSettings)[] }[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal, hint: 'Your name, start screen, week and time', keys: ['name', 'greeting', 'startScreen', 'reloadTo', 'weekStart', 'timeFormat'] },
@@ -53,7 +56,8 @@ export const SECTIONS: { id: SectionId; label: string; icon: LucideIcon; hint: s
   { id: 'ai', label: 'AI', icon: Sparkles, hint: 'Veyra AI, local AI, or your own Claude, Gemini or OpenAI key' },
   { id: 'account', label: 'Account', icon: UserRound, hint: 'Your Veyra account' },
   { id: 'connections', label: 'Connections', icon: Link2, hint: 'Google Calendar, Google Drive, calendar links and AI apps' },
-  { id: 'data', label: 'Data & privacy', icon: Database, hint: 'Export, where data lives, and resets' },
+  { id: 'plan', label: 'Plan & billing', icon: CreditCard, hint: 'Paid plans, your plan, and billing' },
+  { id: 'data', label: 'Data & privacy', icon: Database, hint: 'Export, diagnostics, the Privacy Policy and Terms, and resets' },
   { id: 'updates', label: 'Software update', icon: Download, hint: 'Your version, updates, and what’s new', keys: ['checkUpdatesAtStart'] },
   // Only shown to the owner of Veyra Study (the group server says who that is).
   { id: 'owner', label: 'Owner', icon: ShieldCheck, hint: 'Who uses Group work and sync, every group, and moderation' }
@@ -1371,6 +1375,19 @@ function DataPrivacy() {
           </Row>
         )}
       </Group>
+      <Diagnostics />
+      <Group title="Legal" footer="How Veyra Study handles your data, and the rules for using it.">
+        <Row label="Privacy Policy" hint="What the app keeps, what it sends, who can see it, and for how long." keywords="privacy policy data gdpr personal information">
+          <button className="btn sec sm" onClick={() => showLegal('privacy')}>
+            Read
+          </button>
+        </Row>
+        <Row label="Terms of Service" hint="The rules for using Veyra Study, Group work and Veyra AI." keywords="terms of service tos rules conditions legal">
+          <button className="btn sec sm" onClick={() => showLegal('terms')}>
+            Read
+          </button>
+        </Row>
+      </Group>
       <Group title="Reset">
         <Row label="Reset all settings" hint="Puts every option back to how it started. Your tasks, notes and study time stay." keywords="defaults">
           {confirm ? (
@@ -1398,6 +1415,81 @@ function DataPrivacy() {
       </Group>
       <p className="set-footer" style={{ textAlign: 'center' }}>Veyra Study {version}</p>
     </>
+  )
+}
+
+/** The technical log on this computer: look at it, and send it to the owner when something went wrong. */
+function Diagnostics() {
+  const toast = useToast()
+  const { s, set } = useSettings()
+  const app = window.veyra.app
+  const [log, setLog] = useState<string | null>(null)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  if (!app.diagRead || !app.diagSend) return null
+  const load = async () => setLog((await app.diagRead!()).text)
+  const described = note.trim().length >= 5
+  const send = async () => {
+    if (!log || !described) return
+    setBusy(true)
+    try {
+      const r = await app.diagSend!(log, note)
+      if (r.ok) {
+        toast('Report sent. Thank you!')
+        setNote('')
+        setLog(null)
+      } else toast(r.error)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Group
+      title="Diagnostics"
+      footer="A technical log of app events (starting, windows, crashes, sleep, updates, errors) kept on this computer. It's designed never to include your notes, tasks, messages or account details. It's sent only when you press Send, or after a problem if you turn on automatic reports. Sent reports are kept for 90 days."
+    >
+      <Row label="Send a report" hint="If something went wrong, send the log to the owner so it can be fixed. You'll see exactly what's sent first." keywords="diagnostics log logs crash bug report problem debug send" stack={log !== null}>
+        {log === null ? (
+          <button className="btn sec sm" onClick={() => void load()}>
+            Review…
+          </button>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <textarea className="diag-log" readOnly value={log || 'Nothing has been logged yet.'} aria-label="The diagnostics log that will be sent" />
+            <textarea
+              className="set-input diag-note"
+              rows={3}
+              placeholder="What happened? What were you doing, and what did you expect? (required)"
+              value={note}
+              maxLength={2000}
+              onChange={(e) => setNote(e.target.value)}
+              aria-label="What happened"
+              aria-required="true"
+            />
+            <div className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+              <button className="btn ghost sm" onClick={() => setLog(null)}>
+                Cancel
+              </button>
+              <button className="btn btn-primary sm" disabled={busy || !log || !described} title={described ? undefined : 'Say what happened first'} onClick={() => void send()}>
+                {busy ? 'Sending…' : 'Send'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Row>
+      <Row
+        label="Send reports automatically"
+        hint="After a crash, a window that stops responding or goes missing, or Veyra closing unexpectedly, send the log to the owner without asking first (at most once every 6 hours). Veyra then asks you what happened."
+        keywords="diagnostics automatic auto send crash report"
+      >
+        <Toggle label="Send reports automatically" on={s.diagAutoSend} onChange={(diagAutoSend) => set({ diagAutoSend })} />
+      </Row>
+      <Row label="Open the log folder" keywords="diagnostics log files">
+        <button className="btn sec sm" onClick={() => void app.diagOpen?.()}>
+          Open
+        </button>
+      </Row>
+    </Group>
   )
 }
 
@@ -1439,6 +1531,15 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
       )
     case 'updates':
       return <SoftwareUpdate />
+    case 'plan':
+      return (
+        <Billing
+          onOpenOwnerPlans={() => {
+            sessionStorage.setItem('veyra.ownerTab', 'plans')
+            go('owner')
+          }}
+        />
+      )
     case 'owner':
       return <OwnerSection />
     case 'data':
@@ -1451,6 +1552,7 @@ function SectionBody({ id, go }: { id: SectionId; go: (id: SectionId) => void })
 const JUMPS: { id: SectionId; words: string }[] = [
   { id: 'account', words: 'account sign in sign out log out veyra username email password profile photo' },
   { id: 'connections', words: 'connected calendars google calendar drive backup docs mcp claude gemini chatgpt codex ai apps connector ical ics link sync outlook icloud events connect' },
+  { id: 'plan', words: 'plan plans billing subscription subscribe pay payment price upgrade plus premium stripe cancel invoice receipt' },
   { id: 'updates', words: 'update updates version software new release download install restart about changelog what’s new github report problem bug' }
 ]
 
@@ -1701,6 +1803,8 @@ function SoftwareUpdate() {
         </Group>
       )}
 
+      {IS_DEV && !web && <DevBuildsSection u={u} android={android} />}
+
       {web && <WebAppInstall />}
 
       {!web && <Group title="Automatic updates" footer={android ? 'Android asks you to confirm each install. The first time, it also asks you to let Veyra Study install apps.' : undefined}>
@@ -1735,6 +1839,148 @@ function SoftwareUpdate() {
         </Row>
       </Group>
     </>
+  )
+}
+
+/** Dev builds only: list published test builds by commit and switch to any of them. */
+function DevBuildsSection({ u, android }: { u: UpdateState; android: boolean }) {
+  const [builds, setBuilds] = useState<DevBuild[]>([])
+  const [pinned, setPinned] = useState<string | null>(u.pinnedTag ?? null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+  const [loaded, setLoaded] = useState(false)
+
+  const load = () => {
+    const fn = window.veyra.update.devBuilds
+    if (!fn) return
+    setLoading(true)
+    setErr('')
+    void fn()
+      .then((r) => {
+        setBuilds(r.builds)
+        setPinned(r.pinnedTag)
+        if (r.error) setErr(r.error)
+      })
+      .catch((e) => setErr(e instanceof Error ? e.message : 'Couldn’t load Dev builds.'))
+      .finally(() => {
+        setLoading(false)
+        setLoaded(true)
+      })
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  useEffect(() => {
+    if (u.pinnedTag !== undefined) setPinned(u.pinnedTag)
+  }, [u.pinnedTag])
+
+  const busy = u.status === 'downloading' || u.status === 'checking'
+  const footer = android
+    ? 'Publish a specific commit from your computer with npm run release:dev -- --pick (or --ref <sha>). Android blocks installing an older build over a newer one without uninstalling first.'
+    : u.supported
+      ? 'Switch to any published Dev build (including older commits). Switching to an older build pins automatic updates until you click Follow latest.'
+      : 'Running in npm run dev: you can inspect published Dev builds here; one-click switching works in the installed Veyra Study Dev app.'
+
+  return (
+    <Group title="Dev builds" footer={footer}>
+      <div className="dev-builds-bar">
+        <div className="grow" style={{ minWidth: 0 }}>
+          {pinned ? (
+            <div className="dev-pin-row">
+              <span className="pill accent">
+                <Pin size={11} /> Pinned
+              </span>
+              <span className="sm dim trunc">Staying on {pinned.replace(/^dev-/, '')} (auto-updates paused)</span>
+            </div>
+          ) : (
+            <span className="sm dim">Following the newest Dev build</span>
+          )}
+        </div>
+        <div className="row" style={{ gap: 6 }}>
+          {pinned && window.veyra.update.unpinDevBuild && (
+            <button className="btn ghost sm" disabled={busy} onClick={() => void window.veyra.update.unpinDevBuild?.()}>
+              Follow latest
+            </button>
+          )}
+          <button className="btn ghost sm" disabled={loading} onClick={load}>
+            <RefreshCw size={13} className={loading ? 'spin' : ''} /> Refresh
+          </button>
+        </div>
+      </div>
+
+      {err && <div className="dev-builds-msg error">{err}</div>}
+      {!err && !loaded && <div className="dev-builds-msg dim">Loading Dev builds…</div>}
+      {!err && loaded && builds.length === 0 && <div className="dev-builds-msg dim">No published Dev builds found yet.</div>}
+
+      {builds.map((b) => {
+        const isCurrent = b.current || b.version === u.current
+        const isTarget = u.targetTag === b.tag
+        const isDownloading = isTarget && u.status === 'downloading'
+        const isReady = isTarget && u.status === 'ready'
+        const hasAsset = android ? b.hasAndroid : b.hasWindows
+        const olderOnAndroid = android && !isCurrent && compareVeyraVersions(b.version, u.current) < 0
+        const headline = b.label || b.commits?.[0]?.subject || b.notes.split('\n')[0] || b.version
+        const when = b.publishedAt ? formatDistanceToNowStrict(new Date(b.publishedAt), { addSuffix: true }) : ''
+
+        return (
+          <div key={b.tag} className={`dev-build-row ${isCurrent ? 'is-current' : ''}`}>
+            <div className="grow" style={{ minWidth: 0 }}>
+              <div className="dev-build-top">
+                {b.commit && (
+                  <code className="dev-sha">
+                    <GitCommitHorizontal size={12} /> {b.commit}
+                  </code>
+                )}
+                {b.branch && <span className="pill">{b.branch}</span>}
+                {b.dirty && <span className="pill">uncommitted</span>}
+                {pinned === b.tag && (
+                  <span className="pill accent">
+                    <Pin size={10} /> Pinned
+                  </span>
+                )}
+              </div>
+              <div className="dev-build-title trunc" title={headline}>
+                {headline}
+              </div>
+              <div className="dev-build-meta xs dim">
+                <span className="num">{b.version}</span>
+                {b.commits && b.commits.length > 1 && <span>· {b.commits.length} commits</span>}
+                {when && <span>· {when}</span>}
+              </div>
+            </div>
+
+            <div className="dev-build-act">
+              {isCurrent ? (
+                <span className="pill ok">Installed</span>
+              ) : isReady ? (
+                <button className="btn sm" onClick={() => void window.veyra.update.install()}>
+                  <RotateCcw size={13} /> {android ? 'Install' : 'Restart'}
+                </button>
+              ) : isDownloading ? (
+                <span className="xs dim num">{Math.round((u.progress ?? 0) * 100)}%</span>
+              ) : !hasAsset ? (
+                <span className="xs tert">No {android ? 'APK' : 'installer'}</span>
+              ) : olderOnAndroid ? (
+                <span className="xs tert" title="Android blocks installing an older build over a newer one. Uninstall first or re-publish with release:dev --ref.">
+                  Older
+                </span>
+              ) : (
+                <button
+                  className="btn sec sm"
+                  disabled={busy || !u.supported || !window.veyra.update.installDevBuild}
+                  title={!u.supported ? 'Available in the installed Veyra Study Dev app' : `Download and switch to ${b.version}`}
+                  onClick={() => void window.veyra.update.installDevBuild?.(b.tag)}
+                >
+                  Switch
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </Group>
   )
 }
 

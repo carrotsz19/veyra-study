@@ -1,16 +1,13 @@
 import { useState } from 'react'
 import { Bug, Mail, X } from 'lucide-react'
+import { CONTACT } from '@shared/contact'
 
 /**
  * "Veyra Study is still being built": shown once at the top of the app, so
  * people know bugs can turn up and how to tell the owner. After "Got it" it
  * stays in Settings → Software update (BetaNote) and the Help menu.
  */
-export const FEEDBACK = {
-  owner: '@carrotsz19',
-  email: 'igreenrobotz@gmail.com',
-  issues: 'https://github.com/carrotsz19/veyra-study/issues/new'
-}
+export const FEEDBACK = { owner: CONTACT.owner, email: CONTACT.email, issues: CONTACT.issues }
 export const reportBug = () => void window.veyra.open(FEEDBACK.issues)
 export const emailOwner = () =>
   void window.veyra.open(`mailto:${FEEDBACK.email}?subject=${encodeURIComponent(`Veyra Study ${__APP_VERSION__}: `)}`)

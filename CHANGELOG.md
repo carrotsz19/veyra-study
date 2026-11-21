@@ -10,6 +10,16 @@ picked automatically. They come after the older 1.0.x numbers.
 ## Unreleased
 
 - **Export notes to PDF and Word (.docx):** alongside Markdown, you can now export any note — or several selected notes at once — as a formatted PDF or Word (`.docx`) document from the note's `•••` menu, right-click menu, or multi-select bar. Headings, formatting, highlights, checklists, callouts, question toggles, tables, code blocks, Cornell layouts, drawings, and attached images are preserved.
+- **Update checks no longer fail while a new version is going out:** a new release now only shows up once all its files are uploaded, and if you check during those few minutes, Veyra says an update is being published instead of "Couldn't check for updates."
+- **Search stays at the top of the sidebar:** the Search box above the tabs no longer scrolls away with your subjects.
+- **Settings keeps its title and search in view:** only the list of sections scrolls.
+- **Smoother switches:** the knob on on/off switches now stretches smoothly when you press it, instead of jumping to its wider size.
+- **Veyra opens even if its window went missing:** if you open Veyra and nothing appears, open it again. A second try within a few seconds now builds a fresh window, instead of leaving you stuck until a restart.
+- **Send a diagnostics report:** Settings → Data & privacy → Diagnostics (or Help → Send diagnostics…) shows a technical log of app events and lets you send it to the owner when something goes wrong. It never includes your notes, tasks, messages or account details, you see exactly what's sent, and nothing leaves your computer unless you press Send.
+- **Automatic reports (optional, off unless you turn them on):** Veyra can send the log by itself after a crash, a frozen or missing window, or closing unexpectedly, then asks you what happened. Reports you send yourself now need a sentence about what went wrong.
+- **If Veyra can't open:** when its screen crashes, stays blank or never appears, or it keeps closing unexpectedly, Veyra now shows a message with ways out: send a report, open the log folder, or email the owner. A fixed version installs itself the next time Veyra starts.
+- **Plans are on the way:** Settings → Plan & billing shows what's coming. Everything you use today stays free.
+- **Privacy Policy and Terms of Service, in the app:** Veyra Study now has its own, readable from Settings → Data & privacy, the Help menu and the sign-up screen.
 
 ## 26.11.4
 

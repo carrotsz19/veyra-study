@@ -5,6 +5,7 @@ Veyra Study comes in two builds:
 | | **Prod: Veyra Study** | **Dev: Veyra Study Dev** |
 |---|---|---|
 | Who | Everyone | You, for trying changes first |
+| Branch & repo | `main` on **carrotsz19/veyra-study** (`origin`) | `main` on **carrotsz19/veyra-study-dev** (`dev-repo`), tracked locally as `dev` |
 | Windows | `app.veyra.study`, "Veyra Study" | `app.veyra.study.dev`, "Veyra Study Dev" (DEV badge, violet dot on the taskbar icon) |
 | Android | `app.veyra.study`, "Veyra Study" | `app.veyra.study.dev`, "Veyra Dev" |
 | Data on the device | `%APPDATA%\veyra-study` | `%APPDATA%\veyra-study-dev` (its own) |
@@ -16,26 +17,69 @@ The two install side by side; neither ever updates into the other.
 
 `npm run dev` (running the code directly) counts as Dev as well: it uses `veyra-study-dev`, so it never touches the real app's data.
 
+## Publishing flow (two-repo PR pipeline)
+
+Changes move through two PR gates enforced by `tools/channels.mjs`:
+
+```
+feature branch ──(npm run pr:dev)──▶ carrotsz19/veyra-study-dev (main)
+                                            │ merge PR, then npm run sync:dev
+                                            ▼
+                              Dev builds (npm run release:dev + release:web:dev)
+                                            │ after testing & verification
+                                            ▼
+carrotsz19/veyra-study (dev) ──(npm run pr:prod)──▶ carrotsz19/veyra-study (main)
+                                                           │ merge PR (owner says ship)
+                                                           ▼
+                                             Prod builds (npm run ship + release:web)
+```
+
+- **Enforced branch guards (`tools/channels.mjs`):**
+  - Dev build scripts (`release:dev`, `release:web:dev`, `release:android -- --dev`) refuse to run on `main`, and by default require a clean `dev` branch synced with `carrotsz19/veyra-study-dev` `main` (so only accepted Dev PRs publish). Use `--local` for a one-off unmerged local experiment (still never from `main`), or `--pick` / `--ref` / `--commits` to build in an isolated temp worktree.
+  - Prod scripts (`ship`, `release`, `release:android`, `release:web`) refuse to run anywhere except a clean `main` branch synced with `carrotsz19/veyra-study` `main`.
+
 ## Trying a change: a Dev build
 
-```
-npm run release:dev
-```
+1. Work on a feature branch off `dev` (`git checkout -b feat/my-change dev`), commit, and open a PR into `carrotsz19/veyra-study-dev` `main`:
+   ```
+   npm run pr:dev
+   ```
+2. Once the PR is accepted and merged into `carrotsz19/veyra-study-dev` `main`, sync `dev` and publish Dev builds:
+   ```
+   npm run sync:dev
+   git checkout dev
+   npm run release:dev          # Windows + Android → carrotsz19/veyra-study-dev
+   npm run release:web:dev      # Dev website → veyra-study-dev.igreenrobotz.workers.dev
+   ```
+3. You can also build a specific commit, branch, Dev PR, or cherry-picked set in an isolated temp worktree without disturbing your checkout:
+   ```
+   npm run release:dev:pick                         # interactive picker
+   npm run release:dev -- --ref <sha|branch|pr#12>  # specific commit, branch, or PR
+   npm run release:dev -- --commits <a,b> --base dev-repo/main  # cherry-pick commits
+   npm run release:dev -- --local                   # local uncommitted/unmerged experiment (never from main)
+   ```
 
-- No version bump or changelog needed, and uncommitted work is fine.
-- It builds Windows and Android as version `<next version>-dev.<date and time>` and publishes them as a release in the **private** repo carrotsz19/veyra-study-dev (the newest 10 are kept).
-- Installed Dev apps pick it up by themselves (Windows at its next check; Android in Settings → Software update).
-- `--windows-only` skips Android.
+- No version bump or changelog needed for Dev builds.
+- Windows and Android are published atomically as `<next version>-dev.<date and time>` in the **private** repo `carrotsz19/veyra-study-dev` (created as a draft until both Windows and Android are uploaded, then published as Latest; the newest 20 are kept).
+- Installed Dev apps pick it up by themselves (Windows at its next check; Android in Settings → Software update), and **Settings → Software update → Dev builds** lets you switch between any of the published Dev builds by commit (switching to an older build on Windows pins automatic updates until you click **Follow latest**).
+- `--windows-only` skips Android; `--web` also deploys the Dev website from the same selection; `--label "Billing rework"` adds a friendly name shown in the Dev build switcher.
 - First install: `Veyra-Study-Dev-Setup.exe` and `Veyra-Study-Dev.apk` from https://github.com/carrotsz19/veyra-study-dev/releases (sign in to GitHub to see it).
 - Dev apps read that private repo with a **read-only token for that one repo**, kept outside the code at `C:\dev\tools\veyra-dev-feed.token` and built into Dev builds only (never Prod). If it ever leaks, delete it on GitHub (Settings → Developer settings → Fine-grained tokens), make a new one, save it to that file, and run `npm run release:dev` again; Dev apps already installed then need the new installer once.
 
 ## Shipping: a Prod release
 
-Only when the owner says to ship. Everyday changes go out as Dev builds.
+Only after testing and verifying Dev builds, and only when the owner says to ship.
 
-```
-npm run ship
-```
+1. Open the promotion PR from verified `carrotsz19/veyra-study-dev` `main` into `carrotsz19/veyra-study` `main` (mirrors verified `dev-repo/main` to `origin/dev` and opens `dev → main` on `carrotsz19/veyra-study`):
+   ```
+   npm run pr:prod
+   ```
+2. Once the PR is accepted and merged into `carrotsz19/veyra-study` `main`, switch to `main`, pull, and ship:
+   ```
+   git checkout main && git pull
+   npm run ship
+   npm run release:web
+   ```
 
 That's all. It:
 
