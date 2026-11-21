@@ -3,6 +3,8 @@ import iconPath from '../../resources/icon.png?asset'
 import trayPath from '../../resources/tray@2x.png?asset'
 import devBadgePath from '../../resources/dev-badge.png?asset'
 import { Reminders } from './reminders'
+import { cancelDevBuild, chooseDevRepo, clearDevBuild, devBuilderState, devCandidates, devPreview, startDevBuild, stopDevBuildOnQuit } from './dev-builder'
+import type { DevBuildRequest } from '../shared/dev-builder'
 import { checkNow, downloadNow, installDevBuild, installNow, installReady, keepUpToDate, listDevBuilds, lookForUpdate, takeHiddenFlag, unpinDevBuild, updateAtStart, updateState } from './updater'
 import { withDefaults } from '../shared/settings'
 import { ChatNotifier, type ChatNotice } from '../shared/chat-notify'
@@ -247,6 +249,7 @@ const whisper = new Whisper()
 app.on('will-quit', () => whisper.stopAll())
 const files = new Files(() => (accounts ? accounts.folder() : null))
 app.on('will-quit', () => localAi.stop())
+app.on('will-quit', () => stopDevBuildOnQuit())
 
 /** One Google connection per account (or for the no-account data). */
 function openGoogle(): void {
@@ -875,6 +878,14 @@ app.whenReady().then(async () => {
   ipcMain.handle('update:devBuilds', () => listDevBuilds())
   ipcMain.handle('update:installDevBuild', (_e, tag: string) => installDevBuild(String(tag ?? '')))
   ipcMain.handle('update:unpinDevBuild', () => unpinDevBuild())
+  // Dev builds on Windows: build and publish a Dev release from chosen commits (src/main/dev-builder.ts).
+  ipcMain.handle('devBuilder:state', (e) => devBuilderState(e.sender))
+  ipcMain.handle('devBuilder:candidates', (_e, fetch?: boolean) => devCandidates(fetch === true))
+  ipcMain.handle('devBuilder:preview', (_e, req: DevBuildRequest) => devPreview(req))
+  ipcMain.handle('devBuilder:start', (_e, req: DevBuildRequest) => startDevBuild(req))
+  ipcMain.handle('devBuilder:cancel', () => cancelDevBuild())
+  ipcMain.handle('devBuilder:clear', () => clearDevBuild())
+  ipcMain.handle('devBuilder:chooseRepo', (e) => chooseDevRepo(BrowserWindow.fromWebContents(e.sender)))
   ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('app:notifyCheck', () => ({ supported: Notification.isSupported() }))
   ipcMain.handle('app:notifyTest', (_e, title?: string, body?: string) => {

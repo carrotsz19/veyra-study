@@ -58,6 +58,8 @@ carrotsz19/veyra-study (dev) ──(npm run pr:prod)──▶ carrotsz19/veyra-s
    npm run release:dev -- --commits <a,b> --base dev-repo/main  # cherry-pick commits
    npm run release:dev -- --local                   # local uncommitted/unmerged experiment (never from main)
    ```
+   The picker lists recent commits from every local and remote branch, plus branches and open Dev PRs. Use ←/→ to switch lists, type to search, ↑/↓ to move, **Space** to tick commits to cherry-pick and **Enter** to build. With nothing ticked, Enter builds the highlighted commit, branch or PR as it is. With ticks, you choose a base next. Before anything runs it shows what the build includes and asks you to confirm. Merge commits cherry-pick against their first parent. With no interactive terminal (or `VEYRA_PLAIN_PICKER=1`) it falls back to typed choices (`3`, `b2`, `p1`, `1,3,5`, `4..1`).
+4. **From inside the app:** in Veyra Study Dev on Windows, **Settings → Software update → Build from commits** offers the same choices. You can build one commit, branch or PR as it is, or tick commits to cherry-pick onto a base. It previews what's included, then runs `release.mjs --dev` in your checkout (`C:\dev\veyra-study` by default; **Change…** picks another) and streams the log, with **Stop** to cancel. It uses this computer's `node`, `git`, `gh` sign-in and signing setup, so it only works on the PC that holds the checkout. Phones can switch between builds but can't start them.
 
 - No version bump or changelog needed for Dev builds.
 - Windows and Android are published atomically as `<next version>-dev.<date and time>` in the **private** repo `carrotsz19/veyra-study-dev` (created as a draft until both Windows and Android are uploaded, then published as Latest; the newest 20 are kept).

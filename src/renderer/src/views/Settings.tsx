@@ -32,6 +32,7 @@ import { IS_DEV } from '@shared/channel'
 import { BetaNote } from '../components/BetaNotice'
 import { showLegal } from '../components/Legal'
 import { Billing } from './Billing'
+import { DevBuilderSection } from './DevBuilder'
 import { installWebApp, useWebApp } from '../lib/webapp'
 
 /* =====================================================================
@@ -1708,6 +1709,7 @@ function SoftwareUpdate() {
   const { s, set } = useSettings()
   const [u, setU] = useState<UpdateState | null>(null)
   const [, tick] = useState(0)
+  const [devListKey, setDevListKey] = useState(0)
   useEffect(() => {
     // Opening this page checks, unless that's already been done.
     void window.veyra.update.state().then((s) => {
@@ -1803,7 +1805,9 @@ function SoftwareUpdate() {
         </Group>
       )}
 
-      {IS_DEV && !web && <DevBuildsSection u={u} android={android} />}
+      {IS_DEV && !web && <DevBuildsSection u={u} android={android} reloadKey={devListKey} />}
+
+      {IS_DEV && !web && !android && <DevBuilderSection onBuilt={() => setDevListKey((n) => n + 1)} />}
 
       {web && <WebAppInstall />}
 
@@ -1843,7 +1847,7 @@ function SoftwareUpdate() {
 }
 
 /** Dev builds only: list published test builds by commit and switch to any of them. */
-function DevBuildsSection({ u, android }: { u: UpdateState; android: boolean }) {
+function DevBuildsSection({ u, android, reloadKey }: { u: UpdateState; android: boolean; reloadKey: number }) {
   const [builds, setBuilds] = useState<DevBuild[]>([])
   const [pinned, setPinned] = useState<string | null>(u.pinnedTag ?? null)
   const [loading, setLoading] = useState(false)
@@ -1870,7 +1874,7 @@ function DevBuildsSection({ u, android }: { u: UpdateState; android: boolean }) 
 
   useEffect(() => {
     load()
-  }, [])
+  }, [reloadKey])
 
   useEffect(() => {
     if (u.pinnedTag !== undefined) setPinned(u.pinnedTag)
@@ -1878,7 +1882,7 @@ function DevBuildsSection({ u, android }: { u: UpdateState; android: boolean }) 
 
   const busy = u.status === 'downloading' || u.status === 'checking'
   const footer = android
-    ? 'Publish a specific commit from your computer with npm run release:dev -- --pick (or --ref <sha>). Android blocks installing an older build over a newer one without uninstalling first.'
+    ? 'Publish a specific commit from Veyra Study Dev on your computer (Settings → Software update → Build from commits), or with npm run release:dev:pick. Android blocks installing an older build over a newer one without uninstalling first.'
     : u.supported
       ? 'Switch to any published Dev build (including older commits). Switching to an older build pins automatic updates until you click Follow latest.'
       : 'Running in npm run dev: you can inspect published Dev builds here; one-click switching works in the installed Veyra Study Dev app.'

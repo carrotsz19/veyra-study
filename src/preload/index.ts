@@ -183,6 +183,26 @@ const updateApi = {
   }
 }
 
+const devBuilderApi = {
+  state: () => ipcRenderer.invoke('devBuilder:state'),
+  candidates: (fetch?: boolean) => ipcRenderer.invoke('devBuilder:candidates', fetch === true),
+  preview: (req: unknown) => ipcRenderer.invoke('devBuilder:preview', req),
+  start: (req: unknown) => ipcRenderer.invoke('devBuilder:start', req),
+  cancel: () => ipcRenderer.invoke('devBuilder:cancel'),
+  clear: () => ipcRenderer.invoke('devBuilder:clear'),
+  chooseRepo: () => ipcRenderer.invoke('devBuilder:chooseRepo'),
+  onState: (cb: (s: unknown) => void) => {
+    const h = (_: unknown, s: unknown) => cb(s)
+    ipcRenderer.on('devBuilder:state', h)
+    return () => void ipcRenderer.removeListener('devBuilder:state', h)
+  },
+  onLog: (cb: (e: unknown) => void) => {
+    const h = (_: unknown, e: unknown) => cb(e)
+    ipcRenderer.on('devBuilder:log', h)
+    return () => void ipcRenderer.removeListener('devBuilder:log', h)
+  }
+}
+
 const mcpApi = {
   state: () => ipcRenderer.invoke('mcp:state'),
   apply: () => ipcRenderer.invoke('mcp:apply'),
@@ -292,4 +312,4 @@ const menuApi = {
 }
 
 contextBridge.exposeInMainWorld('veyra', {
-  menu: menuApi, db, account, friends, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, voice: voiceApi, mcp: mcpApi, update: updateApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })
+  menu: menuApi, db, account, friends, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, voice: voiceApi, mcp: mcpApi, update: updateApi, devBuilder: devBuilderApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })

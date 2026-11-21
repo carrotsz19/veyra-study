@@ -16,7 +16,9 @@ import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { emitKeypressEvents } from 'node:readline'
 import { createInterface } from 'node:readline/promises'
+import { fileURLToPath } from 'node:url'
 import { DEV_REPO, findRemote } from './channels.mjs'
 
 const META_OPEN = '<!-- veyra-dev-meta:'
@@ -194,44 +196,316 @@ function resolveRef(repoDir, ref) {
 }
 
 function commitInfo(repoDir, sha) {
-  const out = git(['show', '-s', '--format=%h%x1f%H%x1f%s', sha], repoDir)
-  const [shortSha, fullSha, subject] = out.split('\x1f')
-  return { sha: shortSha, full: fullSha, subject: subject ?? '' }
+  const out = git(['show', '-s', '--format=%h%x1f%H%x1f%P%x1f%s', sha], repoDir)
+  const [shortSha, fullSha, parents, subject] = out.split('\x1f')
+  return { sha: shortSha, full: fullSha, subject: subject ?? '', merge: String(parents ?? '').trim().split(/\s+/).length > 1 }
 }
 
-/** Interactive terminal picker for choosing a commit, branch, PR, or set of commits to cherry-pick. */
-export async function promptDevSelection(repoDir) {
-  const logRaw = tryGit(['log', '-n', '20', '--format=%h%x1f%ar%x1f%D%x1f%s'], repoDir)
+/**
+ * Lists what a Dev build can be made from: recent commits on every local and remote branch
+ * (newest first), branches, and open Dev PRs. Shared by the terminal picker and the in-app
+ * builder (`node tools/dev-select.mjs --list-json`).
+ */
+export function listDevCandidates(repoDir, { limit = 200, prs: wantPrs = true, fetch = false } = {}) {
+  if (fetch) spawnSync('git', ['fetch', '--all', '--prune', '--quiet'], { cwd: repoDir, stdio: 'ignore', timeout: 60_000 })
+  const n = Math.max(1, Math.min(2000, Number(limit) || 200))
+  const logRaw = tryGit(['log', '--branches', '--remotes', '--date-order', '-n', String(n), '--format=%h%x1f%H%x1f%ar%x1f%aI%x1f%an%x1f%D%x1f%P%x1f%s'], repoDir)
   const commits = logRaw
     ? logRaw.split(/\r?\n/).map((line) => {
-        const [sha, rel, deco, subject] = line.split('\x1f')
-        return { sha, rel, deco, subject }
+        const [sha, full, rel, date, author, deco, parents, subject] = line.split('\x1f')
+        return { sha, full, rel, date, author, deco: deco ?? '', subject: subject ?? '', merge: String(parents ?? '').trim().split(/\s+/).length > 1 }
       })
     : []
 
-  const branchRaw = tryGit(['for-each-ref', '--sort=-committerdate', '--count=10', '--format=%(refname:short)%09%(objectname:short)%09%(subject)', 'refs/heads', 'refs/remotes/origin'], repoDir)
+  const branchRaw = tryGit(
+    ['for-each-ref', '--sort=-committerdate', '--count=60', '--format=%(refname)%09%(refname:short)%09%(objectname:short)%09%(committerdate:relative)%09%(subject)', 'refs/heads', 'refs/remotes'],
+    repoDir
+  )
   const branches = branchRaw
     ? branchRaw
         .split(/\r?\n/)
         .map((line) => {
-          const [name, sha, subject] = line.split('\t')
-          return { name, sha, subject }
+          const [full, name, sha, rel, subject] = line.split('\t')
+          return { full, name, sha, rel, subject: subject ?? '', remote: String(full).startsWith('refs/remotes/') }
         })
-        .filter((b) => b.name && !b.name.endsWith('/HEAD'))
+        .filter((b) => b.name && !String(b.full).endsWith('/HEAD'))
+        .map(({ full, ...b }) => b)
     : []
 
   let prs = []
-  try {
-    const raw = execFileSync('gh', ['pr', 'list', '--repo', DEV_REPO, '--state', 'open', '--limit', '10', '--json', 'number,title,headRefName'], { cwd: repoDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
-    prs = JSON.parse(raw || '[]')
-  } catch {
-    /* offline or gh unavailable */
+  let prError = ''
+  if (wantPrs) {
+    try {
+      const raw = execFileSync('gh', ['pr', 'list', '--repo', DEV_REPO, '--state', 'open', '--limit', '20', '--json', 'number,title,headRefName,author,updatedAt'], {
+        cwd: repoDir,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 15_000
+      }).trim()
+      prs = (JSON.parse(raw || '[]') ?? []).map((p) => ({ number: p.number, title: p.title, headRefName: p.headRefName, author: p.author?.login ?? '', updatedAt: p.updatedAt ?? '' }))
+    } catch {
+      prError = 'Couldn’t list pull requests (offline, or gh isn’t signed in).'
+    }
   }
 
+  return {
+    repoDir: resolve(repoDir),
+    head: tryGit(['symbolic-ref', '--short', 'HEAD'], repoDir) || tryGit(['rev-parse', '--short', 'HEAD'], repoDir),
+    defaultBase: defaultBase(repoDir),
+    commits,
+    branches,
+    prs,
+    prError: prError || undefined
+  }
+}
+
+/**
+ * Describes what a selection will build before anything runs: the commits it adds on top of
+ * the base (or the cherry-picked list) and a diff summary. Never fetches or changes anything.
+ */
+export function previewDevSelection(repoDir, { ref = '', commits = [], base = '' } = {}) {
+  const against = base || defaultBase(repoDir)
+  const shortstat = (args) => tryGit(['diff', '--shortstat', ...args], repoDir)
+  if (ref) {
+    if (String(ref).startsWith('-')) throw new Error(`Invalid ref "${ref}".`)
+    const pr = /^(?:pr#?|#)(\d+)$/i.exec(ref)
+    if (pr) return { kind: 'ref', ref, title: `Pull request #${pr[1]}`, base: against, commits: [], note: 'Fetched from GitHub when the build starts.' }
+    const sha = tryGit(['rev-parse', '--verify', `${ref}^{commit}`], repoDir)
+    if (!sha) throw new Error(`Unknown commit or branch "${ref}".`)
+    const head = commitInfo(repoDir, sha)
+    const aheadRaw = tryGit(['log', '--format=%h%x1f%s', '-n', '50', `${against}..${sha}`], repoDir)
+    const ahead = aheadRaw ? aheadRaw.split(/\r?\n/).map((l) => ({ sha: l.split('\x1f')[0], subject: l.split('\x1f')[1] ?? '' })) : []
+    const total = Number(tryGit(['rev-list', '--count', `${against}..${sha}`], repoDir) || ahead.length)
+    return { kind: 'ref', ref, title: `${head.sha} ${head.subject}`, base: against, commits: ahead, aheadCount: total, shortstat: shortstat([`${against}...${sha}`]) }
+  }
+  if (!commits.length) throw new Error('Nothing selected.')
+  const infos = commits.map((c) => {
+    if (String(c).startsWith('-')) throw new Error(`Invalid commit "${c}".`)
+    const info = commitInfo(repoDir, c)
+    return { sha: info.sha, subject: info.subject, stat: tryGit(['show', '--shortstat', '--format=', info.full], repoDir) }
+  })
+  return { kind: 'commits', title: `${infos.length} commit${infos.length === 1 ? '' : 's'} onto ${against}`, base: against, commits: infos }
+}
+
+/* ---------- terminal picker (npm run release:dev:pick) ---------- */
+
+const TABS = { commits: 'Commits', branches: 'Branches', prs: 'Pull requests' }
+
+/** Fresh picker state. `mode: 'base'` shows only branches, to choose what cherry-picks go onto. */
+export function pickerInit(c, { mode = 'full' } = {}) {
+  const tabs = mode === 'base' ? ['branches'] : ['commits', 'branches', ...(c.prs?.length ? ['prs'] : [])]
+  const state = { mode, tabs, tab: 0, cursor: { commits: 0, branches: 0, prs: 0 }, filter: '', selected: [], result: null, cancelled: false }
+  if (mode === 'base') {
+    const i = baseItems(c).findIndex((b) => b.name === c.defaultBase)
+    state.cursor.branches = Math.max(0, i)
+  }
+  return state
+}
+
+function baseItems(c) {
+  const list = c.branches ?? []
+  return c.defaultBase && !list.some((b) => b.name === c.defaultBase) ? [{ name: c.defaultBase, sha: '', subject: '', rel: '' }, ...list] : list
+}
+
+/** Items on the current tab after the filter (every space-separated word must match). */
+export function pickerItems(state, c) {
+  const tab = state.tabs[state.tab]
+  const all = tab === 'commits' ? c.commits : tab === 'prs' ? c.prs : state.mode === 'base' ? baseItems(c) : c.branches
+  const words = state.filter.toLowerCase().split(/\s+/).filter(Boolean)
+  if (!words.length) return all ?? []
+  const text = (it) => (tab === 'commits' ? `${it.sha} ${it.subject} ${it.deco} ${it.author}` : tab === 'prs' ? `#${it.number} ${it.title} ${it.headRefName} ${it.author}` : `${it.name} ${it.sha} ${it.subject}`).toLowerCase()
+  return (all ?? []).filter((it) => words.every((w) => text(it).includes(w)))
+}
+
+/** Applies one keypress ({ name, ctrl, str }) and returns the next state. Pure, for tests. */
+export function pickerKey(state, c, key) {
+  const s = { ...state, cursor: { ...state.cursor }, selected: [...state.selected] }
+  const tab = s.tabs[s.tab]
+  const items = pickerItems(s, c)
+  const move = (d) => {
+    s.cursor[tab] = Math.max(0, Math.min(items.length - 1, (s.cursor[tab] ?? 0) + d))
+  }
+  const name = key?.name
+  if (key?.ctrl && name === 'c') return { ...s, cancelled: true }
+  if (name === 'up') move(-1)
+  else if (name === 'down') move(1)
+  else if (name === 'pageup') move(-10)
+  else if (name === 'pagedown') move(10)
+  else if (name === 'home') s.cursor[tab] = 0
+  else if (name === 'end') s.cursor[tab] = Math.max(0, items.length - 1)
+  else if (name === 'tab' || name === 'right' || name === 'left') {
+    const d = name === 'left' || key?.shift ? -1 : 1
+    s.tab = (s.tab + d + s.tabs.length) % s.tabs.length
+    s.filter = ''
+  } else if (name === 'space') {
+    if (tab === 'commits' && items[s.cursor[tab]]) {
+      const full = items[s.cursor[tab]].full
+      s.selected = s.selected.includes(full) ? s.selected.filter((x) => x !== full) : [...s.selected, full]
+      move(1)
+    }
+  } else if (name === 'return' || name === 'enter') {
+    if (tab === 'commits' && s.selected.length) {
+      // Oldest first: later in the newest-first list means older.
+      const order = new Map(c.commits.map((it, i) => [it.full, i]))
+      const commits = [...s.selected].sort((a, b) => (order.get(b) ?? 0) - (order.get(a) ?? 0))
+      return { ...s, result: { mode: 'commits', commits } }
+    }
+    const it = items[s.cursor[tab]]
+    if (!it) return s
+    if (tab === 'commits') return { ...s, result: { mode: 'ref', ref: it.full } }
+    if (tab === 'prs') return { ...s, result: { mode: 'ref', ref: `pr#${it.number}`, label: `PR #${it.number}: ${it.title}` } }
+    return { ...s, result: { mode: 'ref', ref: it.name } }
+  } else if (name === 'escape') {
+    if (s.filter) s.filter = ''
+    else if (s.selected.length) s.selected = []
+    else return { ...s, cancelled: true }
+  } else if (name === 'backspace') {
+    s.filter = s.filter.slice(0, -1)
+  } else if (!key?.ctrl && typeof key?.str === 'string' && key.str.length === 1 && key.str >= ' ' && key.str !== '\x7f') {
+    s.filter += key.str
+  } else return state
+  // Keep the cursor inside the (possibly re-filtered) list.
+  const now = pickerItems(s, c)
+  const t = s.tabs[s.tab]
+  s.cursor[t] = Math.max(0, Math.min(now.length - 1, s.cursor[t] ?? 0))
+  return s
+}
+
+const ESC = '\x1b['
+const style = (code, text) => `${ESC}${code}m${text}${ESC}0m`
+const cut = (text, width) => (text.length > width ? text.slice(0, Math.max(0, width - 1)) + '…' : text)
+
+/** Draws the picker into a string sized for a rows × cols terminal. */
+export function pickerRender(state, c, { rows = 24, cols = 80 } = {}) {
+  const tab = state.tabs[state.tab]
+  const items = pickerItems(state, c)
+  const width = Math.max(20, cols - 1)
+  const out = []
+  out.push(style('1', cut(state.mode === 'base' ? 'Apply the selected commits onto which base?' : 'Veyra Study Dev · choose what to build', width)))
+  if (state.tabs.length > 1) {
+    const counts = { commits: c.commits.length, branches: c.branches.length, prs: c.prs.length }
+    out.push(state.tabs.map((t, i) => (i === state.tab ? style('7', ` ${TABS[t]} ${counts[t]} `) : style('2', ` ${TABS[t]} ${counts[t]} `))).join(' ') + style('2', '   ←/→ switch'))
+  }
+  out.push(`Filter: ${state.filter}${style('2', state.filter ? '' : '(type to search)')}`)
+  out.push('')
+
+  const height = Math.max(3, rows - out.length - 3)
+  const cur = state.cursor[tab] ?? 0
+  const top = Math.max(0, Math.min(cur - Math.floor(height / 2), items.length - height))
+  const view = items.slice(top, top + height)
+  if (!items.length) out.push(style('2', state.filter ? '  Nothing matches.' : '  Nothing here.'))
+  view.forEach((it, i) => {
+    const at = top + i === cur
+    let line
+    if (tab === 'commits') {
+      const mark = state.selected.includes(it.full) ? '[x]' : '[ ]'
+      const deco = it.deco ? `  (${it.deco})` : ''
+      line = `${at ? '›' : ' '} ${mark} ${it.sha}  ${it.subject}  · ${it.rel}${deco}`
+    } else if (tab === 'prs') {
+      line = `${at ? '›' : ' '} #${it.number}  ${it.title}  (${it.headRefName})`
+    } else {
+      const isDefault = state.mode === 'base' && it.name === c.defaultBase ? '  [default]' : ''
+      line = `${at ? '›' : ' '} ${it.name}${it.sha ? `  ${it.sha}` : ''}${it.subject ? `  ${it.subject}` : ''}${it.rel ? `  · ${it.rel}` : ''}${isDefault}`
+    }
+    line = cut(line, width)
+    const picked = tab === 'commits' && state.selected.includes(it.full)
+    out.push(at ? style('7', line.padEnd(width)) : picked ? style('32', line) : line)
+  })
+  while (out.length < rows - 1) out.push('')
+
+  const help =
+    tab === 'commits'
+      ? state.selected.length
+        ? `${state.selected.length} selected · Space toggle · Enter cherry-pick these · Esc clear`
+        : 'Space select commits to cherry-pick · Enter build this commit as is · Esc quit'
+      : state.mode === 'base'
+        ? 'Enter use this base · Esc quit'
+        : tab === 'prs'
+          ? 'Enter build this pull request · Esc quit'
+          : 'Enter build this branch · Esc quit'
+  out.push(style('2', cut(help, width)))
+  return out.join('\n')
+}
+
+function runPicker(c, opts) {
+  return new Promise((done) => {
+    const input = process.stdin
+    const output = process.stdout
+    let state = pickerInit(c, opts)
+    emitKeypressEvents(input)
+    input.setRawMode(true)
+    input.resume()
+    output.write(`${ESC}?1049h${ESC}?25l`)
+    const draw = () => output.write(`${ESC}H${ESC}2J` + pickerRender(state, c, { rows: output.rows || 24, cols: output.columns || 80 }))
+    const finish = () => {
+      input.off('keypress', onKey)
+      output.off('resize', draw)
+      input.setRawMode(false)
+      input.pause()
+      output.write(`${ESC}?25h${ESC}?1049l`)
+      done(state)
+    }
+    const onKey = (str, key = {}) => {
+      state = pickerKey(state, c, { name: key.name, ctrl: key.ctrl, shift: key.shift, str })
+      if (state.result || state.cancelled) finish()
+      else draw()
+    }
+    input.on('keypress', onKey)
+    output.on('resize', draw)
+    draw()
+  })
+}
+
+function printPreview(p) {
+  console.log('')
+  console.log(style('1', p.kind === 'ref' ? `Build ${p.ref}` : `Cherry-pick ${p.title}`))
+  if (p.kind === 'ref') console.log(`  ${p.title}`)
+  if (p.note) console.log(style('2', `  ${p.note}`))
+  if (p.kind === 'ref' && p.aheadCount !== undefined) {
+    console.log(style('2', `  ${p.aheadCount} commit${p.aheadCount === 1 ? '' : 's'} not on ${p.base}${p.shortstat ? ` · ${p.shortstat}` : ''}`))
+  }
+  for (const cm of p.commits.slice(0, 15)) console.log(`   ${cm.sha}  ${cm.subject}${cm.stat ? style('2', `  (${cm.stat})`) : ''}`)
+  if (p.commits.length > 15) console.log(style('2', `   … and ${p.commits.length - 15} more`))
+  console.log('')
+}
+
+/** Interactive picker for choosing a commit, branch, PR, or set of commits to cherry-pick. */
+export async function promptDevSelection(repoDir) {
+  const c = listDevCandidates(repoDir)
+  if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.VEYRA_PLAIN_PICKER) return promptDevSelectionTyped(repoDir, c)
+
+  const first = await runPicker(c)
+  if (first.cancelled || !first.result) throw new Error('Nothing selected.')
+  const picked = first.result
+  let base = ''
+  if (picked.mode === 'commits') {
+    const second = await runPicker(c, { mode: 'base' })
+    if (second.cancelled || !second.result) throw new Error('Nothing selected.')
+    base = second.result.ref
+  }
+
+  printPreview(previewDevSelection(repoDir, { ref: picked.ref, commits: picked.commits, base }))
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const labelAns = (await rl.question(`Build label (optional)${picked.label ? ` [${picked.label}]` : ''}: `)).trim()
+    const ok = (await rl.question('Build and publish this Dev build? [Y/n] ')).trim().toLowerCase()
+    if (ok && !['y', 'yes'].includes(ok)) throw new Error('Cancelled.')
+    return { ref: picked.mode === 'ref' ? picked.ref : '', commits: picked.mode === 'commits' ? picked.commits : [], base, label: labelAns || picked.label || '' }
+  } finally {
+    rl.close()
+  }
+}
+
+/** The typed fallback when there is no interactive terminal (or VEYRA_PLAIN_PICKER=1). */
+async function promptDevSelectionTyped(repoDir, c) {
+  const commits = c.commits.slice(0, 20)
+  const branches = c.branches.slice(0, 10)
+  const prs = c.prs.slice(0, 10)
+
   console.log('\nRecent commits (newest first):')
-  commits.forEach((c, i) => {
-    const tag = c.deco ? ` (${c.deco})` : ''
-    console.log(`  ${String(i + 1).padStart(2, ' ')}. ${c.sha}  ${c.subject}${tag}  [${c.rel}]`)
+  commits.forEach((cm, i) => {
+    const tag = cm.deco ? ` (${cm.deco})` : ''
+    console.log(`  ${String(i + 1).padStart(2, ' ')}. ${cm.sha}  ${cm.subject}${tag}  [${cm.rel}]`)
   })
   if (branches.length) {
     console.log('\nBranches:')
@@ -254,17 +528,15 @@ export async function promptDevSelection(repoDir) {
 
     let base = ''
     if (picked.mode === 'commits') {
-      const def = defaultBase(repoDir)
-      const baseAns = (await rl.question(`Base ref to cherry-pick onto [${def}]: `)).trim()
-      base = baseAns || def
+      const baseAns = (await rl.question(`Base ref to cherry-pick onto [${c.defaultBase}]: `)).trim()
+      base = baseAns || c.defaultBase
     }
     const labelAns = (await rl.question(`Optional build label${picked.label ? ` [${picked.label}]` : ''}: `)).trim()
-    const label = labelAns || picked.label || ''
     return {
       ref: picked.mode === 'ref' ? picked.ref : '',
       commits: picked.mode === 'commits' ? picked.commits : [],
       base,
-      label
+      label: labelAns || picked.label || ''
     }
   } finally {
     rl.close()
@@ -285,7 +557,13 @@ function fileHash(path) {
 export function prepareDevWorktree({ repoDir = process.cwd(), ref = '', commits = [], base = '', label = '' }) {
   const root = resolve(repoDir)
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-  const workDir = join(tmpdir(), `veyra-dev-select-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`)
+  // The in-app builder chooses the folder itself (VEYRA_DEV_WORKDIR) so it can tidy up after a cancel.
+  const wanted = process.env.VEYRA_DEV_WORKDIR ? resolve(process.env.VEYRA_DEV_WORKDIR) : ''
+  const samePath = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b)
+  if (wanted && (!/[\\/]veyra-dev-select-[\w-]+$/.test(wanted) || !samePath(resolve(wanted, '..'), resolve(tmpdir())) || existsSync(wanted))) {
+    throw new Error('VEYRA_DEV_WORKDIR must be a new veyra-dev-select-* folder in the temp folder.')
+  }
+  const workDir = wanted || join(tmpdir(), `veyra-dev-select-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`)
 
   let checkoutSha = ''
   let branchLabel = ''
@@ -339,7 +617,8 @@ export function prepareDevWorktree({ repoDir = process.cwd(), ref = '', commits 
     if (commits.length) {
       console.log(`Cherry-picking ${pickedInfos.length} commit${pickedInfos.length === 1 ? '' : 's'} onto ${baseLabel} (${checkoutSha.slice(0, 7)})…`)
       for (const info of pickedInfos) {
-        const r = spawnSync('git', ['cherry-pick', info.full], { cwd: workDir, stdio: 'inherit' })
+        // A merge commit is applied as its changes against its first parent (the branch it was merged into).
+        const r = spawnSync('git', ['cherry-pick', ...(info.merge ? ['-m', '1'] : []), info.full], { cwd: workDir, stdio: 'inherit' })
         if (r.status !== 0) {
           throw new Error(`Cherry-pick conflict on ${info.sha} (${info.subject}). Your main checkout was not touched.`)
         }
@@ -416,4 +695,29 @@ export function formatDevReleaseNotes(meta, version, tag) {
   lines.push('')
   lines.push(formatDevMetaComment(full))
   return lines.join('\n')
+}
+
+/*
+ * Machine-readable helpers for the in-app builder (Veyra Study Dev → Settings → Software update):
+ *   node tools/dev-select.mjs --list-json [--limit 300] [--fetch] [--no-prs]
+ *   node tools/dev-select.mjs --preview-json (--ref <ref> | --commits <a,b> [--base <ref>])
+ */
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const argv = process.argv.slice(2)
+  try {
+    if (argv.includes('--list-json')) {
+      const i = argv.indexOf('--limit')
+      const limit = i >= 0 ? Number(argv[i + 1]) : 200
+      process.stdout.write(JSON.stringify(listDevCandidates(process.cwd(), { limit, fetch: argv.includes('--fetch'), prs: !argv.includes('--no-prs') })))
+    } else if (argv.includes('--preview-json')) {
+      const sel = parseDevSelectArgs(argv)
+      process.stdout.write(JSON.stringify(previewDevSelection(process.cwd(), sel)))
+    } else {
+      console.error('Usage: node tools/dev-select.mjs --list-json | --preview-json --ref <ref>')
+      process.exit(2)
+    }
+  } catch (e) {
+    process.stdout.write(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }))
+    process.exit(1)
+  }
 }
