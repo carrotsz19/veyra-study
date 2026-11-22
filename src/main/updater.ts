@@ -22,6 +22,7 @@ import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { autoUpdater } from 'electron-updater'
 import { APP_NAME, DEV_FEED_TOKEN, DEV_REPO, IS_DEV } from '../shared/channel'
+import { devBuildRunning } from './dev-builder'
 import { compareVeyraVersions, parseDevRelease, stripDevMetaComment, type DevReleaseLike } from '../shared/dev-builds'
 import splashPath from '../../resources/splash.html?asset'
 import { diag } from './diaglog'
@@ -295,6 +296,11 @@ export async function downloadNow(): Promise<UpdateState> {
 export function installNow(): void {
   if (state.status !== 'ready') return
   if (process.env['VEYRA_UPDATE_DRYRUN']) return
+  // Restarting would stop a Dev build that is publishing from this app (Build from commits).
+  if (devBuildRunning()) {
+    publish({ error: 'A Dev build is running. Restart when it finishes.' })
+    return
+  }
   install(state.latest)
 }
 
@@ -333,6 +339,8 @@ export function keepUpToDate(on: () => boolean): void {
 /** Installs a downloaded update now; `hidden` brings Veyra back in the tray. False if there's none. */
 export function installReady(hidden: boolean): boolean {
   if (state.status !== 'ready' || process.env['VEYRA_UPDATE_DRYRUN']) return false
+  // Not while a Dev build is publishing from this app: installing quits Veyra and would stop it.
+  if (devBuildRunning()) return false
   // Not by itself again after it failed.
   if (failedBefore(state.latest)) return false
   try {

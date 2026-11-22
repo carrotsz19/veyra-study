@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { formatDevReleaseNotes, hasDevSelection, parseDevSelectArgs, parseInteractiveChoice, prepareDevWorktree } from '../tools/dev-select.mjs'
+import { formatDevReleaseNotes, hasDevSelection, parseDevSelectArgs, parseInteractiveChoice, pickerInit, pickerItems, pickerKey, pickerRender, prepareDevWorktree, previewDevSelection } from '../tools/dev-select.mjs'
 
 test('parseDevSelectArgs parses refs, commits, base, label, pick and web flags', () => {
   assert.deepEqual(parseDevSelectArgs(['--dev']), { pick: false, ref: '', commits: [], base: '', label: '', web: false })
@@ -134,7 +134,7 @@ test('prepareDevWorktree checks out a single ref or cherry-picks selected commit
     writeFileSync(join(repo, 'dirty.txt'), 'keep me\n')
 
     // 1) Single ref checkout at shaA: has a.txt, not b.txt, not dirty.txt, and links node_modules.
-    const one = prepareDevWorktree({ repoDir: repo, ref: shaA, label: 'Only A' })
+    const one = prepareDevWorktree({ linkNodeModules: true, repoDir: repo, ref: shaA, label: 'Only A' })
     try {
       assert.equal(existsSync(join(one.dir, 'a.txt')), true)
       assert.equal(existsSync(join(one.dir, 'b.txt')), false)
@@ -148,7 +148,7 @@ test('prepareDevWorktree checks out a single ref or cherry-picks selected commit
     assert.equal(existsSync(one.dir), false)
 
     // 2) Cherry-pick ONLY shaB onto baseSha: has b.txt, NOT a.txt!
-    const picked = prepareDevWorktree({ repoDir: repo, commits: [shaB], base: baseSha, label: 'Just B' })
+    const picked = prepareDevWorktree({ linkNodeModules: true, repoDir: repo, commits: [shaB], base: baseSha, label: 'Just B' })
     try {
       assert.equal(existsSync(join(picked.dir, 'b.txt')), true)
       assert.equal(existsSync(join(picked.dir, 'a.txt')), false)
@@ -162,6 +162,179 @@ test('prepareDevWorktree checks out a single ref or cherry-picks selected commit
     assert.equal(existsSync(join(repo, 'node_modules', 'dummy')), true)
     assert.equal(readFileSync(join(repo, 'dirty.txt'), 'utf8'), 'keep me\n')
     assert.equal(git('rev-parse', 'HEAD'), shaB)
+  } finally {
+    rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  }
+})
+
+test('terminal picker: arrow keys, Space to select, filtering, tabs and Enter', () => {
+  const c = {
+    defaultBase: 'dev-repo/main',
+    commits: [
+      { sha: 'aaa1111', full: 'a'.repeat(40), subject: 'Newest billing fix', deco: 'HEAD -> dev', rel: '1 hour ago', author: 'me' },
+      { sha: 'bbb2222', full: 'b'.repeat(40), subject: 'Middle export tweak', deco: '', rel: '2 hours ago', author: 'me' },
+      { sha: 'ccc3333', full: 'c'.repeat(40), subject: 'Older billing copy', deco: '', rel: '3 hours ago', author: 'me' }
+    ],
+    branches: [
+      { name: 'feat/billing', sha: 'aaa1111', subject: 'Newest billing fix', rel: '1 hour ago' },
+      { name: 'dev-repo/main', sha: 'ccc3333', subject: 'Older billing copy', rel: '3 hours ago' }
+    ],
+    prs: [{ number: 9, title: 'Billing rework', headRefName: 'feat/billing', author: 'me' }]
+  }
+  const press = (s, ...keys) => keys.reduce((st, k) => pickerKey(st, c, typeof k === 'string' ? { name: k } : k), s)
+
+  // Enter with nothing selected builds the highlighted commit as is.
+  let s = press(pickerInit(c), 'down', 'return')
+  assert.deepEqual(s.result, { mode: 'ref', ref: 'b'.repeat(40) })
+
+  // Space selects (and moves down); Enter cherry-picks oldest first regardless of selection order.
+  s = press(pickerInit(c), 'down', 'down', 'space', 'up', 'up', 'space', 'return')
+  assert.deepEqual(s.result, { mode: 'commits', commits: ['c'.repeat(40), 'a'.repeat(40)] })
+
+  // Typing filters; selections survive filtering; Esc clears the filter, then the selection, then quits.
+  s = press(pickerInit(c), { name: 'b', str: 'b' }, { name: 'i', str: 'i' }, { name: 'l', str: 'l' }, { name: 'l', str: 'l' })
+  assert.deepEqual(pickerItems(s, c).map((x) => x.sha), ['aaa1111', 'ccc3333'])
+  s = press(s, 'down', 'space')
+  assert.deepEqual(s.selected, ['c'.repeat(40)])
+  s = press(s, 'escape')
+  assert.equal(s.filter, '')
+  assert.equal(pickerItems(s, c).length, 3)
+  s = press(s, 'escape')
+  assert.deepEqual(s.selected, [])
+  assert.equal(press(s, 'escape').cancelled, true)
+  assert.equal(press(pickerInit(c), { name: 'c', ctrl: true }).cancelled, true)
+
+  // Tabs: branches and PRs build that ref; the PR gets a default label.
+  assert.deepEqual(press(pickerInit(c), 'right', 'return').result, { mode: 'ref', ref: 'feat/billing' })
+  assert.deepEqual(press(pickerInit(c), 'left', 'return').result, { mode: 'ref', ref: 'pr#9', label: 'PR #9: Billing rework' })
+
+  // Base mode starts on the default base and only lists branches.
+  const b = pickerInit(c, { mode: 'base' })
+  assert.deepEqual(b.tabs, ['branches'])
+  assert.deepEqual(press(b, 'return').result, { mode: 'ref', ref: 'dev-repo/main' })
+
+  // Rendering fits the terminal and marks selected commits.
+  const out = pickerRender(press(pickerInit(c), 'space'), c, { rows: 12, cols: 60 })
+  assert.equal(out.split('\n').length, 12)
+  assert.match(out, /\[x\] aaa1111/)
+  assert.match(out, /1 selected/)
+})
+
+test('previewDevSelection lists what a ref adds over the base, and cherry-picks merge commits', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'veyra-dev-preview-repo-'))
+  const git = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim()
+  try {
+    git('init', '-b', 'main')
+    git('config', 'user.email', 'test@example.com')
+    git('config', 'user.name', 'Test')
+    writeFileSync(join(repo, 'package.json'), JSON.stringify({ name: 'demo', version: '26.11.4' }, null, 2) + '\n')
+    writeFileSync(join(repo, 'package-lock.json'), '{"lockfileVersion":3}\n')
+    mkdirSync(join(repo, 'node_modules'), { recursive: true })
+    git('add', '.')
+    git('commit', '-m', 'Base')
+    git('checkout', '-b', 'feat/x')
+    writeFileSync(join(repo, 'x.txt'), 'x\n')
+    git('add', 'x.txt')
+    git('commit', '-m', 'Add x')
+    git('checkout', 'main')
+    git('merge', '--no-ff', '-m', 'Merge feat/x', 'feat/x')
+    const mergeSha = git('rev-parse', 'HEAD')
+    git('checkout', '-b', 'other', 'HEAD~1')
+
+    const p = previewDevSelection(repo, { ref: 'feat/x', base: 'other' })
+    assert.equal(p.kind, 'ref')
+    assert.equal(p.aheadCount, 1)
+    assert.equal(p.commits[0].subject, 'Add x')
+    assert.throws(() => previewDevSelection(repo, { ref: '--evil' }), /Invalid ref/)
+
+    // A merge commit cherry-picks onto a base without it (applied against its first parent).
+    const w = prepareDevWorktree({ linkNodeModules: true, repoDir: repo, commits: [mergeSha], base: 'other' })
+    try {
+      assert.equal(existsSync(join(w.dir, 'x.txt')), true)
+    } finally {
+      w.cleanup()
+    }
+  } finally {
+    rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  }
+})
+
+test('in-app builder turns a selection into release.mjs arguments and refuses unsafe values', async () => {
+  const { buildReleaseArgs, cleanLabel, describeRequest, isSafeRef } = await import('../src/shared/dev-builder.ts')
+  const sha = 'a'.repeat(40)
+
+  assert.deepEqual(buildReleaseArgs({ mode: 'ref', ref: 'feat/billing', label: 'Billing UI' }), ['tools/release.mjs', '--dev', '--ref', 'feat/billing', '--label', 'Billing UI'])
+  assert.deepEqual(buildReleaseArgs({ mode: 'ref', ref: 'pr#12', windowsOnly: true, web: true }), ['tools/release.mjs', '--dev', '--ref', 'pr#12', '--windows-only', '--web'])
+  assert.deepEqual(buildReleaseArgs({ mode: 'commits', commits: [sha, 'bbb2222'], base: 'dev-repo/main' }), ['tools/release.mjs', '--dev', '--commits', `${sha},bbb2222`, '--base', 'dev-repo/main'])
+
+  // Anything that could be read as a flag, a range, or shell syntax is refused.
+  for (const ref of ['--upload-pack=evil', '-x', 'main..dev', 'a b', 'x;calc', 'x&calc', '$(x)', 'x|y', '', 'feat/', 'a//b', 'x.lock']) {
+    assert.equal(isSafeRef(ref), false, ref)
+    assert.throws(() => buildReleaseArgs({ mode: 'ref', ref }), /isn’t valid/, ref)
+  }
+  assert.throws(() => buildReleaseArgs({ mode: 'commits', commits: ['main'] }), /from the list/)
+  assert.throws(() => buildReleaseArgs({ mode: 'commits', commits: [] }), /at least one/)
+  assert.throws(() => buildReleaseArgs({ mode: 'commits', commits: [sha, sha] }), /twice/)
+  assert.throws(() => buildReleaseArgs({ mode: 'commits', commits: [sha], base: '--evil' }), /base/)
+  assert.throws(() => buildReleaseArgs({ mode: 'nope' }), /Choose/)
+
+  // Labels: one line, no leading dashes (they would read as a flag), at most 80 characters.
+  assert.equal(cleanLabel('  --  Billing\nrework\t  '), 'Billing rework')
+  assert.equal(cleanLabel('x'.repeat(200)).length, 80)
+  assert.deepEqual(buildReleaseArgs({ mode: 'ref', ref: 'dev', label: '--web' }), ['tools/release.mjs', '--dev', '--ref', 'dev', '--label', 'web'])
+  assert.deepEqual(buildReleaseArgs({ mode: 'ref', ref: 'dev', label: '  ' }), ['tools/release.mjs', '--dev', '--ref', 'dev'])
+
+  assert.equal(describeRequest({ mode: 'ref', ref: 'pr#9', label: 'Billing' }), 'Billing (PR #9)')
+  assert.equal(describeRequest({ mode: 'commits', commits: [sha, sha], base: 'dev' }), '2 commits onto dev')
+})
+
+test('cherry-picking skips commits already on the base (by ancestry or by identical changes)', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'veyra-dev-skip-repo-'))
+  const git = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim()
+  const write = (name, text) => writeFileSync(join(repo, name), text)
+  try {
+    git('init', '-b', 'main')
+    git('config', 'user.email', 'test@example.com')
+    git('config', 'user.name', 'Test')
+    write('package.json', JSON.stringify({ name: 'demo', version: '26.11.4' }))
+    write('package-lock.json', '{}')
+    mkdirSync(join(repo, 'node_modules'), { recursive: true })
+    git('add', '.')
+    git('commit', '-m', 'Base')
+    write('old.txt', 'old')
+    git('add', 'old.txt')
+    git('commit', '-m', 'Already on main')
+    const onMain = git('rev-parse', 'HEAD')
+    git('checkout', '-b', 'feat/y')
+    write('y.txt', 'y')
+    git('add', 'y.txt')
+    git('commit', '-m', 'Add y')
+    const shaY = git('rev-parse', 'HEAD')
+    write('same.txt', 'same')
+    git('add', 'same.txt')
+    git('commit', '-m', 'Same change as on main')
+    const dup = git('rev-parse', 'HEAD')
+    git('checkout', 'main')
+    write('same.txt', 'same')
+    git('add', 'same.txt')
+    git('commit', '-m', 'Same change, made on main')
+
+    const p = previewDevSelection(repo, { commits: [onMain, shaY], base: 'main' })
+    assert.equal(p.commits[0].onBase, true)
+    assert.equal(p.commits[1].onBase, undefined)
+    assert.equal(p.skipped, 1)
+    assert.match(p.title, /^1 commit onto main/)
+
+    const w = prepareDevWorktree({ linkNodeModules: true, repoDir: repo, commits: [onMain, shaY, dup], base: 'main' })
+    try {
+      assert.equal(existsSync(join(w.dir, 'y.txt')), true)
+      assert.deepEqual(w.meta.commits.map((c) => c.subject), ['Add y'])
+    } finally {
+      w.cleanup()
+    }
+
+    assert.match(previewDevSelection(repo, { commits: [onMain], base: 'main' }).note, /nothing to cherry-pick/)
+    assert.throws(() => prepareDevWorktree({ linkNodeModules: true, repoDir: repo, commits: [onMain], base: 'main' }), /already on main/)
   } finally {
     rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
