@@ -7,7 +7,7 @@ in Settings → Software update. Write new changes under "## Unreleased":
 Versions are year.month.release-in-that-month (26.11.1, 26.11.2, then 26.12.1),
 picked automatically. They come after the older 1.0.x numbers.
 
-## Unreleased
+## 26.11.5
 
 - **Export notes to PDF and Word (.docx):** alongside Markdown, you can now export any note — or several selected notes at once — as a formatted PDF or Word (`.docx`) document from the note's `•••` menu, right-click menu, or multi-select bar. Headings, formatting, highlights, checklists, callouts, question toggles, tables, code blocks, Cornell layouts, drawings, and attached images are preserved.
 - **Update checks no longer fail while a new version is going out:** a new release now only shows up once all its files are uploaded, and if you check during those few minutes, Veyra says an update is being published instead of "Couldn't check for updates."
