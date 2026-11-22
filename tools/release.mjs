@@ -29,13 +29,14 @@ import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
 import { signing } from './signing.mjs'
 import { devVersion as nextDevVersion, nextVersion } from './version.mjs'
+import { currentTreeDevMeta, formatDevReleaseNotes, hasDevSelection, parseDevSelectArgs, prepareDevWorktree, promptDevSelection } from './dev-select.mjs'
+import { DEV_REPO, PROD_REPO, assertDevChannel, assertProdChannel } from './channels.mjs'
 
-const REPO = 'carrotsz19/veyra-study'
-/** Private: Dev test builds (only you can see them). */
-const DEV_REPO = 'carrotsz19/veyra-study-dev'
+const REPO = PROD_REPO
 const dev = process.argv.includes('--dev')
+const allowLocal = process.argv.includes('--local')
 const run = (cmd, args, env = process.env) => {
-  const r = spawnSync(cmd, args, { stdio: 'inherit', env, shell: process.platform === 'win32' })
+  const r = spawnSync(cmd, args, { stdio: 'inherit', env, shell: cmd !== 'node' && process.platform === 'win32' })
   if (r.status !== 0) process.exit(r.status ?? 1)
 }
 const git = (...a) => execFileSync('git', a, { encoding: 'utf8' }).trim()
@@ -68,11 +69,50 @@ const signEnv = sign?.env ?? {}
 const checkFlags = sign ? ['--signed'] : []
 if (sign) console.log('Signing the Windows app with Azure Trusted Signing.')
 
+const KEEP_DEV_RELEASES = 20
+
 if (dev) {
+  const sel = parseDevSelectArgs(process.argv.slice(2))
+  // Selecting specific commits, a branch, or a PR builds in an isolated temp worktree
+  // so the current checkout and uncommitted edits stay untouched.
+  if (hasDevSelection(sel) && !process.env.VEYRA_DEV_SELECTED) {
+    const chosen = sel.pick ? await promptDevSelection(process.cwd()) : sel
+    const { dir, meta, cleanup } = prepareDevWorktree({
+      repoDir: process.cwd(),
+      ref: chosen.ref,
+      commits: chosen.commits,
+      base: chosen.base,
+      label: chosen.label || sel.label
+    })
+    const forwarded = ['--dev', ...(process.argv.includes('--windows-only') ? ['--windows-only'] : [])]
+    const childEnv = { ...process.env, VEYRA_DEV_SELECTED: '1', VEYRA_DEV_META: JSON.stringify(meta) }
+    let exitCode = 0
+    try {
+      const r = spawnSync('node', [join(import.meta.dirname, 'release.mjs'), ...forwarded], { cwd: dir, env: childEnv, stdio: 'inherit' })
+      exitCode = r.status ?? 1
+      if (exitCode === 0 && sel.web) {
+        const w = spawnSync('node', [join(import.meta.dirname, 'release-web.mjs'), '--dev'], { cwd: dir, env: childEnv, stdio: 'inherit' })
+        exitCode = w.status ?? 1
+      }
+    } finally {
+      cleanup()
+    }
+    process.exit(exitCode)
+  }
+
+  let devCheck
+  try {
+    devCheck = assertDevChannel({ cwd: process.cwd(), allowLocal })
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e))
+    process.exit(1)
+  }
+
   // The next version, marked as a test build: 26.11.1 → 26.11.2-dev.202611181905 (tools/version.mjs).
   const devVersion = nextDevVersion(version)
-  const commit = git('rev-parse', '--short', 'HEAD') + (git('status', '--porcelain') ? ' + uncommitted changes' : '')
-  console.log(`Publishing Veyra Study Dev ${devVersion} (${commit})…`)
+  const meta = process.env.VEYRA_DEV_META ? JSON.parse(process.env.VEYRA_DEV_META) : currentTreeDevMeta(process.cwd(), sel.label)
+  const commit = meta.commit + (meta.dirty ? ' + uncommitted changes' : '')
+  console.log(`Publishing Veyra Study Dev ${devVersion} (${meta.branch ? `${meta.branch} · ` : ''}${commit})…`)
   const env = { ...process.env, VEYRA_CHANNEL: 'dev', VEYRA_VERSION: devVersion }
   process.env.VEYRA_VERSION = devVersion // read by electron-builder.dev.cjs
   run('npm', ['run', 'typecheck'], env)
@@ -81,6 +121,8 @@ if (dev) {
   run('npx', ['electron-vite', 'build'], env)
   run('npx', ['electron-builder', '--win', '--publish', 'never', ...builderConfig('electron-builder.dev.cjs')], { ...env, ...signEnv })
   run('node', [join(import.meta.dirname, 'native-check.mjs'), join('release-dev', 'win-unpacked'), ...checkFlags])
+  // Starts the built app once: a release that can't open never goes out.
+  run('node', [join(import.meta.dirname, 'smoke.mjs'), join('release-dev', 'win-unpacked')])
 
   // A release in the private test-build repo (only you can see it), marked newest:
   // Dev apps read it with their read-only token. Windows looks for latest.yml there.
@@ -92,23 +134,36 @@ if (dev) {
   writeFileSync(join('release-dev', 'latest.yml'), yml)
   const tag = `dev-${devVersion}`
   const notesFile = join('release-dev', 'notes.md')
-  writeFileSync(notesFile, `Test build from ${commit}.\n\nWindows: Veyra-Study-Dev-Setup.exe · Android: Veyra-Study-Dev.apk ("Veyra Dev"). Installed Dev apps update themselves.`)
+  writeFileSync(notesFile, formatDevReleaseNotes(meta, devVersion, tag))
   const files = ['Veyra-Study-Dev-Setup.exe', 'Veyra-Study-Dev-Setup.exe.blockmap', 'latest.yml'].map((f) => join('release-dev', f))
-  execFileSync('gh', ['release', 'create', tag, ...files, '--repo', DEV_REPO, '--title', `Veyra Study Dev ${devVersion}`, '--notes-file', notesFile, '--latest'], { stdio: 'inherit', env: ghEnv })
+  const titleSuffix = meta.label ? ` · ${meta.label}` : meta.commit ? ` (${meta.commit})` : ''
+  const includeAndroid = !process.argv.includes('--windows-only')
+  // Create as draft when Android will also be uploaded, so Windows + Android appear atomically.
+  const targetArgs = !allowLocal && !process.env.VEYRA_DEV_SELECTED && devCheck?.headSha ? ['--target', devCheck.headSha] : []
+  execFileSync(
+    'gh',
+    ['release', 'create', tag, ...files, '--repo', DEV_REPO, ...targetArgs, '--title', `Veyra Study Dev ${devVersion}${titleSuffix}`, '--notes-file', notesFile, ...(includeAndroid ? ['--draft'] : ['--latest'])],
+    { stdio: 'inherit', env: ghEnv }
+  )
   // Then the Android test build, onto the same release (unless --windows-only).
-  if (!process.argv.includes('--windows-only')) run('node', ['tools/release-android.mjs', '--dev'], { ...env, GH_TOKEN: token, VEYRA_DEV_TAG: tag })
-  // Keep the newest 10 test builds.
+  if (includeAndroid) {
+    run('node', [join(import.meta.dirname, 'release-android.mjs'), '--dev'], { ...env, GH_TOKEN: token, VEYRA_DEV_TAG: tag })
+    execFileSync('gh', ['release', 'edit', tag, '--repo', DEV_REPO, '--draft=false', '--latest'], { stdio: 'inherit', env: ghEnv })
+  }
+  // Keep the newest 20 test builds so the in-app Dev build switcher has plenty of history.
   const old = gh(['release', 'list', '--repo', DEV_REPO, '--limit', '100', '--json', 'tagName', '--jq', '.[].tagName'], ghEnv)
     .split(/\r?\n/)
     .filter(Boolean)
-    .slice(10)
+    .slice(KEEP_DEV_RELEASES)
   for (const t of old) execFileSync('gh', ['release', 'delete', t, '--repo', DEV_REPO, '--cleanup-tag', '--yes'], { stdio: 'inherit', env: ghEnv })
   console.log(`\nDone: Veyra Study Dev ${devVersion}\nhttps://github.com/${DEV_REPO}/releases/tag/${tag}`)
   process.exit(0)
 }
 
-if (git('status', '--porcelain')) {
-  console.error('Commit your changes first, so the release matches what is in git.')
+try {
+  assertProdChannel({ cwd: process.cwd(), allowRollback: process.env.VEYRA_ROLLBACK === '1' })
+} catch (e) {
+  console.error(e instanceof Error ? e.message : String(e))
   process.exit(1)
 }
 const tags = git('ls-remote', '--tags', 'origin', `v${version}`)
@@ -132,13 +187,19 @@ run('npm', ['run', 'build'], prodEnv)
 const prodConfig = builderConfig()
 run('npx', ['electron-builder', '--win', '--dir', '--publish', 'never', ...prodConfig], { ...prodEnv, ...signEnv })
 run('node', [join(import.meta.dirname, 'native-check.mjs'), join('release', 'win-unpacked'), ...checkFlags])
+// Starts the built app once: a release that can't open never goes out (before anything is published).
+run('node', [join(import.meta.dirname, 'smoke.mjs'), join('release', 'win-unpacked')])
 // Make the release first: electron-builder uploads its files in parallel, and when the release
 // doesn't exist yet two uploads each try to create it and one fails.
+// It starts as a draft, so installed apps can't see it until latest.yml and the installer are
+// all there: a public release without latest.yml makes every update check fail (issue #2).
 // Run directly (not through the shell, which would split the notes at every space).
-execFileSync('gh', ['release', 'create', `v${version}`, '--target', git('rev-parse', 'HEAD'), '--title', `Veyra Study ${version}`, '--notes', `${notes}
+execFileSync('gh', ['release', 'create', `v${version}`, '--draft', '--target', git('rev-parse', 'HEAD'), '--title', `Veyra Study ${version}`, '--notes', `${notes}
 
 **Install:** download Veyra-Study-Setup-${version}.exe below and run it. Installed copies update themselves.`], { stdio: 'inherit', env: ghEnv })
 run('npx', ['electron-builder', '--win', '--publish', 'always', ...prodConfig], { ...prodEnv, ...signEnv, GH_TOKEN: token })
+// Every file is up: publish the draft as the newest release, which is when apps start seeing it.
+execFileSync('gh', ['release', 'edit', `v${version}`, '--draft=false', '--latest'], { stdio: 'inherit', env: ghEnv })
 // Scan the installer on VirusTotal and add the result to the notes (never stops the release).
 try {
   await (await import('./virustotal.mjs')).addToRelease(`v${version}`, [join('release', `Veyra-Study-Setup-${version}.exe`)])

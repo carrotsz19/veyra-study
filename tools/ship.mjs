@@ -14,25 +14,22 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { nextVersion } from './version.mjs'
+import { assertProdChannel } from './channels.mjs'
 
 const dry = process.argv.includes('--dry-run')
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim()
 const run = (script, args = []) => {
-  const r = spawnSync('node', [join(import.meta.dirname, script), ...args], { stdio: 'inherit', shell: process.platform === 'win32' })
+  const r = spawnSync('node', [join(import.meta.dirname, script), ...args], { stdio: 'inherit' })
   if (r.status !== 0) {
     console.error(`\n${script} failed. The version commit is already pushed: fix the problem, then run "node tools/${script}" again (it publishes the same version).`)
     process.exit(r.status ?? 1)
   }
 }
 
-if (git('status', '--porcelain')) {
-  console.error('Commit your changes first, so the release matches what is in git.')
-  process.exit(1)
-}
-git('fetch', '--quiet', 'origin')
-const behind = git('rev-list', '--count', 'HEAD..@{u}')
-if (behind !== '0') {
-  console.error(`This branch is ${behind} commit(s) behind origin. Pull first.`)
+try {
+  assertProdChannel({ cwd: process.cwd() })
+} catch (e) {
+  console.error(e instanceof Error ? e.message : String(e))
   process.exit(1)
 }
 
@@ -78,3 +75,4 @@ git('push', '--quiet')
 run('release.mjs')
 if (!process.argv.includes('--windows-only')) run('release-android.mjs')
 console.log(`\nShipped Veyra Study ${version} (Windows${process.argv.includes('--windows-only') ? '' : ' and Android'}).`)
+console.log('Next: run `npm run release:web` to publish the Prod website, then sync `main` back into Dev via PR if needed.')

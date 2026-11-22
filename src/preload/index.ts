@@ -63,6 +63,8 @@ const appApi = {
   importData: () => ipcRenderer.invoke('data:import'),
   openDataFolder: () => ipcRenderer.invoke('data:openFolder'),
   exportNotes: (files: { name: string; text: string }[]) => ipcRenderer.invoke('notes:export', files),
+  exportFiles: (files: { name: string; ext: string; mime: string; bytes: Uint8Array }[], kindLabel: string) => ipcRenderer.invoke('notes:exportFiles', files, kindLabel),
+  exportPdf: (files: { name: string; html: string }[]) => ipcRenderer.invoke('notes:exportPdf', files),
   version: () => ipcRenderer.invoke('app:version'),
   /** Windows 11 can show acrylic or mica behind the app. */
   materialSupported: ipcRenderer.sendSync('app:materialSupported') as boolean,
@@ -78,6 +80,19 @@ const appApi = {
   windowButtonsChoice: () => ipcRenderer.sendSync('app:windowButtonsChoice') as 'dots' | 'windows',
   setWindowButtons: (b: 'dots' | 'windows') => ipcRenderer.invoke('app:setWindowButtons', b),
   relaunch: () => ipcRenderer.invoke('app:relaunch'),
+  /** Diagnostics: the technical log on this computer, its folder, and sending it when the person asks. */
+  diagRead: () => ipcRenderer.invoke('diag:read'),
+  diagOpen: () => ipcRenderer.invoke('diag:open'),
+  diagSend: (text: string, note: string) => ipcRenderer.invoke('diag:send', text, note),
+  /** A report the app sent by itself, waiting for the person to say what happened. */
+  diagAsk: () => ipcRenderer.invoke('diag:ask'),
+  diagAnswer: (id: string, note: string) => ipcRenderer.invoke('diag:answer', id, note),
+  diagDismiss: () => ipcRenderer.invoke('diag:dismiss'),
+  onDiagAsk: (cb: (ask: { id: string; trigger: string; at: number }) => void) => {
+    const h = (_: unknown, ask: { id: string; trigger: string; at: number }) => cb(ask)
+    ipcRenderer.on('diag:ask', h)
+    return () => ipcRenderer.removeListener('diag:ask', h)
+  },
   /** Whether the window is active and maximised (for the title bar's buttons). */
   winState: () => ipcRenderer.sendSync('win:state') as { focused: boolean; maximized: boolean },
   /** Full screen: the blurred wallpaper Veyra paints in place of acrylic (null: none). */
@@ -158,10 +173,33 @@ const updateApi = {
   check: () => ipcRenderer.invoke('update:check'),
   download: () => ipcRenderer.invoke('update:download'),
   install: () => ipcRenderer.invoke('update:install'),
+  devBuilds: () => ipcRenderer.invoke('update:devBuilds'),
+  installDevBuild: (tag: string) => ipcRenderer.invoke('update:installDevBuild', tag),
+  unpinDevBuild: () => ipcRenderer.invoke('update:unpinDevBuild'),
   onState: (cb: (s: unknown) => void) => {
     const h = (_: unknown, s: unknown) => cb(s)
     ipcRenderer.on('update:state', h)
     return () => void ipcRenderer.removeListener('update:state', h)
+  }
+}
+
+const devBuilderApi = {
+  state: () => ipcRenderer.invoke('devBuilder:state'),
+  candidates: (fetch?: boolean) => ipcRenderer.invoke('devBuilder:candidates', fetch === true),
+  preview: (req: unknown) => ipcRenderer.invoke('devBuilder:preview', req),
+  start: (req: unknown) => ipcRenderer.invoke('devBuilder:start', req),
+  cancel: () => ipcRenderer.invoke('devBuilder:cancel'),
+  clear: () => ipcRenderer.invoke('devBuilder:clear'),
+  chooseRepo: () => ipcRenderer.invoke('devBuilder:chooseRepo'),
+  onState: (cb: (s: unknown) => void) => {
+    const h = (_: unknown, s: unknown) => cb(s)
+    ipcRenderer.on('devBuilder:state', h)
+    return () => void ipcRenderer.removeListener('devBuilder:state', h)
+  },
+  onLog: (cb: (e: unknown) => void) => {
+    const h = (_: unknown, e: unknown) => cb(e)
+    ipcRenderer.on('devBuilder:log', h)
+    return () => void ipcRenderer.removeListener('devBuilder:log', h)
   }
 }
 
@@ -274,4 +312,4 @@ const menuApi = {
 }
 
 contextBridge.exposeInMainWorld('veyra', {
-  menu: menuApi, db, account, friends, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, voice: voiceApi, mcp: mcpApi, update: updateApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })
+  menu: menuApi, db, account, friends, google, app: appApi, saveNow, ai: aiApi, group: groupApi, files: filesApi, drive: driveApi, sync: syncApi, voice: voiceApi, mcp: mcpApi, update: updateApi, devBuilder: devBuilderApi, open: (url: string) => ipcRenderer.invoke('app:open', url) })

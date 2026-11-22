@@ -208,6 +208,9 @@ const update: Veyra['update'] = ON_WEB
   check: () => updates.check(),
   download: () => updates.download(),
   install: () => updates.install(),
+  devBuilds: () => updates.listDevBuilds(),
+  installDevBuild: (tag) => updates.installDevBuild(tag),
+  unpinDevBuild: () => updates.unpinDevBuild(),
   onState: (cb) => updates.onState(cb)
 }
 const mcp: Veyra['mcp'] = {
@@ -230,6 +233,7 @@ const appApi: Veyra['app'] = {
   },
   openDataFolder: async () => {},
   exportNotes: (files) => exports.exportNotes(files),
+  exportFiles: (files, kindLabel) => exports.exportFiles(files, kindLabel),
   version: async () => __APP_VERSION__,
   materialSupported: false,
   setMaterial: async () => {},

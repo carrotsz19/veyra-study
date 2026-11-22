@@ -29,6 +29,7 @@
  *   TUNNEL        "off" to skip cloudflared (e.g. testing on a PC)
  *   CLOUDFLARED   path to cloudflared, default "cloudflared"
  *   ANTHROPIC_API_KEY  the owner's Claude API key, for Veyra AI (leave out to turn it off)
+ *   STRIPE_SECRET_KEY  the owner's Stripe key (a restricted rk_ key is best), for paid plans (leave out to turn them off)
  */
 import { createServer } from 'node:http'
 import { DatabaseSync } from 'node:sqlite'
@@ -43,8 +44,9 @@ import { setupAi } from './ai.mjs'
 import { setupAgent } from './agent.mjs'
 import { setupAnnouncements } from './announce.mjs'
 import { setupCalls } from './calls.mjs'
+import { setupBilling } from './billing.mjs'
 
-const VERSION = '1.16.1'
+const VERSION = '1.18.2'
 const STARTED = Date.now()
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -301,6 +303,13 @@ setInterval(() => {
   const t = now()
   for (const [k, b] of buckets) if (t > b.reset) buckets.delete(k)
 }, 60_000).unref()
+
+/** A route that answers with a small web page instead of JSON (Stripe's "back to Veyra" page). */
+class Html {
+  constructor(body) {
+    this.body = body
+  }
+}
 
 /* ---------- routes ---------- */
 const routes = []
@@ -952,7 +961,9 @@ route('GET', '/admin/overview', ({ me }) => {
     items: { tasks: kinds.task ?? 0, messages: kinds.message ?? 0, notes: kinds.note ?? 0, deadlines: kinds.event ?? 0 },
     synced: { records: personal.n, bytes: personal.bytes },
     dbBytes,
-    voice: calls.usageView()
+    voice: calls.usageView(),
+    // Servers from 1.17.0: diagnostic reports people sent.
+    diagnostics: diagCounts()
   }
 })
 
@@ -1100,6 +1111,148 @@ const SYNC_MAX_ROWS = 100_000
 
 // Your devices send what they changed. The newest edit of each record wins
 // (ties go to the higher device id, so every device agrees).
+/* ---------- diagnostics: technical logs people send from Settings → Data & privacy ---------- */
+/*
+ * Sent when the person presses Send (they see the exact text first and must say what happened), or,
+ * if they turned it on, by the app itself after a crash or similar problem (`auto`); the app then asks
+ * them what happened and adds it with POST /diagnostics/:id/note. Each report is a file in
+ * DATA_DIR/diagnostics, unread until the owner opens it in Settings → Owner → Diagnostics, and deleted
+ * 90 days after it was sent, as the in-app Privacy Policy says. The app has already scrubbed paths,
+ * emails and tokens out of the log.
+ */
+const DIAG_DIR = join(DATA_DIR, 'diagnostics')
+const DIAG_KEEP_DAYS = 90
+const DIAG_ID = /^[0-9]{8}-[0-9]{6}-[a-z0-9_.-]{1,40}-[a-f0-9]{8}$/
+const diagPath = (id) => {
+  if (!DIAG_ID.test(String(id))) throw new HttpError(404, 'No such report.')
+  const p = join(DIAG_DIR, `${id}.json`)
+  if (!existsSync(p)) throw new HttpError(404, 'No such report.')
+  return p
+}
+const readReport = (p) => JSON.parse(readFileSync(p, 'utf8'))
+const reportCard = (r) => ({
+  id: r.id,
+  username: r.username,
+  at: r.at,
+  version: r.version,
+  platform: r.platform,
+  auto: !!r.auto,
+  trigger: r.trigger ?? '',
+  note: r.note ?? '',
+  noteAt: r.noteAt ?? null,
+  read: !!r.read,
+  size: r.log?.length ?? 0
+})
+function allReports() {
+  if (!existsSync(DIAG_DIR)) return []
+  return readdirSync(DIAG_DIR)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => {
+      try {
+        return reportCard(readReport(join(DIAG_DIR, f)))
+      } catch {
+        return null
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.at - a.at)
+}
+/** For the Owner overview: how many, how many unread, and automatic reports in the last hour by version (a bad release shows up here first). */
+const diagCounts = () => {
+  const all = allReports()
+  const hour = now() - 3600_000
+  const byVersion = {}
+  for (const r of all) if (r.auto && r.at > hour) byVersion[r.version || '?'] = (byVersion[r.version || '?'] ?? 0) + 1
+  const lastHour = Object.entries(byVersion)
+    .map(([version, count]) => ({ version, count }))
+    .sort((a, b) => b.count - a.count)
+  return { total: all.length, unread: all.filter((r) => !r.read).length, lastHour }
+}
+route('POST', '/diagnostics', ({ me, body }) => {
+  limit(`diag:${me}`, 6, 3600_000)
+  const text = typeof body?.log === 'string' ? body.log : ''
+  if (!text.trim()) throw new HttpError(400, 'The report is empty.')
+  if (text.length > 320_000) throw new HttpError(413, 'The report is too big.')
+  const auto = body?.auto === true
+  const note = String(body?.note ?? '').trim().slice(0, 2000)
+  // Sent by hand: the person says what happened (the app asks for it too).
+  if (!auto && note.length < 5) throw new HttpError(400, 'Say what happened, so the report can be followed up.')
+  mkdirSync(DIAG_DIR, { recursive: true })
+  const at = new Date()
+  const stamp = at.toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-')
+  const id = `${stamp}-${String(me).toLowerCase().replace(/[^a-z0-9_.-]/g, '').slice(0, 40)}-${randomBytes(4).toString('hex')}`
+  const report = {
+    id,
+    username: me,
+    at: at.getTime(),
+    version: String(body?.version ?? '').slice(0, 60),
+    platform: String(body?.platform ?? '').slice(0, 80),
+    auto,
+    trigger: auto ? String(body?.trigger ?? '').slice(0, 200) : '',
+    note: auto ? '' : note,
+    noteAt: auto ? null : at.getTime(),
+    read: false,
+    log: text
+  }
+  writeFileSync(join(DIAG_DIR, `${id}.json`), JSON.stringify(report))
+  log('diagnostics received', id, auto ? `automatic (${report.trigger})` : 'sent by hand', `${Math.round(text.length / 1024)} KB`)
+  return { ok: true, id }
+})
+// The person adds what happened to a report their app sent by itself.
+route('POST', '/diagnostics/:id/note', ({ me, params, body }) => {
+  limit(`diag-note:${me}`, 20, 3600_000)
+  const p = diagPath(params.id)
+  const r = readReport(p)
+  if (r.username !== me) throw new HttpError(404, 'No such report.')
+  const note = String(body?.note ?? '').trim().slice(0, 2000)
+  if (!note) throw new HttpError(400, 'Say what happened.')
+  r.note = note
+  r.noteAt = now()
+  // Something new to read.
+  r.read = false
+  writeFileSync(p, JSON.stringify(r))
+  return { ok: true }
+})
+route('GET', '/admin/diagnostics', ({ me }) => {
+  requireAdmin(me)
+  const reports = allReports()
+  return { reports, unread: reports.filter((r) => !r.read).length }
+})
+route('GET', '/admin/diagnostics/:id', ({ me, params }) => {
+  requireAdmin(me)
+  return { report: readReport(diagPath(params.id)) }
+})
+route('PATCH', '/admin/diagnostics/:id', ({ me, params, body }) => {
+  requireAdmin(me)
+  const p = diagPath(params.id)
+  const r = readReport(p)
+  if (typeof body?.read === 'boolean') r.read = body.read
+  writeFileSync(p, JSON.stringify(r))
+  return { report: reportCard(r) }
+})
+route('DELETE', '/admin/diagnostics/:id', ({ me, params }) => {
+  requireAdmin(me)
+  rmSync(diagPath(params.id), { force: true })
+  return { ok: true }
+})
+function sweepDiagnostics() {
+  try {
+    if (!existsSync(DIAG_DIR)) return
+    const cutoff = now() - DIAG_KEEP_DAYS * 86_400_000
+    for (const f of readdirSync(DIAG_DIR)) {
+      const p = join(DIAG_DIR, f)
+      // By when it was sent (its name starts with the date), not when it was last marked read.
+      const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})-/.exec(f)
+      const sent = m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : statSync(p).mtimeMs
+      if (sent < cutoff) rmSync(p, { force: true })
+    }
+  } catch (e) {
+    log('diagnostics sweep failed', e.message)
+  }
+}
+sweepDiagnostics()
+setInterval(sweepDiagnostics, 24 * 3600_000).unref()
+
 route('POST', '/sync/push', ({ me, body }) => {
   limit(`sync:${me}`, 240, 60_000)
   const list = Array.isArray(body?.records) ? body.records.slice(0, 2000) : null
@@ -1305,6 +1458,8 @@ route('GET', '/poll', async ({ me, url, req }) => {
 const ai = setupAi({ db, q, route, HttpError, isOwner, requireAdmin, getUser, userCard, metaGet, metaSet, log })
 // The Assistant in notes (agent.mjs): plans, subagents, web research, note and task tools.
 setupAgent({ route, HttpError, ai, isOwner, log })
+// Paid plans through Stripe (billing.mjs): locked to the owner until opened in Owner → Plans.
+setupBilling({ db, q, route, HttpError, Html, isOwner, requireAdmin, getUser, metaGet, metaSet, log, publicUrl: () => tunnelUrl })
 // Announcements from the owner (announce.mjs).
 setupAnnouncements({ db, q, route, HttpError, requireAdmin, isOwner, getUser, userCard })
 // Voice rooms (calls.mjs): who's in each group's voice room, and passing call setup between apps.
@@ -1360,6 +1515,10 @@ const server = createServer(async (req, res) => {
       const auth = r.auth ? sessionUser(req) : {}
       const body = req.method === 'GET' || req.method === 'DELETE' ? null : await readBody(req, url.pathname === '/sync/push' || url.pathname === '/chats/push' ? MAX_SYNC_BODY : url.pathname === '/files' || url.pathname.endsWith('/snapshot') ? MAX_FILE_BODY : aiFiles(url.pathname) ? MAX_AI_BODY : MAX_BODY)
       const out = await r.handler({ ...auth, params, body, url, req, ip })
+      if (out instanceof Html) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" })
+        return res.end(out.body)
+      }
       return send(200, out)
     }
     send(404, { error: 'Not found.' })

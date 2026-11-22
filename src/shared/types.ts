@@ -1,3 +1,4 @@
+import type { DevBuildRequest, DevBuilderState, DevCandidates, DevPreview } from './dev-builder'
 /**
  * Every piece of data in Veyra is a "record": a typed JSON document with
  * sync metadata. Phase 2 sync exchanges records changed since a cursor and
@@ -607,6 +608,20 @@ export interface McpApi {
 }
 
 /* ---------- software updates (Settings → Software update) ---------- */
+export interface DevBuild {
+  tag: string
+  version: string
+  publishedAt: string
+  commit?: string
+  branch?: string
+  label?: string
+  dirty?: boolean
+  commits?: { sha: string; subject: string }[]
+  notes: string
+  hasWindows: boolean
+  hasAndroid: boolean
+  current: boolean
+}
 export interface UpdateState {
   /** Updates work here (the installed Windows app). */
   supported: boolean
@@ -621,6 +636,10 @@ export interface UpdateState {
   total?: number
   speed?: number
   error?: string
+  /** Dev builds only: release tag this install is pinned to (automatic updates pause while pinned). */
+  pinnedTag?: string | null
+  /** Dev builds only: release tag currently being downloaded or ready to install via the build switcher. */
+  targetTag?: string
 }
 export interface UpdateApi {
   state(): Promise<UpdateState>
@@ -628,4 +647,20 @@ export interface UpdateApi {
   download(): Promise<UpdateState>
   install(): Promise<void>
   onState(cb: (s: UpdateState) => void): () => void
+  /** Dev builds only: list published test builds, switch to any build tag, or resume following latest. */
+  devBuilds?(): Promise<{ builds: DevBuild[]; pinnedTag: string | null; error?: string }>
+  installDevBuild?(tag: string): Promise<UpdateState>
+  unpinDevBuild?(): Promise<UpdateState>
+}
+/** Veyra Study Dev on Windows: build and publish a Dev release from chosen commits (src/main/dev-builder.ts). */
+export interface DevBuilderApi {
+  state(): Promise<DevBuilderState>
+  candidates(fetch?: boolean): Promise<DevCandidates>
+  preview(req: DevBuildRequest): Promise<DevPreview>
+  start(req: DevBuildRequest): Promise<DevBuilderState>
+  cancel(): Promise<DevBuilderState>
+  clear(): Promise<DevBuilderState>
+  chooseRepo(): Promise<DevBuilderState>
+  onState(cb: (s: DevBuilderState) => void): () => void
+  onLog(cb: (e: { id: string; lines: string[] }) => void): () => void
 }

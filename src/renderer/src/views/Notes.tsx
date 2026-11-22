@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Archive, ArchiveRestore, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, FileText, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, HardDrive, MoreHorizontal, NotebookPen, PanelLeftClose, Pencil, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, Users, X, SlidersHorizontal } from 'lucide-react'
+  Archive, ArchiveRestore, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, FileDown, FileText, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, HardDrive, MoreHorizontal, NotebookPen, PanelLeftClose, Pencil, Pin, PinOff, Plus, RotateCcw, Search, Square, SquarePen, Trash2, Users, X, SlidersHorizontal } from 'lucide-react'
 import { childrenOf, deleteFolder, drag, folderPath, moveFolder, newFolder, parentOf, renameFolder, useFolders, withDescendants } from '../lib/folders'
 import { FolderNameDialog, FolderPickDialog } from '../components/FolderDialogs'
 import type { NoteFont, NoteTemplate, Rec } from '@shared/types'
+import type { ExportFormat } from '@shared/note-export'
 import { db, onExternalChange, useRecords } from '../data/store'
 import { ContextMenu as RowMenu, Dialog, Empty, useToast } from '../components/ui'
 import { SharedList, SharedPane, recentLinks, takePendingShare, type SharedPick } from '../components/notes/Share'
@@ -11,7 +12,8 @@ import { myShares, onSharesChanged, type ShareInfo } from '../lib/share'
 import { groupCall } from '../data/groups'
 import { useAccount } from '../components/account'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { NOTE_COVERS, NoteEditor, duplicateNote, exportNotes } from '../components/notes/NoteEditor'
+import { NOTE_COVERS, NoteEditor, duplicateNote } from '../components/notes/NoteEditor'
+import { exportNotesAs } from '../components/notes/exportNote'
 import { useSettings } from '../data/settings'
 import { preview, section, shortDate } from '../components/notes/listing'
 import { useNav } from '../nav'
@@ -128,6 +130,7 @@ export function Notes({
   const [anchor, setAnchor] = useState<string | null>(null)
   const [ctx, setCtx] = useState<{ x: number; y: number; id: string } | null>(null)
   const [moving, setMoving] = useState(false)
+  const [exportMenu, setExportMenu] = useState(false)
   const [focus, setFocus] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   // Folders: the open one (none: the top level, with the folders listed first).
@@ -245,6 +248,7 @@ export function Notes({
     setPicked(new Set())
     setSelecting(false)
     setMoving(false)
+    setExportMenu(false)
   }
 
   /* ---------- bulk actions (with undo) ---------- */
@@ -328,6 +332,24 @@ export function Notes({
   })
   const canDropFolder = (f: Rec<'folder'>, id: string | null) => !(id && withDescendants(folders, f.id).has(id))
 
+  const runExport = async (list: Rec<'note'>[], format: ExportFormat) => {
+    try {
+      const n = await exportNotesAs(
+        list.map((x) => ({
+          ...x.data,
+          subject: subjects.find((s) => s.id === x.data.subjectId)?.data.name,
+          updatedAt: x.updatedAt
+        })),
+        format
+      )
+      if (!n) return
+      const label = format === 'pdf' ? 'PDF' : format === 'docx' ? 'Word (.docx)' : 'Markdown'
+      toast(n === 1 ? `Exported as ${label}` : `Exported ${plural(n, 'note')} as ${label}`)
+    } catch (e) {
+      toast(cleanError(e, 'Couldn’t export.'))
+    }
+  }
+
   const bulk = {
     pin: () => {
       const allPinned = pickedNotes.every((n) => n.data.pinned)
@@ -344,9 +366,9 @@ export function Notes({
       patchMany(pickedNotes, { subjectId: id }, `Moved ${plural(pickedNotes.length, 'note')} to ${name}`)
       setMoving(false)
     },
-    export: async () => {
-      const n = await exportNotes(pickedNotes.map((x) => x.data))
-      if (n) toast(`Exported ${plural(n, 'note')}`)
+    export: (format: ExportFormat) => {
+      setExportMenu(false)
+      void runExport(pickedNotes, format)
     },
     remove: () => {
       deleteMany(pickedNotes)
@@ -981,7 +1003,7 @@ export function Notes({
                 {pickedNotes.every((n) => n.data.pinned) ? 'Unpin' : 'Pin'}
               </button>
               <span className="anchor">
-                <button className="btn sec" onClick={() => setMoving(!moving)}>
+                <button className="btn sec" onClick={() => { setMoving(!moving); setExportMenu(false) }}>
                   <FolderInput size={15} /> Move to subject
                 </button>
                 {moving && (
@@ -1000,9 +1022,24 @@ export function Notes({
               <button className="btn sec" onClick={() => setMoveTo(pickedNotes)}>
                 <FolderIcon size={15} /> Move to folder
               </button>
-              <button className="btn sec" onClick={bulk.export}>
-                <Download size={15} /> Export
-              </button>
+              <span className="anchor">
+                <button className="btn sec" onClick={() => { setExportMenu(!exportMenu); setMoving(false) }}>
+                  <Download size={15} /> Export
+                </button>
+                {exportMenu && (
+                  <div className="popover" style={{ left: 0, right: 'auto', width: 210 }}>
+                    <button className="menu-row" onClick={() => bulk.export('pdf')}>
+                      <FileDown size={15} /> PDF (.pdf)
+                    </button>
+                    <button className="menu-row" onClick={() => bulk.export('docx')}>
+                      <FileText size={15} /> Word (.docx)
+                    </button>
+                    <button className="menu-row" onClick={() => bulk.export('md')}>
+                      <Download size={15} /> Markdown (.md)
+                    </button>
+                  </div>
+                )}
+              </span>
               <button className="btn sec" onClick={bulk.archive}>
                 {view === 'notes' ? <Archive size={15} /> : <ArchiveRestore size={15} />} {view === 'notes' ? 'Archive' : 'Unarchive'}
               </button>
@@ -1119,7 +1156,11 @@ export function Notes({
             [ctxNote.data.pinned ? 'Unpin' : 'Pin to top', ctxNote.data.pinned ? <PinOff size={15} key="p" /> : <Pin size={15} key="p" />, () => db.put('note', { ...ctxNote.data, pinned: !ctxNote.data.pinned }, ctxNote.id)],
             ['Move to folder…', <FolderIcon size={15} key="f" />, () => setMoveTo([ctxNote])],
             ['Duplicate', <Copy size={15} key="d" />, async () => setSelected((await duplicateNote(ctxNote.data)).id)],
-            ['Export as Markdown', <Download size={15} key="e" />, async () => (await exportNotes([ctxNote.data])) && toast('Note exported')],
+            'sep',
+            ['Export as PDF', <FileDown size={15} key="epdf" />, () => void runExport([ctxNote], 'pdf')],
+            ['Export as Word (.docx)', <FileText size={15} key="edocx" />, () => void runExport([ctxNote], 'docx')],
+            ['Export as Markdown', <Download size={15} key="emd" />, () => void runExport([ctxNote], 'md')],
+            'sep',
             ['Select', <CheckSquare size={15} key="s" />, () => { setSelecting(true); setPicked(new Set([...picked, ctxNote.id])) }],
             [
               ctxNote.data.archived ? 'Unarchive' : 'Archive',

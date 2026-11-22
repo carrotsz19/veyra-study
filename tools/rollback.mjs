@@ -79,7 +79,7 @@ if (dev) {
   const old = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
   old.version = pkg.version
   writeFileSync(join(dir, 'package.json'), JSON.stringify(old, null, 2) + '\n')
-  run('node', [join(HERE, 'tools', 'release.mjs'), '--dev'], dir)
+  run('node', [join(HERE, 'tools', 'release.mjs'), '--dev'], dir, { ...process.env, VEYRA_DEV_SELECTED: '1' })
 } else {
   // The version number and a changelog section (the release notes), committed on a branch of its own.
   const old = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
@@ -93,8 +93,9 @@ if (dev) {
   git(['commit', '-m', `Roll back to ${target} as ${next}`], dir)
   // GitHub needs the commit before a release can point at it.
   git(['push', 'origin', `HEAD:refs/heads/rollback/${next}`], dir)
-  run('node', [join(HERE, 'tools', 'release.mjs')], dir)
-  run('node', [join(HERE, 'tools', 'release-android.mjs')], dir)
+  const rollbackEnv = { ...process.env, VEYRA_ROLLBACK: '1' }
+  run('node', [join(HERE, 'tools', 'release.mjs')], dir, rollbackEnv)
+  run('node', [join(HERE, 'tools', 'release-android.mjs')], dir, rollbackEnv)
 
   // Here: the next real release has to be above the rollback.
   const here = JSON.parse(readFileSync(join(HERE, 'package.json'), 'utf8'))
@@ -117,5 +118,5 @@ try {
 console.log(
   dev
     ? `\nDone: Dev apps will move to ${ref}'s build at their next check.`
-    : `\nDone: Veyra Study ${next} (= ${target}) is out for Windows and Android; installed apps move to it by themselves.\nThe next release must be ${a}.${b}.${c + 2} or higher (package.json here says ${next}: bump it as usual).`
+    : `\nDone: Veyra Study ${next} (= ${target}) is out for Windows and Android; installed apps move to it by themselves.\nThe next release must be ${nextVersion(next)} or higher (package.json here says ${next}: bump it as usual).`
 )

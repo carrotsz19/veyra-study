@@ -14,12 +14,18 @@
  * plus the installer); VEYRA_UPDATE_DRYRUN downloads but doesn't install.
  */
 import { app, BrowserWindow, nativeTheme, type WebContents } from 'electron'
-import type { UpdateState } from '../shared/types'
+import type { DevBuild, UpdateState } from '../shared/types'
+import { createServer, type Server } from 'node:http'
+import { randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import { autoUpdater } from 'electron-updater'
 import { APP_NAME, DEV_FEED_TOKEN, DEV_REPO, IS_DEV } from '../shared/channel'
+import { devBuildRunning } from './dev-builder'
+import { compareVeyraVersions, parseDevRelease, stripDevMetaComment, type DevReleaseLike } from '../shared/dev-builds'
 import splashPath from '../../resources/splash.html?asset'
+import { diag } from './diaglog'
 
 const CHECK_TIMEOUT = 8000
 
@@ -59,17 +65,50 @@ function install(version: string | undefined) {
   }
   setImmediate(() => autoUpdater.quitAndInstall(true, true))
 }
+/*
+ * Why a check failed, in words. A release that's still being published (its latest.yml isn't
+ * up yet) is normal for a few minutes and isn't the same as GitHub being down (issue #2).
+ */
+const PUBLISHING = 'A new version is being published right now. Check again in a few minutes.'
+const checkError = (e: unknown): string => {
+  const s = String((e as { code?: string })?.code ?? '') + ' ' + String(e)
+  if (/ERR_UPDATER_CHANNEL_FILE_NOT_FOUND|ERR_UPDATER_LATEST_VERSION_NOT_FOUND|latest\.yml/i.test(s)) return PUBLISHING
+  if (/ENOTFOUND|ECONN|ETIMEDOUT|EAI_AGAIN|net::/i.test(s)) return 'Can’t reach GitHub. Check your connection.'
+  return 'Couldn’t check for updates. Try again later.'
+}
 const FAILED = (v: string) => `Veyra Study ${v} didn’t install last time, so Veyra opened as it was. Try again here, or download it from GitHub.`
 
+const DEV_PIN = () => join(app.getPath('userData'), 'dev-pin.json')
+function readDevPin(): { tag: string; version: string } | null {
+  if (!IS_DEV) return null
+  try {
+    const p = JSON.parse(readFileSync(DEV_PIN(), 'utf8'))
+    return typeof p?.tag === 'string' && p.tag ? { tag: p.tag, version: String(p.version ?? '') } : null
+  } catch {
+    return null
+  }
+}
+function writeDevPin(tag: string, version: string) {
+  if (!IS_DEV) return
+  try {
+    writeFileSync(DEV_PIN(), JSON.stringify({ tag, version, at: Date.now() }))
+  } catch {
+    /* non-fatal */
+  }
+}
+function clearDevPin() {
+  if (!IS_DEV) return
+  try {
+    unlinkSync(DEV_PIN())
+  } catch {
+    /* already absent */
+  }
+}
+
 let configured = false
-function configure() {
-  if (configured) return
-  configured = true
-  autoUpdater.autoDownload = false
-  // Installing when Veyra quits, unless that already failed for the waiting version.
-  autoUpdater.autoInstallOnAppQuit = !lastAttempt()
-  autoUpdater.logger = null
+function applyDefaultFeed() {
   const testFeed = process.env['VEYRA_UPDATE_URL']
+  autoUpdater.allowDowngrade = false
   // Veyra Study Dev: the newest release in the private test-build repo (latest.yml there).
   if (IS_DEV && !testFeed) {
     autoUpdater.allowPrerelease = false
@@ -80,10 +119,25 @@ function configure() {
     autoUpdater.setFeedURL({ provider: 'generic', url: testFeed })
   }
 }
+function configure() {
+  if (configured) return
+  configured = true
+  autoUpdater.autoDownload = false
+  // Installing when Veyra quits, unless that already failed for the waiting version.
+  autoUpdater.autoInstallOnAppQuit = !lastAttempt()
+  autoUpdater.logger = null
+  applyDefaultFeed()
+}
 
 export async function updateAtStart(checkAtStart = true): Promise<StartResult> {
   if (!canUpdate()) return 'open'
   configure()
+  // Dev build pinned to a specific commit/release: don't overwrite it on start-up.
+  const pin = readDevPin()
+  if (pin) {
+    publish({ pinnedTag: pin.tag })
+    return 'open'
+  }
   // Turned off in Settings: just remember what's out there, for Settings → Software update.
   if (!checkAtStart) {
     void checkNow().catch(() => {})
@@ -158,9 +212,10 @@ export async function updateAtStart(checkAtStart = true): Promise<StartResult> {
     // Quietly, then open the new version.
     install(info.version)
     return 'installing'
-  } catch {
-    // Offline, GitHub trouble, a download that broke: open the app as it is; the next start tries again.
-    set({ step: 'starting', note: 'Couldn’t check for updates. Opening Veyra Study…' })
+  } catch (e) {
+    // Offline, GitHub trouble, a release still being published, a download that broke: open the app as it is; the next start tries again.
+    diag('start-up update failed', { error: e })
+    set({ step: 'starting', note: checkError(e) === PUBLISHING ? 'An update is on its way. Opening Veyra Study…' : 'Couldn’t check for updates. Opening Veyra Study…' })
     await new Promise((r) => setTimeout(r, 700))
     close()
     return 'open'
@@ -171,17 +226,19 @@ export async function updateAtStart(checkAtStart = true): Promise<StartResult> {
 let state: UpdateState = { supported: false, current: '', status: 'idle' }
 const watchers = new Set<WebContents>()
 const notes = (n: unknown): string =>
-  (Array.isArray(n) ? n.map((x: { note?: string }) => x.note ?? '').join('\n') : String(n ?? ''))
-    .replace(/<\/(p|li|h\d)>/gi, '\n')
-    .replace(/<li>/gi, '• ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  stripDevMetaComment(
+    (Array.isArray(n) ? n.map((x: { note?: string }) => x.note ?? '').join('\n') : String(n ?? ''))
+      .replace(/<\/(p|li|h\d)>/gi, '\n')
+      .replace(/<li>/gi, '• ')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&#39;|&apos;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  )
 
 function publish(s: Partial<UpdateState>) {
   state = { ...state, ...s }
@@ -196,7 +253,7 @@ export function updateState(wc?: WebContents): UpdateState {
     watchers.add(wc)
     wc.once('destroyed', () => watchers.delete(wc))
   }
-  state = { ...state, supported: canUpdate(), current: app.getVersion() }
+  state = { ...state, supported: canUpdate(), current: app.getVersion(), ...(IS_DEV ? { pinnedTag: readDevPin()?.tag ?? null } : {}) }
   return state
 }
 
@@ -210,7 +267,8 @@ export async function checkNow(): Promise<UpdateState> {
     if (!r) publish({ status: 'up-to-date', checkedAt: Date.now() })
     else remember(r.updateInfo, r.isUpdateAvailable)
   } catch (e) {
-    publish({ status: 'error', error: /ENOTFOUND|ECONN|ETIMEDOUT|net::/i.test(String(e)) ? 'Can’t reach GitHub. Check your connection.' : 'Couldn’t check for updates. Try again later.' })
+    diag('update check failed', { error: e })
+    publish({ status: 'error', error: checkError(e) })
   }
   return state
 }
@@ -225,6 +283,7 @@ export async function downloadNow(): Promise<UpdateState> {
     await autoUpdater.downloadUpdate()
     publish({ status: 'ready', progress: 1 })
   } catch (e) {
+    diag('update download failed', { error: e })
     if (process.env['VEYRA_UPDATE_URL']) console.error('update download failed:', e)
     publish({ status: 'available', error: 'The download didn’t finish. Try again.' })
   } finally {
@@ -237,6 +296,11 @@ export async function downloadNow(): Promise<UpdateState> {
 export function installNow(): void {
   if (state.status !== 'ready') return
   if (process.env['VEYRA_UPDATE_DRYRUN']) return
+  // Restarting would stop a Dev build that is publishing from this app (Build from commits).
+  if (devBuildRunning()) {
+    publish({ error: 'A Dev build is running. Restart when it finishes.' })
+    return
+  }
   install(state.latest)
 }
 
@@ -255,6 +319,7 @@ const HIDDEN_FLAG = () => join(app.getPath('userData'), 'relaunch-hidden')
 /** Look for an update (at most every 5 minutes) and download it if there is one. */
 export async function lookForUpdate(force = false): Promise<void> {
   if (!canUpdate() || !allowed()) return
+  if (readDevPin()) return
   if (!force && Date.now() - lastLook < 5 * 60_000) return
   if (state.status === 'checking' || state.status === 'downloading' || state.status === 'ready') return
   lastLook = Date.now()
@@ -274,6 +339,8 @@ export function keepUpToDate(on: () => boolean): void {
 /** Installs a downloaded update now; `hidden` brings Veyra back in the tray. False if there's none. */
 export function installReady(hidden: boolean): boolean {
   if (state.status !== 'ready' || process.env['VEYRA_UPDATE_DRYRUN']) return false
+  // Not while a Dev build is publishing from this app: installing quits Veyra and would stop it.
+  if (devBuildRunning()) return false
   // Not by itself again after it failed.
   if (failedBefore(state.latest)) return false
   try {
@@ -294,4 +361,150 @@ export function takeHiddenFlag(): boolean {
   } catch {
     return false
   }
+}
+
+/* ---------- Dev build switcher (carrotsz19/veyra-study-dev, IS_DEV only) ---------- */
+const DEV_API_BASE = () => (process.env['VEYRA_DEV_API'] || 'https://api.github.com').replace(/\/$/, '')
+
+async function fetchDevReleases(): Promise<DevReleaseLike[]> {
+  if (!IS_DEV) return []
+  if (!DEV_FEED_TOKEN && !process.env['VEYRA_DEV_API']) throw new Error('This Dev build has no test-build feed token.')
+  const headers: Record<string, string> = { Accept: 'application/vnd.github+json', 'User-Agent': 'VeyraStudyDev' }
+  if (DEV_FEED_TOKEN) headers.Authorization = `Bearer ${DEV_FEED_TOKEN}`
+  const res = await fetch(`${DEV_API_BASE()}/repos/${DEV_REPO.owner}/${DEV_REPO.repo}/releases?per_page=20`, { headers, signal: AbortSignal.timeout(15_000) })
+  if (!res.ok) throw new Error(`GitHub answered ${res.status}.`)
+  const data = (await res.json()) as unknown
+  return Array.isArray(data) ? (data as DevReleaseLike[]) : []
+}
+
+/** Lists published Dev builds with their commit metadata (Dev builds only). */
+export async function listDevBuilds(): Promise<{ builds: DevBuild[]; pinnedTag: string | null; error?: string }> {
+  if (!IS_DEV) return { builds: [], pinnedTag: null }
+  const pinnedTag = readDevPin()?.tag ?? null
+  try {
+    const raw = await fetchDevReleases()
+    const current = app.getVersion()
+    const builds = raw
+      .map((r) => parseDevRelease(r, current))
+      .filter((b): b is DevBuild => b !== null)
+      .sort((a, b) => compareVeyraVersions(b.version, a.version))
+    return { builds, pinnedTag }
+  } catch (e) {
+    diag('dev builds list failed', { error: e })
+    return { builds: [], pinnedTag, error: e instanceof Error ? e.message : 'Couldn’t load Dev builds.' }
+  }
+}
+
+/**
+ * Downloads a specific Dev release (upgrade or downgrade) through a short-lived local proxy so
+ * electron-updater handles progress, SHA-512 verification, signing checks, and quitAndInstall.
+ */
+export async function installDevBuild(tag: string): Promise<UpdateState> {
+  if (!IS_DEV) return updateState()
+  if (!canUpdate()) {
+    publish({ error: 'Switching Dev builds works in the installed Veyra Study Dev app.' })
+    return state
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(tag)) {
+    publish({ error: 'Invalid build tag.' })
+    return state
+  }
+  if (state.status === 'downloading') return state
+  configure()
+  publish({ status: 'checking', targetTag: tag, error: undefined })
+
+  let proxy: Server | null = null
+  const onProgress = (p: { percent: number; transferred: number; total: number; bytesPerSecond: number }) =>
+    publish({ progress: p.percent / 100, transferred: p.transferred, total: p.total, speed: p.bytesPerSecond })
+
+  try {
+    const releases = await fetchDevReleases()
+    const rel = releases.find((r) => r.tag_name === tag && !r.draft)
+    if (!rel) throw new Error('That Dev build is no longer on GitHub.')
+    const parsed = parseDevRelease(rel, app.getVersion())
+    if (!parsed || !parsed.hasWindows) throw new Error('That Dev build does not have a Windows installer.')
+
+    const newestTag = releases.map((r) => parseDevRelease(r, app.getVersion())).filter((b): b is DevBuild => b !== null && b.hasWindows).sort((a, b) => compareVeyraVersions(b.version, a.version))[0]?.tag
+    const assets = new Map((rel.assets ?? []).filter((a) => a.name && a.url).map((a) => [a.name, a.url!]))
+    const nonce = randomBytes(12).toString('hex')
+    const authHeaders: Record<string, string> = { Accept: 'application/octet-stream', 'User-Agent': 'VeyraStudyDev' }
+    if (DEV_FEED_TOKEN) authHeaders.Authorization = `Bearer ${DEV_FEED_TOKEN}`
+
+    proxy = createServer(async (req, res) => {
+      try {
+        const urlPath = (req.url ?? '').split('?')[0]
+        const prefix = `/${nonce}/`
+        if (!urlPath.startsWith(prefix)) {
+          res.writeHead(404)
+          return res.end()
+        }
+        const name = decodeURIComponent(urlPath.slice(prefix.length))
+        const assetUrl = assets.get(name)
+        if (!assetUrl) {
+          res.writeHead(404)
+          return res.end()
+        }
+        // GitHub private asset endpoints return a 302 to a pre-signed blob URL (which rejects an Auth header).
+        const first = await fetch(assetUrl, { headers: authHeaders, redirect: 'manual', signal: AbortSignal.timeout(30_000) })
+        const upstream =
+          first.status >= 300 && first.status < 400 && first.headers.get('location')
+            ? await fetch(first.headers.get('location')!, { signal: AbortSignal.timeout(120_000) })
+            : first
+        if (!upstream.ok || !upstream.body) {
+          res.writeHead(upstream.status || 502)
+          return res.end()
+        }
+        const headersOut: Record<string, string> = { 'Content-Type': upstream.headers.get('content-type') || 'application/octet-stream' }
+        const len = upstream.headers.get('content-length')
+        if (len) headersOut['Content-Length'] = len
+        res.writeHead(200, headersOut)
+        Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]).pipe(res)
+      } catch {
+        if (!res.headersSent) res.writeHead(502)
+        res.end()
+      }
+    })
+
+    const port = await new Promise<number>((resolvePort, rejectPort) => {
+      proxy!.once('error', rejectPort)
+      proxy!.listen(0, '127.0.0.1', () => {
+        const addr = proxy!.address()
+        if (addr && typeof addr === 'object') resolvePort(addr.port)
+        else rejectPort(new Error('Could not start local update proxy.'))
+      })
+    })
+
+    autoUpdater.allowDowngrade = true
+    autoUpdater.setFeedURL({ provider: 'generic', url: `http://127.0.0.1:${port}/${nonce}` })
+    const found = await autoUpdater.checkForUpdates()
+    if (!found?.updateInfo) throw new Error('Couldn’t read that Dev build’s update manifest.')
+
+    publish({ status: 'downloading', latest: parsed.version, notes: parsed.notes, releaseDate: parsed.publishedAt, targetTag: tag, progress: 0, transferred: 0, total: 0 })
+    autoUpdater.on('download-progress', onProgress)
+    await autoUpdater.downloadUpdate()
+
+    // Pin when switching to a non-latest build so auto-updates don't overwrite it on next launch.
+    if (newestTag && tag !== newestTag) writeDevPin(tag, parsed.version)
+    else clearDevPin()
+
+    publish({ status: 'ready', latest: parsed.version, notes: parsed.notes, releaseDate: parsed.publishedAt, targetTag: tag, pinnedTag: readDevPin()?.tag ?? null, progress: 1, error: undefined })
+    return state
+  } catch (e) {
+    diag('dev build switch failed', { tag, error: e })
+    publish({ status: 'idle', targetTag: undefined, error: e instanceof Error ? e.message : 'Couldn’t download that Dev build.' })
+    return state
+  } finally {
+    autoUpdater.removeListener('download-progress', onProgress)
+    if (proxy) proxy.close()
+    applyDefaultFeed()
+  }
+}
+
+/** Resumes following the newest Dev release and checks for updates immediately. */
+export async function unpinDevBuild(): Promise<UpdateState> {
+  if (!IS_DEV) return updateState()
+  clearDevPin()
+  applyDefaultFeed()
+  publish({ pinnedTag: null, targetTag: undefined, error: undefined })
+  return checkNow()
 }
